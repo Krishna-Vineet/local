@@ -1,0 +1,12 @@
+node_modules
+dist/
+scripts
+# local env overrides (never commit real values)
+
+
+# local handoff artifacts
+*.zip
+*.patch
+restore-happypix.sh
+restore-parts/
+restore-parts/

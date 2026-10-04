@@ -1,0 +1,26 @@
+{
+  "appId": "com.vertech-innovations.happypix",
+  "productName": "HappyPix Booth",
+  "files": ["dist-electron", "dist-react"],
+  "extraResources": ["dist-electron/preload.cjs"],
+  "icon": "./desktopIcon.png",
+  "asar": true,
+  "directories": {
+    "output": "release"
+  },
+  "mac": {
+    "target": "dmg",
+    "category": "public.app-category.photography",
+    "extendInfo": {
+      "NSCameraUsageDescription": "HappyPix Booth uses the connected camera to create guest photo sessions.",
+      "NSMicrophoneUsageDescription": "HappyPix Booth does not record audio."
+    }
+  },
+  "linux": {
+    "target": "AppImage",
+    "category": "Photography"
+  },
+  "win": {
+    "target": ["portable", "msi"]
+  }
+}

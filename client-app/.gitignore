@@ -1,0 +1,12 @@
+node_modules/
+.turbo/
+dist/
+build/
+*.log
+android/build/
+android/.gradle/
+ios/build/
+ios/Pods/
+*.aar
+*.keystore
+!debug.keystore

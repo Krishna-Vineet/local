@@ -47,10 +47,13 @@ npm start
 
 You can run seed scripts to populate initial data:
 ```bash
-node seed_admin.js
-node seed_superadmin.js
-node seed_templates.js
+npm run seed:plans        # subscription plan catalogue + platform settings (+ OWNER if missing)
+npm run seed:superadmin   # create/upgrade the platform OWNER account
+npm run seed:templates    # optional starter designer templates
 ```
+
+See `PRODUCTION_SETUP.md` for full production deployment and migration steps
+(including the required legacy Photo TTL index removal).
 
 ## Structure
 - `/routes` - API endpoints

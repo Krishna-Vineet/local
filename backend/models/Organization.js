@@ -28,8 +28,8 @@ const organizationSchema = new mongoose.Schema(
     // ─── Plan & Billing ───────────────────────────────────────
     plan: {
       type: String,
-      enum: ['starter', 'professional', 'business', 'enterprise'],
-      default: 'starter',
+      enum: ['trial', 'starter', 'basic', 'professional', 'business', 'custom', 'enterprise'],
+      default: 'trial',
     },
     currency: {
       type: String,

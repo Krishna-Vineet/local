@@ -21,7 +21,7 @@ export const authenticate = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const user = await User.findById(decoded.id).select('-password');
+    const user = await User.findById(decoded.id).select('-password -forgotPasswordCodeHash -emailChangeCodeHash');
     if (!user) {
       return res.status(401).json({ error: 'Invalid token. User not found.' });
     }
@@ -29,6 +29,13 @@ export const authenticate = async (req, res, next) => {
     // Sessions are killed if status is inactive
     if (user.status !== 'active') {
       return res.status(403).json({ error: 'Account is deactivated.' });
+    }
+
+    // Stateless session invalidation: tokens issued before the latest
+    // tokenVersion bump (password change/reset, email change, deactivation)
+    // are rejected.
+    if ((decoded.tv ?? 0) !== (user.tokenVersion ?? 0)) {
+      return res.status(401).json({ error: 'Session expired. Please login again.' });
     }
 
     req.user = user;

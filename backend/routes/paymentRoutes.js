@@ -6,11 +6,13 @@ import Payment from '../models/Payment.js';
 import DigitalToken from '../models/DigitalToken.js';
 import PhotoShare from '../models/PhotoShare.js';
 import Setting from '../models/Setting.js';
+import OrganizationDefaults from '../models/OrganizationDefaults.js';
 import Event from '../models/Event.js';
 import Coupon from '../models/Coupon.js';
 import { printImage } from '../utils/printHelper.js';
-import { authenticate, getOrgFilter } from '../middleware/auth.js';
-import { optionalDeviceAuth } from '../middleware/deviceAuth.js';
+import { safeMediaUrl } from '../lib/helpers.js';
+import { suggestedPriceMap } from '../lib/layouts.js';
+import { authenticateDevice } from '../middleware/deviceAuth.js';
 
 const router = express.Router();
 
@@ -49,6 +51,59 @@ const getRazorpayConfig = async (orgId, eventId) => {
   return { key_id, key_secret };
 };
 
+// ─────────────────────────────────────────────────────────────
+// Server-side pricing (P0 security fix: the client no longer
+// decides how much to charge). Resolution order:
+//   1. event.layoutPrices[layoutKey]  (CRM v2 events, optional key)
+//   2. event.printPrice               (legacy events)
+//   3. org default layout price       (CRM v2 org defaults, 4x6 single)
+//   4. suggested catalogue price      (₹30 fallback)
+// ─────────────────────────────────────────────────────────────
+const resolveUnitPrice = (event, layoutKey, orgDefaults) => {
+  if (layoutKey && event?.layoutPrices) {
+    const fromMap = event.layoutPrices instanceof Map ? event.layoutPrices.get(layoutKey) : event.layoutPrices[layoutKey];
+    if (typeof fromMap === 'number') return fromMap;
+  }
+  if (typeof event?.printPrice === 'number') return event.printPrice;
+
+  const orgPrices = orgDefaults?.layoutPrices;
+  const orgSingle = orgPrices instanceof Map ? orgPrices.get('46:1') : orgPrices?.['46:1'];
+  if (typeof orgSingle === 'number') return orgSingle;
+
+  return suggestedPriceMap()['46:1'];
+};
+
+// Validate a coupon against the REAL Coupon schema (status/quantity/
+// usedCount/eventIds) and return the discount for a given gross amount.
+const validateCouponForAmount = async (orgId, eventId, code, gross) => {
+  if (!code) return { discount: 0 };
+  const coupon = await Coupon.findOne({ organizationId: orgId, code: String(code).toUpperCase(), status: 'active' });
+  if (!coupon) {
+    const err = new Error('Invalid or inactive coupon');
+    err.status = 400;
+    throw err;
+  }
+  if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate).setHours(23, 59, 59, 999)) {
+    const err = new Error('Coupon has expired');
+    err.status = 400;
+    throw err;
+  }
+  if ((coupon.usedCount || 0) >= coupon.quantity) {
+    const err = new Error('Coupon usage limit reached');
+    err.status = 400;
+    throw err;
+  }
+  const eventIds = (coupon.eventIds || []).map(String);
+  if (eventIds.length && eventId && !eventIds.includes(String(eventId))) {
+    const err = new Error('This coupon is not valid for the current event');
+    err.status = 400;
+    throw err;
+  }
+
+  if (coupon.type === 'percentage') return Math.round(gross * (coupon.value / 100));
+  return Math.min(Math.round(coupon.value), gross);
+};
+
 // Helper: Increment coupon usage
 const incrementCouponUsage = async (couponCode, orgId) => {
   if (!couponCode) return;
@@ -59,8 +114,16 @@ const incrementCouponUsage = async (couponCode, orgId) => {
       { $inc: { usedCount: 1 } }
     );
   } catch (err) {
-    console.error('Failed to increment coupon usage:', err);
+    console.error('Failed to increment coupon usage:', err.message);
   }
+};
+
+// Helper: settlement route for new payments (wallet unless the org
+// explicitly configured direct UPI payouts)
+const settlementForOrg = async (orgId) => {
+  if (!orgId) return 'wallet';
+  const defaults = await OrganizationDefaults.findOne({ organizationId: orgId }).lean();
+  return defaults?.payoutMode === 'upi' ? 'upi' : 'wallet';
 };
 
 // Helper: get client URL dynamically (resolves local IP if requested from external local network device)
@@ -68,15 +131,15 @@ const getClientUrl = (req) => {
   if (req && req.get('host')) {
     const requestHost = req.get('host'); // e.g. "192.168.31.225:5000"
     const ipOnly = requestHost.split(':')[0];
-    
+
     // Check if it's an IPv4 address (e.g. 192.168.x.x)
     const isIpAddress = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ipOnly);
-    
+
     if (isIpAddress && ipOnly !== '127.0.0.1') {
       return `http://${ipOnly}:5173`;
     }
   }
-  
+
   // For production (Vercel) or localhost, always use the CLIENT_URL env var
   return process.env.CLIENT_URL || 'https://happypix.vercel.app';
 };
@@ -104,9 +167,9 @@ const generateDigitalToken = async (paymentId, photoUrls, compositeUrl, req) => 
 // Helper: Generate a new PhotoShare token for multi-channel sharing
 // ─────────────────────────────────────────────────────────────
 const generatePhotoShare = async (paymentId, photoUrls, compositeUrl, eventId, orgId) => {
-  if (!eventId) return null;
+  if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) return null;
   const tokenHash = crypto.randomBytes(32).toString('hex');
-  
+
   let expirationDays = 7;
   const event = await Event.findById(eventId);
   if (event && event.sharingConfig && event.sharingConfig.expirationDays) {
@@ -127,61 +190,52 @@ const generatePhotoShare = async (paymentId, photoUrls, compositeUrl, eventId, o
   return { tokenHash, expiresAt };
 };
 
+// Helper: resolve + authorize the event for a device request
+const loadEventForDevice = async (req, eventId) => {
+  if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) return null;
+  const event = await Event.findById(eventId);
+  if (!event) return null;
+  // Cross-tenant guard: devices may only bill their own organization's events
+  if (req.organizationId && event.organizationId && String(event.organizationId) !== String(req.organizationId)) {
+    const err = new Error('This event belongs to another organization.');
+    err.status = 403;
+    throw err;
+  }
+  return event;
+};
+
 // ─────────────────────────────────────────────────────────────
-// PUBLIC: Create Razorpay Order
+// Create Razorpay Order (device-authenticated, server-priced)
 // POST /api/payments/create-order
 // ─────────────────────────────────────────────────────────────
-router.post('/create-order', optionalDeviceAuth, async (req, res) => {
+router.post('/create-order', authenticateDevice, async (req, res) => {
   try {
     const {
-      amount,
       printCount,
       digitalCopy,
       photoUrls,
       compositeUrl,
       couponCode,
-      discountApplied,
       eventId,
-      eventName,
+      layoutKey,
     } = req.body;
 
-    if (amount === undefined || amount === null || printCount === undefined || printCount === null) {
-      return res.status(400).json({ error: 'amount and printCount are required' });
+    if (printCount === undefined || printCount === null) {
+      return res.status(400).json({ error: 'printCount is required' });
     }
+    const copies = Math.max(1, Math.min(10, Math.round(Number(printCount) || 0)));
 
-    let orgId = req.organizationId;
-    if (!orgId && eventId && mongoose.Types.ObjectId.isValid(eventId)) {
-      const event = await Event.findById(eventId);
-      if (event && event.organizationId) {
-        orgId = event.organizationId;
-      }
-    }
+    const orgId = req.organizationId;
+    const event = await loadEventForDevice(req, eventId);
 
-    let finalAmount = amount;
-    let actualDiscount = 0;
+    const orgDefaults = orgId ? await OrganizationDefaults.findOne({ organizationId: orgId }).lean() : null;
+    const unitPrice = resolveUnitPrice(event, layoutKey, orgDefaults);
+    const gross = Math.round(unitPrice * copies);
+    const discount = await validateCouponForAmount(orgId, eventId, couponCode, gross);
+    const finalAmount = Math.max(0, gross - discount);
 
-    if (couponCode) {
-      const coupon = await Coupon.findOne({ 
-        organizationId: orgId, 
-        code: couponCode.toUpperCase(), 
-        isActive: true 
-      });
-
-      if (!coupon) {
-        return res.status(400).json({ error: 'Invalid or inactive coupon' });
-      }
-      if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate).setHours(23, 59, 59, 999)) {
-        return res.status(400).json({ error: 'Coupon has expired' });
-      }
-      if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
-        return res.status(400).json({ error: 'Coupon usage limit reached' });
-      }
-
-      // Re-calculate the expected final amount based on the provided finalAmount being the already-discounted amount by the frontend?
-      // Actually, since the frontend is now passing `amount: finalTotal`, the backend doesn't know the `baseTotal`.
-      // To be safe, the backend can just trust the `amount` for now but still record `couponCode` and validate its active status.
-      actualDiscount = discountApplied || 0;
-      finalAmount = amount;
+    if (finalAmount <= 0) {
+      return res.status(400).json({ error: 'Fully discounted orders must use the free-complete endpoint' });
     }
 
     const amountInPaise = Math.round(finalAmount * 100); // Razorpay uses paise
@@ -201,9 +255,9 @@ router.post('/create-order', optionalDeviceAuth, async (req, res) => {
       currency: 'INR',
       receipt: `hp_${Date.now()}`,
       notes: {
-        eventId: eventId || '',
-        eventName: eventName || '',
-        printCount: String(printCount),
+        eventId: String(eventId || ''),
+        eventName: event?.name || '',
+        printCount: String(copies),
         digitalCopy: String(digitalCopy || false),
       },
     });
@@ -229,7 +283,7 @@ router.post('/create-order', optionalDeviceAuth, async (req, res) => {
       paymentLinkUrl = qrCode.image_url; // Razorpay returns a PNG image URL
       isImageUrl = true;
     } catch (qrErr) {
-      console.error('Warning: Failed to create QR Code, falling back to standard payment link', qrErr);
+      console.error('Warning: Failed to create QR Code, falling back to standard payment link:', qrErr.message);
       try {
         const pl = await rzpInstance.paymentLink.create({
           amount: amountInPaise,
@@ -246,7 +300,7 @@ router.post('/create-order', optionalDeviceAuth, async (req, res) => {
         paymentLinkUrl = pl.short_url;
         isImageUrl = false;
       } catch (plErr) {
-        console.error('Error: Failed to create fallback payment link', plErr);
+        console.error('Error: Failed to create fallback payment link:', plErr.message);
       }
     }
 
@@ -255,16 +309,18 @@ router.post('/create-order', optionalDeviceAuth, async (req, res) => {
       razorpayOrderId: order.id,
       paymentLinkId,
       paymentLinkUrl,
-      organizationId: orgId || null,
+      organizationId: orgId || event?.organizationId || null,
+      deviceId: req.device?._id || null,
       eventId: eventId || null,
-      eventName: eventName || 'General',
-      amount,
-      printCount,
+      eventName: event?.name || 'General',
+      amount: finalAmount,
+      printCount: copies,
       digitalCopy: digitalCopy || false,
-      photoUrls: photoUrls || [],
-      compositeUrl: compositeUrl || null,
+      photoUrls: (photoUrls || []).map((u) => safeMediaUrl(u)).filter(Boolean),
+      compositeUrl: safeMediaUrl(compositeUrl),
       couponCode: couponCode || null,
-      discountApplied: discountApplied || 0,
+      discountApplied: discount,
+      settlement: await settlementForOrg(orgId || event?.organizationId),
       status: 'created',
     });
     await payment.save();
@@ -279,20 +335,24 @@ router.post('/create-order', optionalDeviceAuth, async (req, res) => {
       isImageUrl,
     });
   } catch (err) {
-    console.error('❌ Create order error:', err);
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('❌ Create order error:', err.message);
     res.status(500).json({ error: 'Failed to create payment order' });
   }
 });
 
 // ─────────────────────────────────────────────────────────────
-// PUBLIC: Check Payment Status (Polling endpoint for frictionless payment)
+// Check Payment Status (Polling endpoint, device-authenticated)
 // GET /api/payments/status/:paymentId
 // ─────────────────────────────────────────────────────────────
-router.get('/status/:paymentId', optionalDeviceAuth, async (req, res) => {
+router.get('/status/:paymentId', authenticateDevice, async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.paymentId);
     if (!payment) {
       return res.status(404).json({ error: 'Payment record not found' });
+    }
+    if (req.organizationId && payment.organizationId && String(payment.organizationId) !== String(req.organizationId)) {
+      return res.status(403).json({ error: 'This payment belongs to another organization.' });
     }
 
     if (payment.status === 'paid') {
@@ -345,10 +405,10 @@ router.get('/status/:paymentId', optionalDeviceAuth, async (req, res) => {
         if (settings && settings.enableHardwarePrinting && payment.compositeUrl) {
           printImage(payment.compositeUrl, payment.printCount, settings.printerName)
             .then(() => console.log('Print job dispatched via polling flow'))
-            .catch((err) => console.error('Print job dispatch error:', err));
+            .catch((err) => console.error('Print job dispatch error:', err.message));
         }
       } catch (printErr) {
-        console.error('Failed to trigger hardware printing:', printErr);
+        console.error('Failed to trigger hardware printing:', printErr.message);
       }
 
       await payment.save();
@@ -358,17 +418,17 @@ router.get('/status/:paymentId', optionalDeviceAuth, async (req, res) => {
 
     return res.json({ success: true, status: 'pending' });
   } catch (err) {
-    console.error('❌ Check status error:', err);
+    console.error('❌ Check status error:', err.message);
     res.status(500).json({ error: 'Failed to check payment status' });
   }
 });
 
 
 // ─────────────────────────────────────────────────────────────
-// PUBLIC: Verify Payment (client calls after Razorpay success)
+// Verify Payment (client calls after Razorpay success)
 // POST /api/payments/verify
 // ─────────────────────────────────────────────────────────────
-router.post('/verify', optionalDeviceAuth, async (req, res) => {
+router.post('/verify', async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
@@ -402,10 +462,13 @@ router.post('/verify', optionalDeviceAuth, async (req, res) => {
     payment.razorpaySignature = razorpay_signature;
     payment.status = 'paid';
     payment.paidAt = new Date();
-    if (req.body.compositeUrl) payment.compositeUrl = req.body.compositeUrl;
-    if (req.body.photoUrls) payment.photoUrls = req.body.photoUrls;
+    const compositeUrl = safeMediaUrl(req.body.compositeUrl);
+    if (compositeUrl) payment.compositeUrl = compositeUrl;
+    if (Array.isArray(req.body.photoUrls)) {
+      payment.photoUrls = req.body.photoUrls.map((u) => safeMediaUrl(u)).filter(Boolean);
+    }
     await payment.save();
-    
+
     await incrementCouponUsage(payment.couponCode, payment.organizationId);
 
     // Trigger physical print if enabled in settings
@@ -414,10 +477,10 @@ router.post('/verify', optionalDeviceAuth, async (req, res) => {
       if (settings && settings.enableHardwarePrinting && payment.compositeUrl) {
         printImage(payment.compositeUrl, payment.printCount, settings.printerName)
           .then(() => console.log('Print job dispatched for verification success'))
-          .catch((err) => console.error('Print job dispatch error:', err));
+          .catch((err) => console.error('Print job dispatch error:', err.message));
       }
     } catch (printErr) {
-      console.error('Failed to trigger hardware printing:', printErr);
+      console.error('Failed to trigger hardware printing:', printErr.message);
     }
 
     // Generate digital download token if user opted in and we have photos
@@ -433,7 +496,7 @@ router.post('/verify', optionalDeviceAuth, async (req, res) => {
       qrToken = tokenData.token;
       qrUrl = tokenData.qrUrl;
       tokenExpiresAt = tokenData.expiresAt;
-      
+
       // New PhotoShare token
       const shareData = await generatePhotoShare(payment._id, payment.photoUrls, payment.compositeUrl, payment.eventId, payment.organizationId);
       if (shareData) {
@@ -450,35 +513,42 @@ router.post('/verify', optionalDeviceAuth, async (req, res) => {
       shareToken,
     });
   } catch (err) {
-    console.error('❌ Verify payment error:', err);
+    console.error('❌ Verify payment error:', err.message);
     res.status(500).json({ error: 'Payment verification failed' });
   }
 });
 
 // ─────────────────────────────────────────────────────────────
-// PUBLIC: Complete Free Order (finalPrice === 0)
-// POST /api/payments/free-complete
+// Complete Free Order (finalPrice === 0) or record offline UPI + UTR
+// POST /api/payments/free-complete  (device-authenticated, server-priced)
 // ─────────────────────────────────────────────────────────────
-router.post('/free-complete', optionalDeviceAuth, async (req, res) => {
+router.post('/free-complete', authenticateDevice, async (req, res) => {
   try {
     const {
-      amount = 0,
       printCount,
       digitalCopy,
       photoUrls,
       compositeUrl,
       couponCode,
-      discountApplied,
       eventId,
-      eventName,
+      layoutKey,
       utr,
     } = req.body;
 
     if (printCount === undefined || printCount === null) {
       return res.status(400).json({ error: 'printCount is required' });
     }
+    const copies = Math.max(1, Math.min(10, Math.round(Number(printCount) || 0)));
 
-    // Validate UTR for paid offline UPI payments
+    const orgId = req.organizationId;
+    const event = await loadEventForDevice(req, eventId);
+    const orgDefaults = orgId ? await OrganizationDefaults.findOne({ organizationId: orgId }).lean() : null;
+    const unitPrice = resolveUnitPrice(event, layoutKey, orgDefaults);
+    const gross = Math.round(unitPrice * copies);
+    const discount = await validateCouponForAmount(orgId, eventId, couponCode, gross);
+    const amount = Math.max(0, gross - discount);
+
+    // Offline UPI payments (amount > 0) must carry a 12-digit UTR.
     if (amount > 0) {
       if (!utr) {
         return res.status(400).json({ error: 'UPI Ref No. (UTR) is required for UPI QR payments' });
@@ -493,63 +563,39 @@ router.post('/free-complete', optionalDeviceAuth, async (req, res) => {
       }
     }
 
-    let orgId = req.organizationId;
-    if (!orgId && eventId && mongoose.Types.ObjectId.isValid(eventId)) {
-      const event = await Event.findById(eventId);
-      if (event && event.organizationId) {
-        orgId = event.organizationId;
-      }
-    }
-
-    if (couponCode) {
-      const coupon = await Coupon.findOne({ 
-        organizationId: orgId, 
-        code: couponCode.toUpperCase(), 
-        isActive: true 
-      });
-
-      if (!coupon) {
-        return res.status(400).json({ error: 'Invalid or inactive coupon' });
-      }
-      if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate).setHours(23, 59, 59, 999)) {
-        return res.status(400).json({ error: 'Coupon has expired' });
-      }
-      if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
-        return res.status(400).json({ error: 'Coupon usage limit reached' });
-      }
-    }
-
     // Record the free or offline UPI order in DB
     const payment = new Payment({
       razorpayOrderId: amount > 0 ? `upi_${Date.now()}` : `free_${Date.now()}`,
-      organizationId: orgId || null,
+      organizationId: orgId || event?.organizationId || null,
+      deviceId: req.device?._id || null,
       eventId: eventId || null,
-      eventName: eventName || 'General',
-      amount: amount,
-      printCount,
+      eventName: event?.name || 'General',
+      amount,
+      printCount: copies,
       digitalCopy: digitalCopy || false,
-      photoUrls: photoUrls || [],
-      compositeUrl: compositeUrl || null,
+      photoUrls: (photoUrls || []).map((u) => safeMediaUrl(u)).filter(Boolean),
+      compositeUrl: safeMediaUrl(compositeUrl),
       couponCode: couponCode || null,
-      discountApplied: discountApplied || 0,
+      discountApplied: discount,
       utr: utr || null,
+      settlement: await settlementForOrg(orgId || event?.organizationId),
       status: 'paid',
       paidAt: new Date(),
     });
     await payment.save();
-    
+
     await incrementCouponUsage(payment.couponCode, payment.organizationId);
 
     // Trigger physical print if enabled in settings
     try {
       const settings = await getSettingsForOrg(orgId);
-      if (settings && settings.enableHardwarePrinting && compositeUrl) {
-        printImage(compositeUrl, printCount, settings.printerName)
+      if (settings && settings.enableHardwarePrinting && payment.compositeUrl) {
+        printImage(payment.compositeUrl, copies, settings.printerName)
           .then(() => console.log('Print job dispatched for free complete'))
-          .catch((err) => console.error('Print job dispatch error:', err));
+          .catch((err) => console.error('Print job dispatch error:', err.message));
       }
     } catch (printErr) {
-      console.error('Failed to trigger hardware printing:', printErr);
+      console.error('Failed to trigger hardware printing:', printErr.message);
     }
 
     // Generate digital download token if opted in
@@ -558,15 +604,15 @@ router.post('/free-complete', optionalDeviceAuth, async (req, res) => {
     let qrUrl = null;
     let tokenExpiresAt = null;
 
-    if (digitalCopy && photoUrls && photoUrls.length > 0) {
+    if (digitalCopy && payment.photoUrls && payment.photoUrls.length > 0) {
       // Legacy QR token
-      const tokenData = await generateDigitalToken(payment._id, photoUrls, compositeUrl, req);
+      const tokenData = await generateDigitalToken(payment._id, payment.photoUrls, payment.compositeUrl, req);
       qrToken = tokenData.token;
       qrUrl = tokenData.qrUrl;
       tokenExpiresAt = tokenData.expiresAt;
-      
+
       // New PhotoShare token
-      const shareData = await generatePhotoShare(payment._id, photoUrls, compositeUrl, eventId, payment.organizationId);
+      const shareData = await generatePhotoShare(payment._id, payment.photoUrls, payment.compositeUrl, eventId, payment.organizationId);
       if (shareData) {
         shareToken = shareData.tokenHash;
       }
@@ -581,16 +627,19 @@ router.post('/free-complete', optionalDeviceAuth, async (req, res) => {
       shareToken,
     });
   } catch (err) {
-    console.error('❌ Free complete error:', err);
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('❌ Free complete error:', err.message);
     res.status(500).json({ error: 'Failed to complete free order' });
   }
 });
 
 // ─────────────────────────────────────────────────────────────
-// PUBLIC: Complete Prepaid Order (post-shoot update)
-// POST /api/payments/complete-prepaid
+// Complete Prepaid Order (attach photos AFTER payment succeeded)
+// POST /api/payments/complete-prepaid  (device-authenticated)
+// SECURITY: this may no longer flip a payment to `paid` — only
+// an already-paid payment can be completed with its photos.
 // ─────────────────────────────────────────────────────────────
-router.post('/complete-prepaid', optionalDeviceAuth, async (req, res) => {
+router.post('/complete-prepaid', authenticateDevice, async (req, res) => {
   try {
     const { paymentId, photoUrls, compositeUrl } = req.body;
     if (!paymentId) {
@@ -600,36 +649,47 @@ router.post('/complete-prepaid', optionalDeviceAuth, async (req, res) => {
     if (!payment) {
       return res.status(404).json({ error: 'Payment not found' });
     }
+    if (req.organizationId && payment.organizationId && String(payment.organizationId) !== String(req.organizationId)) {
+      return res.status(403).json({ error: 'This payment belongs to another organization.' });
+    }
+    if (payment.status !== 'paid') {
+      return res.status(409).json({ error: 'This payment has not been confirmed yet and cannot be completed.' });
+    }
 
-    payment.photoUrls = photoUrls || [];
-    payment.compositeUrl = compositeUrl || null;
-    payment.status = 'paid'; // Ensure it's paid
+    const safeComposite = safeMediaUrl(compositeUrl);
+    if (Array.isArray(photoUrls)) {
+      payment.photoUrls = photoUrls.map((u) => safeMediaUrl(u)).filter(Boolean);
+    }
+    if (safeComposite) payment.compositeUrl = safeComposite;
     await payment.save();
 
     // Trigger physical print if enabled in settings
     try {
       const settings = await getSettingsForOrg(payment.organizationId);
-      if (settings && settings.enableHardwarePrinting && compositeUrl) {
-        printImage(compositeUrl, payment.printCount, settings.printerName)
+      if (settings && settings.enableHardwarePrinting && payment.compositeUrl) {
+        printImage(payment.compositeUrl, payment.printCount, settings.printerName)
           .then(() => console.log('Print job dispatched for prepaid complete'))
-          .catch((err) => console.error('Print job dispatch error:', err));
+          .catch((err) => console.error('Print job dispatch error:', err.message));
       }
     } catch (printErr) {
-      console.error('Failed to trigger hardware printing:', printErr);
+      console.error('Failed to trigger hardware printing:', printErr.message);
     }
 
     // Generate digital download token if opted in
     let shareToken = null;
+    let qrToken = null;
+    let qrUrl = null;
+    let tokenExpiresAt = null;
 
-    if (payment.digitalCopy && photoUrls && photoUrls.length > 0) {
+    if (payment.digitalCopy && payment.photoUrls && payment.photoUrls.length > 0) {
       // Legacy QR token
-      const tokenData = await generateDigitalToken(payment._id, photoUrls, compositeUrl, req);
+      const tokenData = await generateDigitalToken(payment._id, payment.photoUrls, payment.compositeUrl, req);
       qrToken = tokenData.token;
       qrUrl = tokenData.qrUrl;
       tokenExpiresAt = tokenData.expiresAt;
 
       // New PhotoShare token
-      const shareData = await generatePhotoShare(payment._id, photoUrls, compositeUrl, payment.eventId, payment.organizationId);
+      const shareData = await generatePhotoShare(payment._id, payment.photoUrls, payment.compositeUrl, payment.eventId, payment.organizationId);
       if (shareData) {
         shareToken = shareData.tokenHash;
       }
@@ -643,14 +703,14 @@ router.post('/complete-prepaid', optionalDeviceAuth, async (req, res) => {
       shareToken,
     });
   } catch (err) {
-    console.error('❌ complete-prepaid error:', err);
+    console.error('❌ complete-prepaid error:', err.message);
     res.status(500).json({ error: 'Failed to complete prepaid order' });
   }
 });
 
 // ─────────────────────────────────────────────────────────────
-// PUBLIC: Get photos by download token
-// GET /api/download/:token
+// Get photos by download token
+// GET /api/payments/download/:token
 // ─────────────────────────────────────────────────────────────
 router.get('/download/:token', async (req, res) => {
   try {
@@ -694,11 +754,9 @@ router.get('/download/:token', async (req, res) => {
       enableMobilePrinting,
     });
   } catch (err) {
-    console.error('❌ Download token error:', err);
+    console.error('❌ Download token error:', err.message);
     res.status(500).json({ error: 'Failed to retrieve download link' });
   }
 });
-
-// Removed old admin CRM protected endpoints
 
 export default router;

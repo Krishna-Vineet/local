@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('booth', {
   getInstallation: () => ipcRenderer.invoke('booth:get-installation'),
+  getDeviceUuid: () => ipcRenderer.invoke('booth:get-device-uuid'),
   saveInstallation: (value: unknown) => ipcRenderer.invoke('booth:save-installation', value),
   clearInstallation: () => ipcRenderer.invoke('booth:clear-installation'),
   getSystemSnapshot: () => ipcRenderer.invoke('booth:system-snapshot'),

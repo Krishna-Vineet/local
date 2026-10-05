@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, screen, session, shell } from 'electron'
 import path from 'node:path'
-import { clearInstallation, getInstallation, saveInstallation, type StoredInstallation } from './store.js'
-import { hardwareSnapshot, printJob, recordCapture, updateCameraReport, type CameraReport, type PrintRequest } from './hardware.js'
+import { clearInstallation, ensureDeviceUuid, getInstallation, saveInstallation, type StoredInstallation } from './store.js'
+import { hardwareSnapshot, printJob, recordCapture, setPrintWindowSource, updateCameraReport, type CameraReport, type PrintRequest } from './hardware.js'
 import { getPreloadPath } from './pathResolver.js'
 import { isDev } from './util.js'
 
@@ -52,6 +52,7 @@ function createWindow(): void {
 
 function registerIpc(): void {
   ipcMain.handle('booth:get-installation', () => getInstallation())
+  ipcMain.handle('booth:get-device-uuid', () => ensureDeviceUuid())
   ipcMain.handle('booth:save-installation', (_event, value: StoredInstallation) => saveInstallation(value))
   ipcMain.handle('booth:clear-installation', () => clearInstallation())
   ipcMain.handle('booth:system-snapshot', () => hardwareSnapshot())
@@ -73,6 +74,7 @@ function registerIpc(): void {
 
 app.whenReady().then(() => {
   registerIpc()
+  setPrintWindowSource(() => mainWindow)
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === 'media')
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media')

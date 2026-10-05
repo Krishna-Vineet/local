@@ -47,6 +47,9 @@ const platformSupportRequestSchema = new mongoose.Schema(
     
     messages: [messageSchema],
     
+    // History of accept/deny decisions (kept when a denied request is re-applied)
+    decisionHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    
     reapplyCount: { type: Number, default: 0 },
     lastReapplication: {
       text: { type: String, default: null },

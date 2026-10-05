@@ -39,6 +39,21 @@ interface QuoteInput {
   couponCode?: string
 }
 
+interface UploadInput {
+  sessionId: string
+  eventId: string | null
+  isComposite: boolean
+  guestConsent: boolean
+  dataUrl: string
+}
+
+interface CompleteSessionInput {
+  sessionId: string
+  digitalCopy: boolean
+  compositeUrl?: string | null
+  photoUrls?: string[]
+}
+
 interface BoothApi {
   login(input: LoginInput): Promise<{ installation: Installation; snapshot: BoothSnapshot }>
   bootstrap(installation: Installation): Promise<BoothSnapshot>
@@ -47,7 +62,8 @@ interface BoothApi {
   createPayment(installation: Installation, quote: CheckoutQuote): Promise<PaymentOrder>
   paymentStatus(installation: Installation, paymentId: string): Promise<PaymentOrder['status']>
   completeFree(installation: Installation, quote: CheckoutQuote): Promise<void>
-  completeSession(installation: Installation, input: { sessionId: string; digitalCopy: boolean }): Promise<{ shareUrl: string | null }>
+  uploadPhoto(installation: Installation, input: UploadInput): Promise<{ id: string; url: string }>
+  completeSession(installation: Installation, input: CompleteSessionInput): Promise<{ shareUrl: string | null }>
 }
 
 const svgData = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
@@ -266,6 +282,11 @@ const demoApi: BoothApi = {
     await delay(400)
   },
 
+  async uploadPhoto(_installation, input) {
+    await delay(300)
+    return { id: `demo-photo-${Date.now()}`, url: input.dataUrl || `https://demo.happypix.example/${input.sessionId}.png` }
+  },
+
   async completeSession(_installation, input) {
     await delay(500)
     return {
@@ -324,7 +345,21 @@ class HttpApi implements BoothApi {
     await this.request('/api/booth/checkout/free-complete', { method: 'POST', body: JSON.stringify({ quote }) }, installation)
   }
 
-  completeSession(installation: Installation, input: { sessionId: string; digitalCopy: boolean }) {
+  uploadPhoto(installation: Installation, input: UploadInput) {
+    return this.request<{ id: string; url: string; isComposite: boolean }>('/api/booth/upload', {
+      method: 'POST',
+      body: JSON.stringify({
+        photoBase64: input.dataUrl,
+        eventId: input.eventId,
+        sessionId: input.sessionId,
+        isComposite: input.isComposite,
+        guestConsent: input.guestConsent,
+        filename: input.isComposite ? 'composite.png' : 'capture.png',
+      }),
+    }, installation)
+  }
+
+  completeSession(installation: Installation, input: CompleteSessionInput) {
     return this.request<{ shareUrl: string | null }>('/api/booth/sessions/complete', { method: 'POST', body: JSON.stringify(input) }, installation)
   }
 }

@@ -6,8 +6,8 @@ import PhotoShare from '../models/PhotoShare.js';
 import DeliveryRecord from '../models/DeliveryRecord.js';
 import Event from '../models/Event.js';
 import DeliveryService from '../services/DeliveryService.js';
-import { authenticate } from '../middleware/auth.js';
-import { optionalDeviceAuth } from '../middleware/deviceAuth.js';
+import { authenticateDevice } from '../middleware/deviceAuth.js';
+import { safeMediaUrl } from '../lib/helpers.js';
 
 const router = express.Router();
 
@@ -25,18 +25,13 @@ const deliveryRateLimiter = rateLimit({
 });
 
 // ─────────────────────────────────────────────────────────────
-// POST /api/share/generate (Internal / Booth App)
-// Generates a PhotoShare token
+// POST /api/share/generate (Internal / Booth App — device auth)
+// Generates a PhotoShare token. The organization is taken from
+// the authenticated device; client-supplied org ids are ignored.
 // ─────────────────────────────────────────────────────────────
-router.post('/generate', optionalDeviceAuth, async (req, res) => {
+router.post('/generate', authenticateDevice, async (req, res) => {
   try {
     const { eventId, photoUrls, compositeUrl } = req.body;
-    let { organizationId } = req.body;
-    
-    // deviceAuth might provide req.organizationId
-    if (req.organizationId) {
-      organizationId = req.organizationId;
-    }
 
     if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
       return res.status(400).json({ error: 'Valid eventId is required' });
@@ -46,70 +41,71 @@ router.post('/generate', optionalDeviceAuth, async (req, res) => {
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
     }
-
-    // Default to event's org if not explicitly provided
-    if (!organizationId) {
-      organizationId = event.organizationId;
+    if (event.organizationId && String(event.organizationId) !== String(req.organizationId)) {
+      return res.status(403).json({ error: 'This event belongs to another organization.' });
     }
+
+    const organizationId = req.organizationId || event.organizationId;
 
     // Calculate expiration
     const expirationDays = event.sharingConfig?.expirationDays || 7;
     const expiresAt = new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000);
 
-    // Cryptographically secure token
+    // Cryptographically secure token (the raw token is the URL secret and
+    // is stored as-is so /share/:token lookups stay O(1) on the unique index)
     const rawToken = crypto.randomBytes(32).toString('hex');
-    // We could hash the token for extra security, but since it's a URL parameter, 
-    // we use it as the tokenHash directly (similar to how DigitalToken works), 
-    // but we call it tokenHash for schema semantics. 
-    // For this implementation, the token itself is the secure random string.
-    
+
     const photoShare = new PhotoShare({
       eventId,
       organizationId,
       tokenHash: rawToken,
-      photoUrls: photoUrls || [],
-      compositeUrl: compositeUrl || null,
+      photoUrls: (photoUrls || []).map((u) => safeMediaUrl(u)).filter(Boolean),
+      compositeUrl: safeMediaUrl(compositeUrl),
       expiresAt,
       status: 'active'
     });
 
     await photoShare.save();
 
-    const clientUrl = process.env.CLIENT_URL || req.headers.origin || 'http://localhost:5173';
+    const clientUrl = process.env.CLIENT_URL || 'https://happypix.vercel.app';
 
     res.status(201).json({
       success: true,
       token: rawToken,
       expiresAt,
-      shareUrl: `${clientUrl}/share/${rawToken}`
+      shareUrl: `${clientUrl.replace(/\/$/, '')}/share/${rawToken}`
     });
   } catch (err) {
-    console.error('Error generating photo share:', err);
+    console.error('Error generating photo share:', err.message);
     res.status(500).json({ error: 'Failed to generate share token' });
   }
 });
 
 // ─────────────────────────────────────────────────────────────
-// PUT /api/share/:token (Internal / Booth App)
+// PUT /api/share/:token (Internal / Booth App — device auth)
 // Updates an existing PhotoShare with uploaded URLs
 // ─────────────────────────────────────────────────────────────
-router.put('/:token', optionalDeviceAuth, async (req, res) => {
+router.put('/:token', authenticateDevice, async (req, res) => {
   try {
     const { token } = req.params;
     const { photoUrls, compositeUrl } = req.body;
-    
+
     const photoShare = await PhotoShare.findOne({ tokenHash: token });
     if (!photoShare) {
       return res.status(404).json({ error: 'Photo share not found' });
     }
+    if (photoShare.organizationId && String(photoShare.organizationId) !== String(req.organizationId)) {
+      return res.status(403).json({ error: 'This share belongs to another organization.' });
+    }
 
-    if (photoUrls) photoShare.photoUrls = photoUrls;
-    if (compositeUrl) photoShare.compositeUrl = compositeUrl;
-    
+    if (Array.isArray(photoUrls)) photoShare.photoUrls = photoUrls.map((u) => safeMediaUrl(u)).filter(Boolean);
+    const safeComposite = safeMediaUrl(compositeUrl);
+    if (safeComposite) photoShare.compositeUrl = safeComposite;
+
     await photoShare.save();
     res.json({ success: true, photoShare });
   } catch (err) {
-    console.error('Error updating photo share:', err);
+    console.error('Error updating photo share:', err.message);
     res.status(500).json({ error: 'Failed to update share token' });
   }
 });

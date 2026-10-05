@@ -4,6 +4,7 @@ declare global {
   interface Window {
     booth?: {
       getInstallation(): Promise<Installation | null>
+      getDeviceUuid(): Promise<string>
       saveInstallation(value: Installation): Promise<void>
       clearInstallation(): Promise<void>
       getSystemSnapshot(): Promise<HardwareSnapshot>

@@ -62,6 +62,8 @@ const supportTicketSchema = new mongoose.Schema(
 
     // Set when status → "resolved". MongoDB TTL index auto-deletes 24 hrs later.
     resolvedAt: { type: Date, default: null },
+    // Optional resolution note shown to the org team
+    resolution: { type: String, default: null },
 
     // ─── Admin Notes (internal) ───────────────────────────────
     adminNotes: [adminNoteSchema],

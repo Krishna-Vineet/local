@@ -33,6 +33,12 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   lastLoginAt: { type: Date, default: null },
 
+  // ─── Session invalidation ─────────────────────────────────
+  // Bumped on password change/reset, email change and deactivation.
+  // JWTs embed the tokenVersion at issue time; any token with a stale
+  // version is rejected (stateless "kill all sessions").
+  tokenVersion: { type: Number, default: 0 },
+
   // ─── OTP Password & Email Reset ───────────────────────────────────────
   forgotPasswordCodeHash: { type: String, default: null },
   forgotPasswordCodeExpires: { type: Date, default: null },

@@ -5,7 +5,8 @@ const subscriptionPlanSchema = new mongoose.Schema(
     key: { type: String, required: true, unique: true },
     name: { type: String, required: true },
     description: { type: String, default: '' },
-    price: { type: Number, required: true },
+    // null = "contact sales" (custom pricing)
+    price: { type: Number, default: null },
     durationMonths: { type: Number, required: true },
     durationLabel: { type: String, required: true },
     devices: { type: Number, required: true },

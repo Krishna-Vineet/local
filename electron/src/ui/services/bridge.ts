@@ -1,6 +1,7 @@
 import type { HardwareSnapshot, Installation } from '../types'
 
 const INSTALLATION_KEY = 'happypix.booth.installation'
+const DEVICE_UUID_KEY = 'happypix.booth.device-uuid'
 let browserPrints = 0
 let browserShutters = 0
 
@@ -21,8 +22,8 @@ function browserHardware(): HardwareSnapshot {
     printer: {
       connected: true,
       working: true,
-      provider: 'dnp-sdk-simulator',
-      model: 'DNP adapter simulator',
+      provider: 'browser-preview',
+      model: 'Browser preview (no hardware)',
       printsTotal: browserPrints,
       queueDepth: 0,
       error: null,
@@ -53,6 +54,16 @@ export const bridge = {
   async saveInstallation(value: Installation): Promise<void> {
     if (window.booth) return window.booth.saveInstallation(value)
     localStorage.setItem(INSTALLATION_KEY, JSON.stringify(value))
+  },
+
+  async getDeviceUuid(): Promise<string> {
+    if (window.booth) return window.booth.getDeviceUuid()
+    let value = localStorage.getItem(DEVICE_UUID_KEY)
+    if (!value) {
+      value = crypto.randomUUID()
+      localStorage.setItem(DEVICE_UUID_KEY, value)
+    }
+    return value
   },
 
   async clearInstallation(): Promise<void> {

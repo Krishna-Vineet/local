@@ -14,6 +14,9 @@ export interface StoredInstallation {
 
 interface StoreShape {
   installation: StoredInstallation | null
+  // Persistent identity for this physical booth — survives unpairing so
+  // re-pairing reuses the same server-side device record.
+  deviceUuid: string | null
   counters: {
     printsTotal: number
     shutterCount: number
@@ -22,6 +25,7 @@ interface StoreShape {
 
 const emptyStore = (): StoreShape => ({
   installation: null,
+  deviceUuid: null,
   counters: { printsTotal: 0, shutterCount: 0 },
 })
 
@@ -34,6 +38,7 @@ async function readStore(): Promise<StoreShape> {
     const value = JSON.parse(await readFile(storePath(), 'utf8')) as Partial<StoreShape>
     return {
       installation: value.installation ?? null,
+      deviceUuid: typeof value.deviceUuid === 'string' && value.deviceUuid ? value.deviceUuid : null,
       counters: {
         printsTotal: Number(value.counters?.printsTotal ?? 0),
         shutterCount: Number(value.counters?.shutterCount ?? 0),
@@ -54,6 +59,15 @@ async function writeStore(value: StoreShape): Promise<void> {
 
 export async function getInstallation(): Promise<StoredInstallation | null> {
   return (await readStore()).installation
+}
+
+// Returns (and lazily creates) the persistent UUID of this physical booth.
+export async function ensureDeviceUuid(): Promise<string> {
+  const current = await readStore()
+  if (current.deviceUuid) return current.deviceUuid
+  const deviceUuid = randomUUID()
+  await writeStore({ ...current, deviceUuid })
+  return deviceUuid
 }
 
 export async function saveInstallation(installation: StoredInstallation): Promise<void> {

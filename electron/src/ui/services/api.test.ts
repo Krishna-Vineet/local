@@ -63,7 +63,7 @@ describe('demo booth contract', () => {
     })
 
     expect(quote.finalAmount).toBe(0)
-    await expect(demoBoothApi.completeFree(installation, quote.quoteId)).resolves.toBeUndefined()
+    await expect(demoBoothApi.completeFree(installation, quote)).resolves.toBeUndefined()
   })
 
   it('rejects an invalid coupon instead of trusting the booth', async () => {

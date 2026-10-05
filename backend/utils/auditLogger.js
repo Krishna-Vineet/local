@@ -1,29 +1,27 @@
-import AuditLog from '../models/AuditLog.js';
+import { writeAudit } from '../lib/helpers.js';
 
 /**
- * Utility to log critical security and operational actions.
- * @param {Object} req - The Express request object
- * @param {String} action - The action identifier (e.g. 'DELETE_ORGANIZATION')
- * @param {String|ObjectId} targetId - The ID of the affected resource
- * @param {String} targetModel - The Model name of the affected resource
- * @param {Object} details - Additional contextual info
+ * Legacy audit shim used by the pre-CRM routes (events, devices).
+ * Maps the old (req, action, targetId, targetModel, details) signature onto
+ * the canonical AuditLog document used by the CRM v2 audit trail.
  */
-export const logAudit = async (req, action, targetId = null, targetModel = null, details = {}) => {
+export const logAudit = async (req, action = 'legacy.action', targetId = null, targetModel = null, details = {}) => {
   try {
-    const performedBy = req.user ? req.user._id : null;
-    const organizationId = req.user ? req.user.organizationId : null;
-    const ipAddress = req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'];
+    const summary = typeof details === 'string'
+      ? details
+      : (details.summary || `${action} on ${targetModel || 'entity'}${targetId ? ` ${targetId}` : ''}`);
 
-    await AuditLog.create({
+    await writeAudit({
+      actorId: req?.user?._id || null,
+      organizationId: req?.user?.organizationId || req?.organizationId || null,
       action,
-      performedBy,
-      organizationId,
-      targetId,
-      targetModel,
-      details,
-      ipAddress,
+      entity: targetModel ? String(targetModel).toLowerCase() : 'system',
+      summary,
+      severity: details.severity || 'info',
+      ip: req?.ip || null,
+      req,
     });
   } catch (error) {
-    console.error('❌ Failed to write audit log:', error);
+    console.error('❌ Failed to write audit log:', error.message);
   }
 };

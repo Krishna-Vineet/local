@@ -38,15 +38,19 @@ async function seed() {
     await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 10000 });
     console.log('✅ Connected to MongoDB');
 
-    // Check if superadmin already exists
-    let existing = await User.findOne({ role: { $in: ['OWNER', 'superadmin', 'admin'] } });
+    // Prefer an existing platform-level account; only upgrade a legacy
+    // 'admin' when no OWNER exists yet.
+    let existing = await User.findOne({ role: { $in: ['OWNER', 'superadmin'] } });
+    if (!existing) {
+      existing = await User.findOne({ role: 'admin' });
+    }
 
     if (existing) {
       // Upgrade existing admin to superadmin
       existing.role           = 'OWNER';
       existing.organizationId = null;
       await existing.save();
-      console.log(`✅ Upgraded existing user "${existing.email}" to superadmin`);
+      console.log(`✅ Upgraded existing user "${existing.email}" to OWNER (platform superadmin)`);
     } else {
       // Create new superadmin
       const user = new User(SUPERADMIN);

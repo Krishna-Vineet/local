@@ -2,7 +2,6 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Setting from '../models/Setting.js';
 import Event from '../models/Event.js';
-import { authenticate, authorize } from '../middleware/auth.js';
 import { optionalDeviceAuth } from '../middleware/deviceAuth.js';
 
 const router = express.Router();

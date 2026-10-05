@@ -12,6 +12,7 @@ import type {
 } from './types'
 import { boothApi } from './services/api'
 import { bridge } from './services/bridge'
+import { composePrintBitmap } from './services/compose'
 import { cacheSnapshot, readCachedSnapshot } from './services/cache'
 import { useIdleTimer } from './hooks/useIdleTimer'
 import { IdleWarning } from './components/ScreenShell'
@@ -125,7 +126,9 @@ function App() {
       }
     }
     const first = window.setTimeout(() => void heartbeat(), 3000)
-    const timer = window.setInterval(() => void heartbeat(), 2 * 60 * 1000)
+    // Keep well inside the server's 90s online window so the booth never
+    // flaps between heartbeats.
+    const timer = window.setInterval(() => void heartbeat(), 45 * 1000)
     return () => {
       window.clearTimeout(first)
       window.clearInterval(timer)
@@ -149,7 +152,9 @@ function App() {
     setLoginError(null)
     try {
       const hardware = await bridge.hardware()
-      const deviceUuid = crypto.randomUUID()
+      // Reuse this installation's persistent UUID so re-pairing keeps the
+      // same device identity on the server (and does not burn device seats).
+      const deviceUuid = await bridge.getDeviceUuid()
       const result = await boothApi.login({
         email: values.email,
         password: values.password,
@@ -221,7 +226,9 @@ function App() {
 
   const completeFree = useCallback(async (quote: CheckoutQuote) => {
     if (!installation) throw new Error('This booth is not paired.')
-    await boothApi.completeFree(installation, quote.quoteId)
+    // The full quote is sent so the server can record prints, coupon usage
+    // and the digital-copy flag for zero-value orders.
+    await boothApi.completeFree(installation, quote)
   }, [installation])
 
   const paymentComplete = (quote: CheckoutQuote, payment: PaymentOrder | null) => {
@@ -230,25 +237,65 @@ function App() {
   }
 
   const finishAndPrint = async () => {
-    if (!installation || !session.template) return
+    if (!installation || !session.template || !snapshot?.event) return
     setPrinting(true)
+    const event = snapshot.event
+
+    // 1. Rasterize the final composition at native print resolution.
+    let compositeDataUrl: string | null = null
     let printResult: { success: boolean; jobId?: string } = { success: false }
     let printError: string | null = null
     try {
-      printResult = await bridge.print({
-        copies: session.prints,
-        layoutId: session.template.layout.id,
-        templateName: session.template.name,
+      const composite = await composePrintBitmap({
+        template: session.template,
+        photos: session.selectedPhotos,
+        customization: session.customization,
       })
+      compositeDataUrl = composite.dataUrl
     } catch (reason) {
-      printError = reason instanceof Error ? reason.message : 'The printer did not accept this job.'
+      printError = reason instanceof Error ? reason.message : 'The final print could not be rendered.'
     }
 
+    // 2. Send the bitmap to the printer.
+    if (compositeDataUrl) {
+      try {
+        printResult = await bridge.print({
+          copies: session.prints,
+          layoutId: session.template.layout.id,
+          templateName: session.template.name,
+          bitmapDataUrl: compositeDataUrl,
+        })
+      } catch (reason) {
+        printError = reason instanceof Error ? reason.message : 'The printer did not accept this job.'
+      }
+    }
+
+    // 3. Upload the composite so the org gallery + digital copy work.
+    let compositeUrl: string | null = null
+    if (compositeDataUrl) {
+      try {
+        const uploaded = await boothApi.uploadPhoto(installation, {
+          sessionId: session.id,
+          eventId: event.id,
+          isComposite: true,
+          // The guest explicitly opted into a digital copy of this session.
+          guestConsent: session.digitalCopy,
+          dataUrl: compositeDataUrl,
+        })
+        compositeUrl = uploaded.url
+      } catch {
+        // Non-fatal: printing already happened; the guest just loses the
+        // hosted copy if the session upload also fails.
+      }
+    }
+
+    // 4. Complete the session (server issues the share link).
     let shareUrl: string | null = null
     try {
       const completed = await boothApi.completeSession(installation, {
         sessionId: session.id,
         digitalCopy: session.digitalCopy,
+        compositeUrl,
       })
       shareUrl = completed.shareUrl
     } catch (reason) {

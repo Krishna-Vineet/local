@@ -8,6 +8,14 @@ const paymentSchema = new mongoose.Schema({
     default: null,
     index: true,
   },
+  deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', default: null, index: true },
+  // Where the money ends up: 'wallet' (HappyPix wallet, withdrawable)
+  // or 'upi' (owed direct to the organization's UPI).
+  settlement: {
+    type: String,
+    enum: ['upi', 'wallet'],
+    default: 'wallet',
+  },
   razorpayOrderId: { type: String, required: true, unique: true },
   paymentLinkId: { type: String, default: null },
   paymentLinkUrl: { type: String, default: null },

@@ -1,203 +1,130 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
+import Razorpay from 'razorpay';
 import Device from '../models/Device.js';
 import Organization from '../models/Organization.js';
+import OrganizationDefaults from '../models/OrganizationDefaults.js';
 import User from '../models/User.js';
 import Event from '../models/Event.js';
 import Photo from '../models/Photo.js';
 import Template from '../models/Template.js';
 import Payment from '../models/Payment.js';
+import Coupon from '../models/Coupon.js';
+import Ticket from '../models/Ticket.js';
+import PhotoShare from '../models/PhotoShare.js';
+import { uploadToS3 } from '../utils/s3.js';
+import { effectiveLayoutPrices, resolvePlanContext } from '../lib/planService.js';
+import { computeEventStatus, roleLabel, safeMediaUrl, safeStr, writeAudit } from '../lib/helpers.js';
+import { TICKET_CATEGORIES } from '../lib/constants.js';
+import { PRICE_KEY, layoutById, slotsForLayout, suggestedPriceMap } from '../lib/layouts.js';
 
 const router = express.Router();
 
-// Middleware to authenticate booth API requests
-const authenticateBooth = async (req, res, next) => {
+// Multer-style base64 photo upload limit (10 MB decoded)
+const MAX_BASE64_BYTES = 10 * 1024 * 1024;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Middleware: booth authentication (Authorization: Device <token> + X-Device-UUID)
+// ─────────────────────────────────────────────────────────────────────────────
+export const authenticateBooth = async (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
     if (!authHeader || !authHeader.startsWith('Device ')) {
       return res.status(401).json({ error: 'Device token required.' });
     }
-    const token = authHeader.substring(7);
+    const token = authHeader.substring(7).trim();
     const deviceUuid = req.headers['x-device-uuid'];
 
     const device = await Device.findOne({ deviceToken: token, deviceUuid });
-    if (!device || device.status !== 'active') {
+    if (!device) {
       return res.status(401).json({ error: 'Invalid or inactive device.' });
+    }
+    if (device.status !== 'active') {
+      return res.status(401).json({ error: 'This booth has been deactivated. Contact your administrator.' });
     }
 
     const org = await Organization.findById(device.organizationId);
-    if (!org || org.status === 'banned') {
-      return res.status(403).json({ error: 'Organization banned or not found.' });
+    if (!org) return res.status(403).json({ error: 'Organization not found. Contact support.' });
+    if (org.status === 'banned') {
+      return res.status(403).json({ error: 'Your account has been banned. Please contact HappyPix support.' });
     }
+    // suspended orgs: the booth may connect in read-only mode — controllers
+    // decide based on the snapshot's event status.
 
     req.device = device;
     req.organization = org;
     next();
   } catch (error) {
+    console.error('Booth auth error:', error.message);
     res.status(500).json({ error: 'Authentication failed.' });
   }
 };
 
-// Helper to build BoothSnapshot
-const buildSnapshot = async (device, org) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Template + snapshot builders
+// ─────────────────────────────────────────────────────────────────────────────
+
+function mapTemplate(t) {
+  const layout = layoutById(t.layoutId) || { id: t.layoutId || '46-v1', familyId: '46', orientation: 'portrait', slots: 1, cutout: [4, 6], sheets: ['4x6'], canvas: { w: 1000, h: 1500 } };
+  const printSize = layout.cutout ? `${layout.cutout[0]} × ${layout.cutout[1]}` : '4 × 6';
+  const { canvas, photoSlots, footer } = slotsForLayout(t.layoutId);
+  const canvasPx = { width: canvas.w, height: canvas.h };
+
+  let bg = t.design?.bg || t.design?.background || { type: 'solid', colors: ['#ffffff'] };
+  if (typeof bg === 'string') {
+    if (bg.startsWith('http') || bg.startsWith('data:')) {
+      bg = { type: 'image', colors: [], url: bg };
+    } else {
+      bg = { type: 'solid', colors: [bg] };
+    }
+  } else if (bg && !bg.type) {
+    bg = { type: 'solid', colors: bg.colors || ['#ffffff'] };
+  }
+
+  return {
+    id: t._id.toString(),
+    name: t.name || 'Custom Template',
+    category: t.category || 'Custom',
+    description: t.description || `${printSize} ${layout.slots}-photo ${layout.orientation}`,
+    source: t.source || 'designer',
+    componentId: t.componentId || undefined,
+    active: t.active ?? true,
+    layout: {
+      id: t.layoutId,
+      familyId: layout.familyId,
+      label: `${printSize} · ${layout.slots} photo${layout.slots === 1 ? '' : 's'}`,
+      printSize,
+      sheetSize: (layout.sheets && layout.sheets[0]) || printSize,
+      orientation: layout.orientation,
+      slots: layout.slots,
+      canvas: canvasPx,
+      photoSlots,
+      footer,
+    },
+    design: {
+      background: bg,
+      accent: t.design?.accent || '#ff4f9a',
+      textColor: t.design?.textColor || '#000000',
+      ornament: t.design?.ornament || 'none',
+      font: t.design?.font || 'sans',
+      slotShape: t.design?.slotShape || 'square',
+      title: t.design?.title || 'HappyPix',
+      subtitle: t.design?.subtitle || t.design?.tagline || '',
+    },
+  };
+}
+
+async function buildSnapshot(device, org) {
+  const defaults = await OrganizationDefaults.findOne({ organizationId: org._id }).lean();
+  const now = new Date();
+
   let eventPayload = null;
-  
   if (device.assignedEventId) {
     const event = await Event.findById(device.assignedEventId).populate('templateIds').lean();
     if (event) {
-      
-      const mapTemplate = (t) => {
-        // e.g. layoutId "57-v3" -> familyId "57", slots 3, orientation portrait
-        const parts = (t.layoutId || '46-v1').split('-');
-        const familyId = parts[0];
-        const secondPart = parts[1] || 'v1';
-        const orientation = secondPart.charAt(0) === 'h' ? 'landscape' : 'portrait';
-        const slots = parseInt(secondPart.slice(1)) || 1;
-        const printSize = familyId === '57' ? '5 × 7' : (familyId === '68' ? '6 × 8' : '4 × 6');
-        
-        const canvas = orientation === 'portrait' ? { width: 1000, height: 1500 } : { width: 1500, height: 1000 };
-        const footer = 150;
-const arrangeSlots = (w, h, n) => {
-  const g = Math.max(10, Math.round(w * 0.022));
-  const aspect = w / h;
-  const out = [];
-  const row = (cols, y, rh) => {
-    const cw = (w - g * (cols - 1)) / cols;
-    for (let i = 0; i < cols; i++) out.push({ x: i * (cw + g), y, w: cw, h: rh });
-    return out;
-  };
-  const col = (rows, x, cw) => {
-    const rh = (h - g * (rows - 1)) / rows;
-    for (let i = 0; i < rows; i++) out.push({ x, y: i * (rh + g), w: cw, h: rh });
-    return out;
-  };
-  const grid = (cols, rows) => {
-    const cw = (w - g * (cols - 1)) / cols;
-    const rh = (h - g * (rows - 1)) / rows;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        out.push({ x: c * (cw + g), y: r * (rh + g), w: cw, h: rh });
-      }
-    }
-    return out;
-  };
-
-  if (n === 1) return [{ x: 0, y: 0, w, h }];
-  if (n === 2) return aspect >= 1 ? row(2, 0, h) : col(2, 0, w);
-  if (n === 3) {
-    if (aspect <= 0.5) return col(3, 0, w);
-    if (aspect >= 1.15) {
-      const bw = Math.round((w - g) * 0.58);
-      const out2 = [{ x: 0, y: 0, w: bw, h }];
-      const rh = (h - g) / 2;
-      out2.push({ x: bw + g, y: 0, w: w - bw - g, h: rh });
-      out2.push({ x: bw + g, y: rh + g, w: w - bw - g, h: rh });
-      return out2;
-    }
-    const bh = Math.round((h - g) * 0.58);
-    const out2 = [{ x: 0, y: 0, w, h: bh }];
-    const cw = (w - g) / 2;
-    out2.push({ x: 0, y: bh + g, w: cw, h: h - bh - g });
-    out2.push({ x: cw + g, y: bh + g, w: cw, h: h - bh - g });
-    return out2;
-  }
-  if (n === 4) {
-    if (aspect <= 0.42) return col(4, 0, w);
-    if (aspect >= 2.1) return row(4, 0, h);
-    return grid(2, 2);
-  }
-  if (n === 5) {
-    if (aspect <= 0.42) return col(5, 0, w);
-    if (aspect >= 2.1) return row(5, 0, h);
-    if (aspect >= 1.15) {
-      const bw = Math.round((w - g) * 0.52);
-      const out2 = [{ x: 0, y: 0, w: bw, h }];
-      const gw = w - bw - g;
-      const cw = (gw - g) / 2;
-      const rh = (h - g) / 2;
-      for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) out2.push({ x: bw + g + c * (cw + g), y: r * (rh + g), w: cw, h: rh });
-      return out2;
-    }
-    const bh = Math.round((h - g) * 0.52);
-    const out2 = [{ x: 0, y: 0, w, h: bh }];
-    const gh = h - bh - g;
-    const rh = (gh - g) / 2;
-    const cw = (w - g) / 2;
-    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) out2.push({ x: c * (cw + g), y: bh + g + r * (rh + g), w: cw, h: rh });
-    return out2;
-  }
-  if (n === 6) {
-    if (aspect <= 0.42) return col(6, 0, w);
-    if (aspect >= 1.15) return grid(3, 2);
-    return grid(2, 3);
-  }
-  if (n === 8) return aspect >= 1 ? grid(4, 2) : grid(2, 4);
-  if (n === 9) return grid(3, 3);
-  return col(n, 0, w);
-};
-
-        const footerRatio = 0.15;
-        const footerH = Math.round(canvas.height * footerRatio);
-        const photoAreaH = canvas.height - footerH;
-        
-        const arranged = arrangeSlots(canvas.width, photoAreaH, slots);
-        const photoSlots = arranged.map((s, index) => ({
-          id: `slot-${index + 1}`,
-          x: Math.round(s.x),
-          y: Math.round(s.y),
-          width: Math.round(s.w),
-          height: Math.round(s.h)
-        }));
-        
-          let bg = t.design?.bg || t.design?.background || { type: 'solid', colors: ['#ffffff'] };
-          if (typeof bg === 'string') {
-            if (bg.startsWith('http') || bg.startsWith('data:')) {
-              bg = { type: 'image', colors: [], url: bg };
-            } else {
-              bg = { type: 'solid', colors: [bg] };
-            }
-          } else if (bg && !bg.type) {
-            bg = { type: 'solid', colors: bg.colors || ['#ffffff'] };
-          }
-          
-          return {
-            id: t._id.toString(),
-            name: t.name || 'Custom Template',
-            category: t.category || 'Custom',
-            description: t.description || `${printSize} ${slots}-photo ${orientation}`,
-            source: t.source || 'designer',
-            componentId: t.componentId || undefined,
-            active: t.active ?? true,
-            layout: {
-              id: t.layoutId,
-              familyId,
-              label: `${printSize} · ${slots} photo${slots === 1 ? '' : 's'}`,
-              printSize,
-              sheetSize: printSize,
-              orientation,
-              slots,
-              canvas,
-              photoSlots,
-            },
-            design: {
-              background: bg,
-              accent: t.design?.accent || '#ff4f9a',
-              textColor: t.design?.textColor || '#000000',
-              ornament: t.design?.ornament || 'none',
-              slotShape: t.design?.slotShape || 'square',
-              title: t.design?.title || 'HappyPix',
-              subtitle: t.design?.subtitle || ''
-            }
-          };
-      };
-
-      let prices = event.layoutPrices instanceof Map ? Object.fromEntries(event.layoutPrices) : (event.layoutPrices || {});
-      const templates = (event.templateIds || []).filter(t => t && t._id);
-      templates.forEach(t => {
-        const parts = (t.layoutId || '57-v3').split('-');
-        const priceKey = `${parts[0] || '57'}:${parseInt((parts[1] || 'v1').slice(1)) || 1}`;
-        if (typeof prices[priceKey] !== 'number') prices[priceKey] = event.printPrice || 0;
-      });
+      const prices = effectiveLayoutPrices(defaults, event.layoutPrices, { suggested: suggestedPriceMap() });
+      const templates = (event.templateIds || []).filter((t) => t && t._id);
 
       eventPayload = {
         id: event._id.toString(),
@@ -207,17 +134,18 @@ const arrangeSlots = (w, h, n) => {
         location: event.location || '',
         startDate: event.startDate,
         endDate: event.endDate,
-        status: event.status || 'live',
+        // Booth only serves guests while the event is genuinely live.
+        status: computeEventStatus(event, now) === 'active' ? 'live' : computeEventStatus(event, now),
         digitalCopy: event.digitalCopy ?? true,
         filters: event.filters?.length ? event.filters : ['original'],
         branding: {
-          logos: event.branding?.logos || [],
-          tagline: event.branding?.tagline || ''
+          logos: (event.branding?.logos || []).map((src) => safeMediaUrl(src)).filter(Boolean),
+          tagline: event.branding?.tagline || '',
         },
         layoutPrices: prices,
         templates: templates.map(mapTemplate),
-        revision: event.updatedAt?.toISOString() || new Date().toISOString(),
-        templateContractVersion: 1
+        revision: event.updatedAt?.toISOString() || now.toISOString(),
+        templateContractVersion: 1,
       };
     }
   }
@@ -228,51 +156,88 @@ const arrangeSlots = (w, h, n) => {
     event: eventPayload,
     settings: {
       organizationName: org.name || 'HappyPix Org',
-      boothTimeoutSec: 90,
-      payoutMode: 'wallet',
-      upiId: null,
+      boothTimeoutSec: defaults?.boothTimeoutSec ?? 90,
+      payoutMode: defaults?.payoutMode === 'upi' ? 'upi' : 'wallet',
+      upiId: defaults?.upiId || null,
       paymentDisplayName: org.name || 'HappyPix',
       currency: 'INR',
-      maximumPrints: 10
+      maximumPrints: 10,
     },
-    revision: eventPayload ? eventPayload.revision : new Date().toISOString(),
-    serverTime: new Date().toISOString()
+    revision: eventPayload ? eventPayload.revision : now.toISOString(),
+    serverTime: now.toISOString(),
   };
-};
+}
 
-// POST /api/booth/login
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booth/login — pair a booth with org credentials
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   try {
-    const { email, password, deviceUuid, deviceName, location, platform, appVersion } = req.body;
+    const { email, password, deviceUuid, deviceName, location, platform, appVersion } = req.body || {};
 
-    // Check Roles and Access
-    const admin = await User.findOne({ email, role: { $in: ['ORG_ADMIN', 'ORG_MANAGER'] } });
-    if (!admin) return res.status(401).json({ error: 'Invalid admin credentials.' });
+    if (!email || !password || !deviceUuid) {
+      return res.status(400).json({ error: 'Email, password and deviceUuid are required.' });
+    }
+
+    const admin = await User.findOne({ email: String(email).toLowerCase().trim(), role: { $in: ['ORG_ADMIN', 'ORG_MANAGER'] } });
+    if (!admin || admin.status !== 'active') return res.status(401).json({ error: 'Invalid admin credentials.' });
 
     const isMatch = await admin.comparePassword(password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid admin credentials.' });
 
     const org = await Organization.findById(admin.organizationId);
-    if (!org || org.status === 'suspended') return res.status(403).json({ error: 'Organization suspended.' });
+    if (!org) return res.status(403).json({ error: 'Organization not found.' });
+    if (org.status === 'banned') {
+      return res.status(403).json({ error: 'Your account has been banned. Please contact HappyPix support.' });
+    }
 
-    // Link or create device
+    // Enforce the plan device limit before linking/creating a device
+    const { summary } = await resolvePlanContext(org);
     let device = await Device.findOne({ deviceUuid, organizationId: org._id });
     if (!device) {
-      device = new Device({
-        organizationId: org._id,
-        deviceUuid,
-        deviceName: deviceName || 'New Booth',
-        location: location?.label || '',
-        deviceToken: Device.generateToken(),
-        platform,
-        appVersion,
-        status: 'active'
-      });
-    } else {
-      device.deviceToken = Device.generateToken();
-      device.platform = platform;
-      device.appVersion = appVersion;
+      const foreign = await Device.findOne({ deviceUuid });
+      if (!foreign && summary.deviceLimit >= 0) {
+        const count = await Device.countDocuments({ organizationId: org._id, status: { $ne: 'blocked' } });
+        if (count >= summary.deviceLimit) {
+          return res.status(403).json({
+            error: `Device limit reached for the ${summary.planName} plan (max ${summary.deviceLimit}). Upgrade to add more devices.`,
+          });
+        }
+      }
+      if (foreign) {
+        // Physical booth re-paired to a different organization: transfer it.
+        if (foreign.status === 'blocked') {
+          return res.status(403).json({ error: 'This booth has been blocked. Contact HappyPix support.' });
+        }
+        await Event.updateMany(
+          { assignedDeviceIds: foreign._id },
+          { $pull: { assignedDeviceIds: foreign._id } }
+        );
+        device = foreign;
+        device.organizationId = org._id;
+        device.assignedEventId = null;
+      } else {
+        device = new Device({
+          organizationId: org._id,
+          deviceUuid,
+          deviceName: deviceName || 'New Booth',
+          location: location?.label || '',
+          deviceToken: Device.generateToken(),
+          platform,
+          appVersion,
+          status: 'active',
+        });
+      }
     }
+
+    if (device.status === 'blocked') {
+      return res.status(403).json({ error: 'This booth has been blocked. Contact your administrator.' });
+    }
+
+    // Rotate the token on every pairing (the previous token becomes invalid).
+    device.deviceToken = Device.generateToken();
+    device.platform = platform;
+    device.appVersion = appVersion;
     await device.save();
 
     const installation = {
@@ -281,226 +246,582 @@ router.post('/login', async (req, res) => {
       deviceId: device._id.toString(),
       organizationId: org._id.toString(),
       pairedAt: new Date().toISOString(),
-      locationLabel: location?.label || ''
+      locationLabel: location?.label || '',
     };
+
+    await writeAudit({
+      actorId: admin._id,
+      organizationId: org._id,
+      action: 'booth.paired',
+      entity: 'device',
+      summary: `Booth "${device.deviceName}" paired by ${admin.name}`,
+    });
 
     const snapshot = await buildSnapshot(device, org);
     res.json({ installation, snapshot });
   } catch (error) {
+    console.error('Booth login error:', error.message);
     res.status(500).json({ error: 'Login failed.' });
   }
 });
 
-// GET /api/booth/bootstrap
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booth/bootstrap — full snapshot on startup
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/bootstrap', authenticateBooth, async (req, res) => {
   try {
     const snapshot = await buildSnapshot(req.device, req.organization);
     res.json(snapshot);
   } catch (error) {
+    console.error('Booth bootstrap error:', error.message);
     res.status(500).json({ error: 'Bootstrap failed.' });
   }
 });
 
-// POST /api/booth/heartbeat
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booth/heartbeat — telemetry + snapshot refresh
+// ─────────────────────────────────────────────────────────────────────────────
+const clampInt = (v, min, max) => Math.max(min, Math.min(max, Math.round(Number(v) || 0)));
+
 router.post('/heartbeat', authenticateBooth, async (req, res) => {
   try {
-    req.device.lastSeenAt = new Date();
-    req.device.ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
-    req.device.userAgent = req.headers['user-agent'] || null;
-    
-    if (req.body.hardware) {
-      const hw = req.body.hardware;
-      req.device.telemetry = {
-        prints: hw.printer?.printsTotal || req.device.telemetry?.prints || 0,
-        shutters: hw.camera?.shutterCount || req.device.telemetry?.shutters || 0,
-        batteryPct: hw.camera?.batteryPct || req.device.telemetry?.batteryPct || 100,
-        updatedAt: new Date()
+    const device = req.device;
+    const now = new Date();
+
+    device.lastSeenAt = now;
+    device.ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
+    device.userAgent = req.headers['user-agent'] || null;
+
+    const hw = req.body?.hardware;
+    if (hw) {
+      const prev = device.telemetry || {};
+      device.telemetry = {
+        prints: hw.printer?.printsTotal != null ? clampInt(hw.printer.printsTotal, 0, 10_000_000) : (prev.prints || 0),
+        shutters: hw.camera?.shutterCount != null ? clampInt(hw.camera.shutterCount, 0, 10_000_000) : (prev.shutters || 0),
+        batteryPct: hw.camera?.batteryPct != null ? clampInt(hw.camera.batteryPct, 0, 100) : (prev.batteryPct ?? 100),
+        updatedAt: now,
       };
-      req.device.connections = {
-        camera: hw.camera?.connected || false,
-        printer: hw.printer?.connected || false,
-        kioskScreen: hw.kioskScreen?.connected || false,
-        updatedAt: new Date()
+      device.connections = {
+        camera: hw.camera?.connected === true,
+        printer: hw.printer?.connected === true,
+        kioskScreen: hw.kioskScreen?.connected === true,
+        updatedAt: now,
       };
     }
-    
-    await req.device.save();
+    await device.save();
 
-    const snapshot = await buildSnapshot(req.device, req.organization);
-    res.json({ changed: true, snapshot });
+    // Only ship a new snapshot when the event configuration changed.
+    const snapshot = await buildSnapshot(device, req.organization);
+    const known = req.body?.knownRevision;
+    const changed = !known || known !== snapshot.revision;
+    res.json({ changed, snapshot: changed ? snapshot : undefined });
   } catch (error) {
+    console.error('Booth heartbeat error:', error.message);
     res.status(500).json({ error: 'Heartbeat failed.' });
   }
 });
 
-// Real checkout flow
+// Legacy telemetry push route (CRM v2.1 contract: /api/booth/devices/:uuid/telemetry)
+router.post('/devices/:deviceUuid/telemetry', authenticateBooth, async (req, res) => {
+  try {
+    if (req.params.deviceUuid !== req.device.deviceUuid) {
+      return res.status(403).json({ error: 'Telemetry can only be pushed for this device.' });
+    }
+    const b = req.body || {};
+    const now = new Date();
+    const prev = req.device.telemetry || {};
+    req.device.telemetry = {
+      prints: b.printsTotal != null ? clampInt(b.printsTotal, 0, 10_000_000) : (prev.prints || 0),
+      shutters: b.shutterCount != null ? clampInt(b.shutterCount, 0, 10_000_000) : (prev.shutters || 0),
+      batteryPct: b.batteryPct != null ? clampInt(b.batteryPct, 0, 100) : (prev.batteryPct ?? 100),
+      updatedAt: now,
+    };
+    if (b.connections && typeof b.connections === 'object') {
+      req.device.connections = {
+        camera: b.connections.camera === true,
+        printer: b.connections.printer === true,
+        kioskScreen: b.connections.kioskScreen === true,
+        updatedAt: now,
+      };
+    }
+    req.device.lastSeenAt = now;
+    await req.device.save();
+    res.json({ ok: true, telemetry: req.device.telemetry, connections: req.device.connections });
+  } catch (error) {
+    res.status(500).json({ error: 'Telemetry update failed.' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Coupon validation + server-side discount computation (P0 SEC-07)
+// ─────────────────────────────────────────────────────────────────────────────
+async function validateAndApplyCoupon(orgId, eventId, code, gross) {
+  if (!code) return { discount: 0, validCoupon: null, couponMessage: null };
+  const clean = String(code).trim().toUpperCase();
+
+  const coupon = await Coupon.findOne({ organizationId: orgId, code: clean, status: 'active' });
+  if (!coupon) {
+    const err = new Error('That coupon is invalid, expired, exhausted, or not available for this event.');
+    err.status = 400;
+    throw err;
+  }
+  if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate).setHours(23, 59, 59, 999)) {
+    const err = new Error('That coupon has expired.');
+    err.status = 400;
+    throw err;
+  }
+  if ((coupon.usedCount || 0) >= coupon.quantity) {
+    const err = new Error('That coupon has been fully redeemed.');
+    err.status = 400;
+    throw err;
+  }
+  const eventIds = (coupon.eventIds || []).map(String);
+  if (eventIds.length && eventId && !eventIds.includes(String(eventId))) {
+    const err = new Error('That coupon is not valid for the current event.');
+    err.status = 400;
+    throw err;
+  }
+
+  let discount;
+  if (coupon.type === 'percentage') {
+    discount = Math.round(gross * (coupon.value / 100));
+    return { discount, validCoupon: clean, couponMessage: `${clean} applied · ${coupon.value}% off`, coupon };
+  }
+  discount = Math.min(Math.round(coupon.value), gross);
+  return { discount, validCoupon: clean, couponMessage: `${clean} applied · ₹${coupon.value} off`, coupon };
+}
+
+async function incrementCouponUsage(couponCode, orgId) {
+  if (!couponCode) return;
+  try {
+    await Coupon.updateOne(
+      { organizationId: orgId, code: String(couponCode).toUpperCase() },
+      { $inc: { usedCount: 1 } }
+    );
+  } catch (err) {
+    console.error('Failed to increment coupon usage:', err.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booth/checkout/quote — server-computed pricing
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/checkout/quote', authenticateBooth, async (req, res) => {
   try {
-    const { eventId, templateId, layoutId, prints, digitalCopy, couponCode } = req.body;
+    const { eventId, templateId, layoutId, prints, digitalCopy, couponCode } = req.body || {};
+    if (!eventId || !templateId || !layoutId || !prints) {
+      return res.status(400).json({ error: 'eventId, templateId, layoutId and prints are required.' });
+    }
     const event = await Event.findById(eventId).populate('templateIds');
-    if (!event) return res.status(404).json({ error: 'Event not found' });
-    
-    const template = event.templateIds.find(t => t._id.toString() === templateId);
+    if (!event) return res.status(404).json({ error: 'Event not found.' });
+    if (String(event.organizationId) !== String(req.organization._id)) {
+      return res.status(403).json({ error: 'Event not available for this organization.' });
+    }
+    if (computeEventStatus(event) !== 'active') {
+      return res.status(409).json({ error: 'This event is not currently active.' });
+    }
+
+    const template = event.templateIds.find((t) => t._id.toString() === templateId);
     if (!template || template.layoutId !== layoutId) {
-      return res.status(400).json({ error: 'Template not available' });
+      return res.status(400).json({ error: 'Template not available for this event.' });
+    }
+    if (template.active === false) {
+      return res.status(400).json({ error: 'This template has been disabled by the platform.' });
     }
 
-    const parts = template.layoutId.split('-');
-    const familyId = parts[0];
-    const secondPart = parts[1] || 'v1';
-    const slots = parseInt(secondPart.slice(1)) || 1;
-    const priceKey = `${familyId}:${slots}`;
-    
-    let unitPrice;
-    if (event.layoutPrices instanceof Map && event.layoutPrices.has(priceKey)) {
-      unitPrice = event.layoutPrices.get(priceKey);
-    } else if (event.layoutPrices && typeof event.layoutPrices[priceKey] === 'number') {
-      unitPrice = event.layoutPrices[priceKey];
-    }
-    
-    if (typeof unitPrice !== 'number') {
-      // Fallback to legacy printPrice or default to 0 if no pricing is set at all
-      unitPrice = event.printPrice || 0;
-    }
+    const layout = layoutById(layoutId);
+    if (!layout) return res.status(400).json({ error: 'Unknown layout.' });
+    const priceKey = PRICE_KEY(layout.familyId, layout.slots);
 
-    let gross = unitPrice * prints;
-    let discount = 0;
-    let couponMessage = null;
-    let validCoupon = null;
+    const defaults = await OrganizationDefaults.findOne({ organizationId: req.organization._id }).lean();
+    const prices = effectiveLayoutPrices(defaults, event.layoutPrices, { suggested: suggestedPriceMap() });
+    let unitPrice = prices[priceKey];
+    if (typeof unitPrice !== 'number') unitPrice = event.printPrice ?? 0;
+    if (unitPrice == null) unitPrice = 0;
 
-    if (couponCode) {
-      const code = couponCode.trim().toUpperCase();
-      if (code === 'PIX20') {
-        discount = Math.round(gross * 0.2);
-        couponMessage = 'PIX20 applied · 20% off';
-        validCoupon = code;
-      } else if (code === 'FREEPIX') {
-        discount = gross;
-        couponMessage = 'FREEPIX applied · your order is free';
-        validCoupon = code;
-      } else {
-        return res.status(400).json({ error: 'Invalid coupon' });
-      }
-    }
+    const printCount = clampInt(prints, 1, 10);
+    const gross = Math.round(unitPrice * printCount);
+
+    const { discount, validCoupon, couponMessage } = await validateAndApplyCoupon(
+      req.organization._id, eventId, couponCode, gross
+    );
 
     const finalAmount = Math.max(0, gross - discount);
+    const payoutMode = defaults?.payoutMode === 'upi' ? 'upi' : 'wallet';
 
     res.json({
-      quoteId: `quote-${Date.now()}`,
+      quoteId: `quote-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
       unitPrice,
-      prints,
+      prints: printCount,
       gross,
       discount,
       finalAmount,
       couponCode: validCoupon,
       couponMessage,
-      settlement: req.organization?.payoutMode || 'wallet',
-      expiresAt: new Date(Date.now() + 5 * 60000).toISOString()
+      settlement: payoutMode,
+      expiresAt: new Date(Date.now() + 5 * 60000).toISOString(),
     });
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    console.error('Booth quote error:', error.message);
     res.status(500).json({ error: 'Failed to generate quote' });
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Razorpay helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function getRazorpayInstance() {
+  const key_id = process.env.RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!key_id || !key_secret) return null;
+  return new Razorpay({ key_id, key_secret });
+}
+
+async function createRazorpayPaymentLink(rzp, amountInPaise, eventId, orderId) {
+  // 1) Try a UPI QR (single-use, fixed amount) → its image_url is a hosted
+  //    PNG we cannot return as `qrPayload`; instead we rely on the payment
+  //    link whose short_url IS QR-encodable by the booth renderer.
+  // 2) Payment link (hosted page, works with every UPI app + cards).
+  try {
+    const pl = await rzp.paymentLink.create({
+      amount: amountInPaise,
+      currency: 'INR',
+      accept_partial: false,
+      description: 'HappyPix Booth Prints',
+      reference_id: orderId,
+      notes: { eventId: String(eventId || ''), orderId },
+    });
+    return { paymentLinkId: pl.id, paymentLinkUrl: pl.short_url };
+  } catch (err) {
+    console.error('Razorpay payment link creation failed:', err.message);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booth/payments — create a real payment order + payable QR payload
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/payments', authenticateBooth, async (req, res) => {
   try {
-    const { quote } = req.body;
+    const quote = req.body?.quote;
     if (!quote || quote.finalAmount === undefined) {
-      return res.status(400).json({ error: 'Quote required' });
+      return res.status(400).json({ error: 'Quote required.' });
+    }
+    if (!(quote.finalAmount > 0)) {
+      return res.status(400).json({ error: 'Free checkouts must use the free completion endpoint.' });
     }
 
-    // Generate a unique order ID for razorpay or UPI
-    const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
-    
-    // In a real app we'd call Razorpay API here to create an order
-    // But since this is a local app (and we don't have RZP creds here), we mock the QR
-    const qrPayload = `upi://pay?pa=test@upi&pn=${encodeURIComponent(req.organization.name)}&am=${quote.finalAmount}&cu=INR&tn=${paymentId}`;
+    const rzp = getRazorpayInstance();
+    if (!rzp) {
+      return res.status(503).json({ error: 'Payments are not configured on the server (missing Razorpay keys). Contact HappyPix support.' });
+    }
+
+    const amountInPaise = Math.round(Number(quote.finalAmount) * 100);
+    const order = await rzp.orders.create({
+      amount: amountInPaise,
+      currency: 'INR',
+      receipt: `hp_${Date.now()}`,
+      notes: {
+        eventId: String(quote.eventId || req.device.assignedEventId || ''),
+        deviceId: String(req.device._id),
+        printCount: String(quote.prints ?? 1),
+      },
+    });
+
+    const link = await createRazorpayPaymentLink(rzp, amountInPaise, req.device.assignedEventId, order.id);
+    if (!link) {
+      return res.status(502).json({ error: 'The payment provider rejected this order. Please try again.' });
+    }
+
+    const defaults = await OrganizationDefaults.findOne({ organizationId: req.organization._id }).lean();
+    const settlement = defaults?.payoutMode === 'upi' ? 'upi' : 'wallet';
 
     const payment = new Payment({
       organizationId: req.organization._id,
+      deviceId: req.device._id,
       eventId: req.device.assignedEventId,
-      razorpayOrderId: paymentId,
-      amount: quote.finalAmount,
+      razorpayOrderId: order.id,
+      paymentLinkId: link.paymentLinkId,
+      paymentLinkUrl: link.paymentLinkUrl,
+      amount: Number(quote.finalAmount),
       currency: 'INR',
-      printCount: quote.prints,
-      digitalCopy: true,
-      couponCode: quote.couponCode,
-      discountApplied: quote.discount,
-      status: 'pending' // custom logic uses 'created' or 'pending'
+      printCount: quote.prints ?? 1,
+      digitalCopy: quote.digitalCopy !== false,
+      couponCode: quote.couponCode || null,
+      discountApplied: quote.discount || 0,
+      settlement,
+      status: 'created',
     });
     await payment.save();
 
     res.json({
       paymentId: payment._id.toString(),
-      amount: quote.finalAmount,
-      qrPayload,
-      status: 'pending'
+      amount: payment.amount,
+      qrPayload: link.paymentLinkUrl,
+      status: 'pending',
     });
   } catch (error) {
+    console.error('Booth payment create error:', error.message);
     res.status(500).json({ error: 'Failed to create payment' });
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/booth/payments/:id — poll the payment provider (NO auto-pay mocks)
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/payments/:id', authenticateBooth, async (req, res) => {
   try {
-    const payment = await Payment.findById(req.params.id);
+    const payment = await Payment.findOne({
+      _id: req.params.id,
+      $or: [
+        { deviceId: req.device._id },
+        { organizationId: req.organization._id },
+      ],
+    });
     if (!payment) return res.status(404).json({ error: 'Not found' });
-    
-    // For demo purposes, we automatically mark it as paid after 10 seconds of creation
-    const ageMs = Date.now() - payment.createdAt.getTime();
-    if (payment.status !== 'paid' && ageMs > 6500) {
+
+    if (payment.status === 'paid') return res.json({ status: 'paid' });
+    if (payment.status === 'failed') return res.json({ status: 'failed' });
+
+    const rzp = getRazorpayInstance();
+    if (!rzp) return res.status(503).json({ error: 'Payments are not configured on the server.' });
+
+    let isPaid = false;
+    try {
+      if (payment.paymentLinkId) {
+        const pl = await rzp.paymentLink.fetch(payment.paymentLinkId);
+        if (pl.status === 'paid') isPaid = true;
+      } else if (payment.razorpayOrderId) {
+        const payments = await rzp.orders.fetchPayments(payment.razorpayOrderId);
+        if (payments?.items?.some((p) => p.status === 'captured' || p.status === 'authorized')) isPaid = true;
+      }
+    } catch (err) {
+      console.error('Razorpay status check failed:', err.message);
+      return res.json({ status: 'pending' });
+    }
+
+    if (isPaid) {
       payment.status = 'paid';
       payment.paidAt = new Date();
       await payment.save();
+      await incrementCouponUsage(payment.couponCode, payment.organizationId);
+      return res.json({ status: 'paid' });
     }
-    
-    res.json({ status: payment.status });
+
+    res.json({ status: 'pending' });
   } catch (error) {
+    console.error('Booth payment status error:', error.message);
     res.status(500).json({ error: 'Failed to check payment status' });
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booth/checkout/free-complete — ₹0 orders (and offline UPI + UTR)
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/checkout/free-complete', authenticateBooth, async (req, res) => {
   try {
-    const { quoteId } = req.body; // Wait, we might not have the full quote if the client just sends quoteId. But we want to record something.
-    // If quote is passed, we save it. Let's assume req.body.quote might be passed, or we just save a generic free payment.
-    const payment = new Payment({
-      organizationId: req.organization._id,
-      eventId: req.device.assignedEventId,
-      razorpayOrderId: `free_${Date.now()}_${Math.random().toString(36).substring(2,7)}`,
-      amount: 0,
-      currency: 'INR',
-      printCount: 1, // default or from quote if available
-      digitalCopy: true,
-      status: 'paid',
-      paidAt: new Date()
-    });
-    
-    if (req.body.quote) {
-      payment.amount = req.body.quote.finalAmount || 0;
-      payment.printCount = req.body.quote.prints || 1;
-      payment.couponCode = req.body.quote.couponCode;
-      payment.discountApplied = req.body.quote.discount;
+    const { quote, utr } = req.body || {};
+    const q = quote || {};
+
+    // Offline UPI payments (amount > 0) must carry a 12-digit UTR.
+    if (Number(q.finalAmount) > 0) {
+      if (!utr || !/^\d{12}$/.test(utr)) {
+        return res.status(400).json({ error: 'UPI Ref No. (UTR) is required for direct UPI payments.' });
+      }
+      const existing = await Payment.findOne({ utr, status: 'paid' });
+      if (existing) return res.status(400).json({ error: 'This UTR has already been used for a payment.' });
     }
 
+    const defaults = await OrganizationDefaults.findOne({ organizationId: req.organization._id }).lean();
+    const settlement = defaults?.payoutMode === 'upi' ? 'upi' : 'wallet';
+
+    const payment = new Payment({
+      organizationId: req.organization._id,
+      deviceId: req.device._id,
+      eventId: req.device.assignedEventId,
+      razorpayOrderId: Number(q.finalAmount) > 0 ? `upi_${Date.now()}` : `free_${Date.now()}`,
+      amount: Number(q.finalAmount) || 0,
+      currency: 'INR',
+      printCount: q.prints ?? 1,
+      digitalCopy: q.digitalCopy !== false,
+      couponCode: q.couponCode || null,
+      discountApplied: q.discount || 0,
+      utr: utr || null,
+      settlement,
+      status: 'paid',
+      paidAt: new Date(),
+    });
     await payment.save();
+    await incrementCouponUsage(payment.couponCode, payment.organizationId);
+
     res.json({ success: true, paymentId: payment._id });
   } catch (error) {
+    console.error('Booth free-complete error:', error.message);
     res.status(500).json({ error: 'Failed to complete free checkout' });
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booth/upload — upload a capture/composite for a session
+// multipart (photo) or JSON { photoBase64, eventId, sessionId, isComposite,
+// guestConsent, filename }. Device-scoped, org/event/session-aware S3 path.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/upload', authenticateBooth, express.json({ limit: '12mb' }), async (req, res) => {
+  try {
+    let fileBuffer;
+    let mimeType = 'image/png';
+    let originalName = 'capture.png';
+
+    if (req.file) {
+      fileBuffer = req.file.buffer;
+      mimeType = req.file.mimetype;
+      originalName = req.file.originalname;
+    } else if (req.body?.photoBase64) {
+      const matches = String(req.body.photoBase64).match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (!matches) return res.status(400).json({ error: 'Invalid base64 image data format.' });
+      fileBuffer = Buffer.from(matches[2], 'base64');
+      if (fileBuffer.length > MAX_BASE64_BYTES) return res.status(413).json({ error: 'Image exceeds the 10 MB limit.' });
+      mimeType = matches[1];
+      originalName = req.body.filename || (req.body.isComposite === true ? 'composite.png' : 'capture.png');
+    } else {
+      return res.status(400).json({ error: 'No photo provided.' });
+    }
+
+    const eventId = req.body?.eventId || req.device.assignedEventId || 'no-event';
+    const sessionId = req.body?.sessionId || `session-${Date.now()}`;
+    const isComposite = req.body?.isComposite === true || req.body?.isComposite === 'true';
+
+    const folder = `happypix/${req.organization._id}/${eventId}/${sessionId}`;
+    const uploaded = await uploadToS3({ buffer: fileBuffer, mimetype: mimeType, folder, originalname: originalName });
+    const url = uploaded.url;
+
+    const photo = new Photo({
+      organizationId: req.organization._id,
+      eventId: eventId && mongoose.Types.ObjectId.isValid(eventId) ? eventId : undefined,
+      deviceId: req.device._id,
+      sessionId,
+      s3Key: uploaded.key,
+      url,
+      compositeUrl: isComposite ? url : null,
+      guestConsent: req.body?.guestConsent === true || req.body?.guestConsent === 'true',
+      capturedAt: new Date(),
+    });
+    await photo.save();
+
+    res.status(201).json({
+      message: 'Upload successful',
+      url,
+      id: photo._id,
+      isComposite,
+    });
+  } catch (error) {
+    console.error('Booth upload error:', error.message);
+    res.status(500).json({ error: 'Failed to upload photo' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booth/sessions/complete — finalize a guest session
+// Body: { sessionId, digitalCopy, compositeUrl?, photoUrls?, guestConsent? }
+// Generates a real PhotoShare token + share URL for the digital copy.
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/sessions/complete', authenticateBooth, async (req, res) => {
   try {
-    const { sessionId, digitalCopy } = req.body;
-    // Log the session usage telemetry to device?
-    req.device.telemetry = req.device.telemetry || {};
-    req.device.telemetry.prints = (req.device.telemetry.prints || 0) + 1;
-    await req.device.save();
-    
-    res.json({ shareUrl: digitalCopy ? `https://happypix.in/share/${sessionId}` : null });
+    const { sessionId, digitalCopy } = req.body || {};
+    if (!sessionId) return res.status(400).json({ error: 'sessionId is required.' });
+
+    let shareUrl = null;
+
+    if (digitalCopy) {
+      const eventId = req.device.assignedEventId;
+      const compositeUrl = safeMediaUrl(req.body?.compositeUrl);
+      const photoUrls = (Array.isArray(req.body?.photoUrls) ? req.body.photoUrls : [])
+        .map((u) => safeMediaUrl(u))
+        .filter(Boolean);
+
+      if (eventId && (compositeUrl || photoUrls.length)) {
+        const event = await Event.findById(eventId);
+        if (event && event.digitalCopy !== false) {
+          const expirationDays = event.sharingConfig?.expirationDays || 7;
+          const rawToken = crypto.randomBytes(32).toString('hex');
+
+          await PhotoShare.create({
+            eventId,
+            organizationId: req.organization._id,
+            tokenHash: rawToken,
+            photoUrls,
+            compositeUrl,
+            expiresAt: new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000),
+            status: 'active',
+          });
+
+          const clientUrl = process.env.CLIENT_URL || 'https://happypix.vercel.app';
+          shareUrl = `${clientUrl.replace(/\/$/, '')}/share/${rawToken}`;
+        }
+      }
+    }
+
+    res.json({ shareUrl });
   } catch (error) {
+    console.error('Booth session complete error:', error.message);
     res.status(500).json({ error: 'Failed to complete session' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/booth/tickets — guest support ticket raised at the booth
+// (CRM v2.1 contract — full session context snapshot)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/tickets', authenticateBooth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const subject = safeStr(b.subject, 200);
+    const session = b.session;
+    if (!subject) return res.status(400).json({ error: 'Subject is required.' });
+    if (!session || !session.phone) {
+      return res.status(400).json({ error: 'Session context with the guest phone number is required.' });
+    }
+
+    const category = TICKET_CATEGORIES.includes(b.category) ? b.category : 'general';
+    const priority = ['low', 'medium', 'high', 'urgent'].includes(b.priority) ? b.priority : 'medium';
+
+    const sessionSnapshot = {
+      ...session,
+      eventId: b.eventId || req.device.assignedEventId || null,
+      deviceId: b.deviceId || String(req.device._id),
+    };
+
+    const t = new Ticket({
+      organizationId: req.organization._id,
+      eventId: b.eventId || req.device.assignedEventId || null,
+      deviceId: req.device._id,
+      category,
+      subject,
+      priority,
+      status: 'open',
+      guest: {
+        name: safeStr(b.guestName, 120) || 'Guest',
+        contact: safeStr(session.phone, 20),
+      },
+      session: sessionSnapshot,
+      messages: [
+        { author: 'Guest (booth)', at: new Date(), text: safeStr(b.message, 2000) || subject },
+      ],
+    });
+    await t.save();
+
+    await writeAudit({
+      organizationId: req.organization._id,
+      action: 'ticket.created_from_booth',
+      entity: 'ticket',
+      summary: `Ticket "${t.subject}" raised from booth (session ${session.id || 'n/a'})`,
+    });
+
+    res.status(201).json({ ticket: { id: t._id, subject: t.subject, status: t.status } });
+  } catch (error) {
+    console.error('Booth ticket error:', error.message);
+    res.status(500).json({ error: 'Failed to create ticket' });
   }
 });
 

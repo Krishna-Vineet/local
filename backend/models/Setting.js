@@ -19,8 +19,10 @@ const settingSchema = new mongoose.Schema({
     default: null,
   },
 
-  // ─── Mobile Printing ──────────────────────────────────────────
+  // ─── Mobile Printing & Gallery ────────────────────────────────
   enableMobilePrinting:   { type: Boolean, default: true },
+  galleryEnabled:         { type: Boolean, default: true },
+  requireGuestConsent:    { type: Boolean, default: false },
 
   // ─── Payment Settings ─────────────────────────────────────────
   razorpayKeyId:          { type: String, default: '' },

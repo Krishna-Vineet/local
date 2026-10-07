@@ -18,7 +18,7 @@ const eventSchema = new mongoose.Schema({
   digitalCopy: { type: Boolean, default: true },
   
   // Pricing Snapshot: { "familyId:slots": price }
-  layoutPrices: { type: Map, of: Number, default: {} },
+  layoutPrices: { type: mongoose.Schema.Types.Mixed, default: {} },
   
   branding: {
     logoUrl: { type: String, default: null },

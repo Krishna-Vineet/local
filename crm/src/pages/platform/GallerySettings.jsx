@@ -17,12 +17,14 @@ export default function GallerySettings() {
 
   const change = async (patch) => {
     if (!canEdit || busy) return
+    // If disabling gallery, also reset requireGuestConsent
+    if (patch.galleryEnabled === false) patch = { ...patch, requireGuestConsent: false }
     const next = { ...settings, ...patch }
     setSettings(next)
     setBusy(true)
     try {
       const result = await api.platform.saveGallerySettings(patch)
-      setSettings(result.settings)
+      setSettings(result.settings || next)
       toast('Gallery policy updated')
     } catch (e) {
       setSettings(settings)

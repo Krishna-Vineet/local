@@ -107,16 +107,19 @@ export default function AuditLogs() {
               </thead>
               <tbody>
                 {rows.map((a) => {
-                  const actorUser = userById[a.actorId]
+                  const actorUser = userById[a.actorId] || (a.actorId ? userById[a.actorId] : null)
+                  const displayName = actorUser?.name || a.actorName || 'System'
+                  const displayRole = actorUser?.role || a.actorRole || null
+                  const timestamp = a.at || a.createdAt || null
                   return (
-                    <tr key={a.id}>
+                    <tr key={a._id || a.id}>
                       <td>
-                        <div className="t13" style={{ whiteSpace: 'nowrap' }}>{dateMed(a.at)}</div>
-                        <div className="t11 faint">{dateShort(a.at)}</div>
+                        <div className="t13" style={{ whiteSpace: 'nowrap' }}>{timestamp ? dateMed(timestamp) : '—'}</div>
+                        <div className="t11 faint">{timestamp ? dateShort(timestamp) : ''}</div>
                       </td>
                       <td>
-                        <div className="t13 fw6">{actorUser?.name || 'System'}</div>
-                        <div className="t11 faint">{actorUser ? ROLE_LABELS[actorUser.role] : '—'}</div>
+                        <div className="t13 fw6">{displayName}</div>
+                        <div className="t11 faint">{displayRole ? (ROLE_LABELS[displayRole] || displayRole) : '—'}</div>
                       </td>
                       <td><Chip tone={SEVERITY_TONES[a.severity] || 'neutral'}>{a.action}</Chip></td>
                       <td className="t13 muted">{a.entity}</td>

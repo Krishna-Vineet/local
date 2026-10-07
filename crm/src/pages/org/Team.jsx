@@ -26,7 +26,7 @@ export default function OrgTeam() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  const load = () => api.org.team().then((r) => setMembers(r.members)).catch((e) => toast(e.message, 'error'))
+  const load = () => api.org.team().then((r) => setMembers(r.members || r.team || [])).catch((e) => toast(e.message, 'error'))
   useEffect(() => {
     load()
   }, [])

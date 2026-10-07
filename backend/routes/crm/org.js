@@ -12,6 +12,7 @@ import AuditLog from '../../models/AuditLog.js';
 import Template from '../../models/Template.js';
 import Photo from '../../models/Photo.js';
 import Payment from '../../models/Payment.js';
+import Setting from '../../models/Setting.js';
 
 const router = express.Router();
 
@@ -39,9 +40,10 @@ router.get('/dashboard', async (req, res) => {
     const events = await Event.find(getOrgFilter(req.user));
     const devices = await Device.find(getOrgFilter(req.user));
     const openTickets = await SupportTicket.countDocuments({ ...getOrgFilter(req.user), status: { $in: ['open', 'in_progress'] } });
+    const defs = await OrganizationDefaults.findOne(getOrgFilter(req.user));
     
     res.json({
-      organization: { id: org._id, name: org.name },
+      organization: { id: org._id, name: org.name, status: org.status },
       plan: { plan: org.plan || 'free', planName: org.plan || 'Free', daysLeft: 30, status: org.status, endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() },
       usage: { devicesUsed: devices.length, deviceLimit: 5, eventsUsed: events.filter(e => e.status === 'live').length, eventLimit: 2 },
       devices: { total: devices.length, online: devices.filter(d => d.status === 'active').length, offline: devices.filter(d => d.status !== 'active').length },
@@ -52,8 +54,8 @@ router.get('/dashboard', async (req, res) => {
         finished: events.filter(e => e.status === 'completed').map(e => ({ id: e._id, name: e.name, startDate: e.createdAt, status: 'finished' }))
       },
       tickets: { open: openTickets, list: [] },
-      warnings: [],
-      revenue: req.user.role === 'ORG_ADMIN' ? { thisMonth: 0, total: 0, wallet: { balance: 0, processing: 0 }, payout: { payoutMode: 'upi', upiId: '' } } : null
+      warnings: org.status === 'suspended' ? ['Organization account is suspended. Event creation and device pairing are disabled.'] : [],
+      revenue: req.user.role === 'ORG_ADMIN' ? { thisMonth: 0, total: 0, wallet: { balance: 0, processing: 0 }, payout: { payoutMode: defs?.payoutMode || 'upi', upiId: defs?.upiId || '' } } : null
     });
   } catch (error) {
     res.status(500).json({ error: 'Dashboard error' });
@@ -64,6 +66,8 @@ router.get('/dashboard', async (req, res) => {
 
 router.get('/events', async (req, res) => {
   try {
+    const org = await Organization.findById(req.user.organizationId);
+    const isSuspended = org && org.status === 'suspended';
     const events = await Event.find(getOrgFilter(req.user)).sort({ createdAt: -1 });
     const devices = await Device.find(getOrgFilter(req.user));
     res.json({
@@ -80,6 +84,8 @@ router.get('/events', async (req, res) => {
           templateIds: e.templateIds || [],
           filters: e.filters || [],
           digitalCopy: e.digitalCopy ?? true,
+          branding: e.branding || { logos: [], tagline: '' },
+          layoutPrices: e.layoutPrices || {},
           assignedDevices: evDevices.map(d => ({
             id: d._id,
             name: d.deviceName || d.macAddress,
@@ -87,7 +93,7 @@ router.get('/events', async (req, res) => {
           }))
         };
       }),
-      canCreate: true
+      canCreate: !isSuspended
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch events' });
@@ -96,6 +102,15 @@ router.get('/events', async (req, res) => {
 
 router.post('/events', async (req, res) => {
   try {
+    const org = await Organization.findById(req.user.organizationId);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    if (org.status === 'suspended') {
+      return res.status(403).json({ error: 'Your organization is suspended. Event creation is disabled.' });
+    }
+    if (org.status === 'banned') {
+      return res.status(403).json({ error: 'Your organization is banned. Event creation is disabled.' });
+    }
+
     const ev = new Event({ ...req.body, ...getOrgFilter(req.user), status: 'live' });
     await ev.save();
     res.status(201).json({ event: { id: ev._id, ...ev.toObject() } });
@@ -294,6 +309,27 @@ router.post('/tickets/:id/reply', async (req, res) => {
   }
 });
 
+router.post('/tickets', async (req, res) => {
+  try {
+    const { name, email, subject, category, message, priority } = req.body;
+    const ticket = new SupportTicket({
+      name: name || 'Guest',
+      email: email || 'guest@example.com',
+      subject: subject || 'Guest Support Request',
+      category: category || 'general',
+      message: message || '',
+      priority: priority || 'medium',
+      status: 'open',
+      organizationId: req.user.organizationId,
+      adminNotes: message ? [{ text: `Initial guest report: ${message}`, createdAt: new Date() }] : []
+    });
+    await ticket.save();
+    res.status(201).json({ ticket: { id: ticket._id, ...ticket.toObject() } });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create guest ticket' });
+  }
+});
+
 router.post('/tickets/:id/resolve', async (req, res) => {
   try {
     const t = await SupportTicket.findOneAndUpdate({ _id: req.params.id, ...getOrgFilter(req.user) }, { status: 'resolved' }, { new: true });
@@ -320,7 +356,7 @@ router.get('/platform-support', async (req, res) => {
     res.json({
       requests: reqs.map(r => ({
         id: r._id, subject: r.subject, category: r.category || 'technical', priority: r.priority || 'medium',
-        status: r.status, ticketNo: 'T-' + r._id.toString().substring(0, 4).toUpperCase(),
+        status: r.status, ticketNo: r.ticketNo || ('T-' + r._id.toString().substring(0, 4).toUpperCase()),
         messages: r.messages || [], updatedAt: r.updatedAt
       }))
     });
@@ -336,7 +372,7 @@ router.get('/platform-support/:id', async (req, res) => {
     res.json({
       request: {
         id: r._id, subject: r.subject, category: r.category, priority: r.priority, status: r.status,
-        ticketNo: 'T-' + r._id.toString().substring(0, 4).toUpperCase(), creator: { name: req.user.name },
+        ticketNo: r.ticketNo || ('T-' + r._id.toString().substring(0, 4).toUpperCase()), creator: { name: req.user.name },
         messages: r.messages || [], createdAt: r.createdAt, updatedAt: r.updatedAt
       }
     });
@@ -347,10 +383,33 @@ router.get('/platform-support/:id', async (req, res) => {
 
 router.post('/platform-support', async (req, res) => {
   try {
-    const reqData = new PlatformSupportRequest({ ...req.body, ...getOrgFilter(req.user), status: 'open' });
+    const { subject, category, priority, message, images } = req.body;
+    const count = await PlatformSupportRequest.countDocuments();
+    const ticketNo = `T-${1000 + count + 1}`;
+    const initialMessages = message ? [{
+      authorId: req.user._id,
+      authorName: req.user.name,
+      authorRole: req.user.role,
+      side: 'org',
+      text: message,
+      images: images || [],
+      at: new Date()
+    }] : [];
+
+    const reqData = new PlatformSupportRequest({
+      organizationId: req.user.organizationId,
+      createdBy: req.user._id,
+      ticketNo,
+      subject: subject || 'Support Request',
+      category: category || 'technical',
+      priority: priority || 'medium',
+      status: 'open',
+      messages: initialMessages
+    });
     await reqData.save();
-    res.status(201).json({ request: { id: reqData._id, ...reqData.toObject() } });
+    res.status(201).json({ request: { id: reqData._id, ticketNo, ...reqData.toObject() } });
   } catch (error) {
+    console.error('Failed to create platform request:', error);
     res.status(500).json({ error: 'Failed to create platform request' });
   }
 });
@@ -368,6 +427,7 @@ router.post('/platform-support/:id/reply', async (req, res) => {
             authorRole: req.user.role,
             side: 'org',
             text: req.body.message,
+            images: req.body.images || [],
             at: new Date()
           }
         }
@@ -382,8 +442,33 @@ router.post('/platform-support/:id/reply', async (req, res) => {
 
 router.post('/platform-support/:id/reapply', async (req, res) => {
   try {
-    const r = await PlatformSupportRequest.findOneAndUpdate({ _id: req.params.id, ...getOrgFilter(req.user) }, { status: 'open' }, { new: true });
-    res.json({ request: { id: r._id, status: r.status, messages: [] } });
+    const { message, images } = req.body;
+    const r = await PlatformSupportRequest.findOneAndUpdate(
+      { _id: req.params.id, ...getOrgFilter(req.user) },
+      {
+        status: 'open',
+        $inc: { reapplyCount: 1 },
+        $push: {
+          messages: {
+            authorId: req.user._id,
+            authorName: req.user.name,
+            authorRole: req.user.role,
+            side: 'org',
+            text: message || 'Re-applied request',
+            images: images || [],
+            at: new Date()
+          }
+        },
+        lastReapplication: {
+          text: message || '',
+          images: images || [],
+          authorId: req.user._id,
+          at: new Date()
+        }
+      },
+      { new: true }
+    );
+    res.json({ request: { id: r._id, status: r.status, messages: r.messages } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to reapply' });
   }
@@ -394,6 +479,7 @@ router.post('/platform-support/:id/reapply', async (req, res) => {
 router.get('/revenue', requireOrgAdmin, async (req, res) => {
   try {
     const payments = await Payment.find(getOrgFilter(req.user));
+    const defs = await OrganizationDefaults.findOne(getOrgFilter(req.user));
     let total = 0;
     let thisMonth = 0;
     const byStatus = { paid: 0, pending: 0, failed: 0 };
@@ -413,7 +499,7 @@ router.get('/revenue', requireOrgAdmin, async (req, res) => {
       total, thisMonth, fy: total,
       byStatus,
       wallet: { balance: total, processing: byStatus.pending, credited: total, withdrawn: 0, viaUpi: total, minWithdrawal: 500, withdrawals: [] },
-      payout: { payoutMode: 'upi', upiId: '' },
+      payout: { payoutMode: defs?.payoutMode || 'upi', upiId: defs?.upiId || '' },
       settlement: { upi: total, wallet: 0 },
       monthWise: [], byEvent: [], byDevice: [],
       matrix: [], events: [], devices: []
@@ -434,7 +520,8 @@ router.get('/defaults', async (req, res) => {
       defs = new OrganizationDefaults(getOrgFilter(req.user));
       await defs.save();
     }
-    res.json({ id: defs._id, ...defs.toObject() });
+    const obj = defs.toObject({ flattenMaps: true });
+    res.json({ id: defs._id, ...obj });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch defaults' });
   }
@@ -443,7 +530,8 @@ router.get('/defaults', async (req, res) => {
 router.put('/defaults', requireOrgAdmin, async (req, res) => {
   try {
     const defs = await OrganizationDefaults.findOneAndUpdate(getOrgFilter(req.user), req.body, { new: true, upsert: true });
-    res.json({ id: defs._id, ...defs.toObject() });
+    const obj = defs.toObject({ flattenMaps: true });
+    res.json({ id: defs._id, ...obj });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update defaults' });
   }
@@ -452,12 +540,32 @@ router.put('/defaults', requireOrgAdmin, async (req, res) => {
 router.get('/coupons', requireOrgAdmin, async (req, res) => {
   try {
     const coupons = await Coupon.find(getOrgFilter(req.user)).sort({ createdAt: -1 });
+    const events = await Event.find(getOrgFilter(req.user)).select('name');
+    const now = new Date();
     res.json({
-      coupons: coupons.map(c => ({
-        id: c._id, code: c.code, type: c.discountType, value: c.discountValue, maxUses: c.usageLimit || 0,
-        uses: c.usageCount || 0, status: c.status || 'active', eventIds: [],
-        createdAt: c.createdAt, expiresAt: c.expirationDate
-      }))
+      coupons: coupons.map(c => {
+        const isExp = now > new Date(c.expiryDate);
+        const isExh = (c.usedCount || 0) >= (c.quantity || 0);
+        return {
+          id: c._id,
+          code: c.code,
+          type: c.type || 'percentage',
+          value: c.value,
+          quantity: c.quantity,
+          usedCount: c.usedCount || 0,
+          expiryDate: c.expiryDate,
+          expired: isExp,
+          isExhausted: isExh,
+          status: isExp ? 'expired' : (c.status || 'active'),
+          eventIds: c.eventIds || [],
+          events: (c.eventIds || []).map(eid => {
+            const ev = events.find(e => String(e._id) === String(eid));
+            return ev ? { id: ev._id, name: ev.name } : null;
+          }).filter(Boolean),
+          createdAt: c.createdAt
+        };
+      }),
+      events: events.map(e => ({ id: e._id, name: e.name }))
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch coupons' });
@@ -497,11 +605,18 @@ router.delete('/coupons/:id', requireOrgAdmin, async (req, res) => {
 router.get('/team', async (req, res) => {
   try {
     const usersList = await User.find(getOrgFilter(req.user)).select('-password -forgotPasswordCodeHash');
+    const mapped = usersList.map(u => ({
+      id: u._id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      status: u.status,
+      lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
+      createdAt: u.createdAt
+    }));
     res.json({
-      team: usersList.map(u => ({
-        id: u._id, name: u.name, email: u.email, role: u.role, status: u.status,
-        lastLoginAt: new Date().toISOString()
-      }))
+      team: mapped,
+      members: mapped
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch team' });
@@ -530,22 +645,44 @@ router.put('/team/:id', requireOrgAdmin, async (req, res) => {
 
 router.get('/gallery', async (req, res) => {
   try {
-    const photos = await Photo.find(getOrgFilter(req.user)).sort({ capturedAt: -1 }).limit(100).populate('eventId deviceId');
+    const globalSetting = await Setting.findOne({ organizationId: null });
+    const galleryEnabled = globalSetting ? globalSetting.galleryEnabled !== false : true;
+    const requireGuestConsent = globalSetting ? !!globalSetting.requireGuestConsent : false;
+
+    const events = await Event.find(getOrgFilter(req.user)).select('name');
+    const devices = await Device.find(getOrgFilter(req.user)).select('deviceName macAddress');
+
+    if (!galleryEnabled) {
+      return res.json({
+        enabled: false,
+        requireGuestConsent,
+        photos: [],
+        events: events.map(e => ({ id: e._id, name: e.name })),
+        booths: devices.map(d => ({ id: d._id, name: d.deviceName || d.macAddress }))
+      });
+    }
+
+    const filter = { ...getOrgFilter(req.user) };
+    if (req.query.eventId) filter.eventId = req.query.eventId;
+    if (req.query.boothId) filter.deviceId = req.query.boothId;
+
+    const photos = await Photo.find(filter).sort({ createdAt: -1 }).limit(100).populate('eventId deviceId');
+
     res.json({
-      items: photos.map(p => ({
+      enabled: true,
+      requireGuestConsent,
+      photos: photos.map(p => ({
         id: p._id,
-        url: p.s3Url || p.fileUrl,
+        finalImageUrl: p.url || p.s3Url,
+        url: p.url || p.s3Url,
         eventId: p.eventId?._id,
-        eventName: p.eventId?.name || 'Unknown Event',
-        deviceId: p.deviceId?._id,
-        deviceName: p.deviceId?.deviceName || 'Unknown Device',
-        capturedAt: p.capturedAt || p.createdAt,
-        printStatus: 'printed',
-        digitalStatus: 'delivered'
+        eventName: p.eventId?.name || 'Event Photo',
+        boothId: p.deviceId?._id,
+        boothName: p.deviceId?.deviceName || 'Photo Booth',
+        generatedAt: p.createdAt || new Date()
       })),
-      events: [],
-      devices: [],
-      hasMore: photos.length === 100
+      events: events.map(e => ({ id: e._id, name: e.name })),
+      booths: devices.map(d => ({ id: d._id, name: d.deviceName || d.macAddress }))
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch gallery' });
@@ -554,11 +691,19 @@ router.get('/gallery', async (req, res) => {
 
 router.get('/audit', requireOrgAdmin, async (req, res) => {
   try {
-    const logs = await AuditLog.find(getOrgFilter(req.user)).sort({ createdAt: -1 }).limit(100).populate('actorId', 'name role');
+    const logs = await AuditLog.find(getOrgFilter(req.user)).sort({ at: -1 }).limit(100).populate('actorId', 'name role');
     res.json({
       items: logs.map(l => ({
-        id: l._id, action: l.action, entity: l.entity, actorName: l.actorId ? l.actorId.name : 'System',
-        actorRole: l.actorId ? l.actorId.role : 'SYSTEM', summary: l.summary, severity: l.severity || 'info', at: l.createdAt
+        id: l._id,
+        action: l.action,
+        entity: l.entity,
+        actorId: l.actorId ? (l.actorId._id || l.actorId) : null,
+        actorName: l.actorId ? l.actorId.name : 'System',
+        actorRole: l.actorId ? l.actorId.role : 'SYSTEM',
+        summary: l.summary,
+        severity: l.severity || 'info',
+        ip: l.ip || '—',
+        at: l.at
       }))
     });
   } catch (error) {

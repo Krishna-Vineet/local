@@ -28,8 +28,7 @@ const organizationDefaultsSchema = new mongoose.Schema(
     // Layout Prices Map: { "familyId:slots": price }
     // Overlays the server-suggested default map
     layoutPrices: {
-      type: Map,
-      of: Number,
+      type: mongoose.Schema.Types.Mixed,
       default: {},
     },
   },

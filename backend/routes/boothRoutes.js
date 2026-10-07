@@ -7,6 +7,7 @@ import Event from '../models/Event.js';
 import Photo from '../models/Photo.js';
 import Template from '../models/Template.js';
 import Payment from '../models/Payment.js';
+import OrganizationDefaults from '../models/OrganizationDefaults.js';
 
 const router = express.Router();
 
@@ -41,6 +42,7 @@ const authenticateBooth = async (req, res, next) => {
 // Helper to build BoothSnapshot
 const buildSnapshot = async (device, org) => {
   let eventPayload = null;
+  const orgDefaults = await OrganizationDefaults.findOne({ organizationId: org._id }).lean();
   
   if (device.assignedEventId) {
     const event = await Event.findById(device.assignedEventId).populate('templateIds').lean();
@@ -192,12 +194,22 @@ const arrangeSlots = (w, h, n) => {
       };
 
       let prices = event.layoutPrices instanceof Map ? Object.fromEntries(event.layoutPrices) : (event.layoutPrices || {});
+      const defPrices = orgDefaults?.layoutPrices instanceof Map ? Object.fromEntries(orgDefaults.layoutPrices) : (orgDefaults?.layoutPrices || {});
       const templates = (event.templateIds || []).filter(t => t && t._id);
       templates.forEach(t => {
         const parts = (t.layoutId || '57-v3').split('-');
         const priceKey = `${parts[0] || '57'}:${parseInt((parts[1] || 'v1').slice(1)) || 1}`;
-        if (typeof prices[priceKey] !== 'number') prices[priceKey] = event.printPrice || 0;
+        if (typeof prices[priceKey] !== 'number') {
+          if (typeof defPrices[priceKey] === 'number') {
+            prices[priceKey] = defPrices[priceKey];
+          } else {
+            prices[priceKey] = event.printPrice || 0;
+          }
+        }
       });
+
+      const defaultLogos = orgDefaults?.logoUrl ? [orgDefaults.logoUrl] : [];
+      const defaultTagline = orgDefaults?.tagline || '';
 
       eventPayload = {
         id: event._id.toString(),
@@ -211,8 +223,8 @@ const arrangeSlots = (w, h, n) => {
         digitalCopy: event.digitalCopy ?? true,
         filters: event.filters?.length ? event.filters : ['original'],
         branding: {
-          logos: event.branding?.logos || [],
-          tagline: event.branding?.tagline || ''
+          logos: (event.branding?.logos && event.branding.logos.length > 0) ? event.branding.logos : defaultLogos,
+          tagline: event.branding?.tagline || defaultTagline
         },
         layoutPrices: prices,
         templates: templates.map(mapTemplate),
@@ -222,20 +234,33 @@ const arrangeSlots = (w, h, n) => {
     }
   }
 
+  const snapshotRevision = `${eventPayload ? eventPayload.id : 'no-event'}_${eventPayload ? eventPayload.revision : 'no-rev'}_${orgDefaults?.updatedAt?.toISOString() || 'def'}`;
+
   return {
     device: { id: device._id.toString(), name: device.deviceName, uuid: device.deviceUuid },
-    organization: { id: org._id.toString(), name: org.name || 'Organization' },
+    organization: {
+      id: org._id.toString(),
+      name: org.name || 'Organization',
+      branding: {
+        logoUrl: orgDefaults?.logoUrl || null,
+        tagline: orgDefaults?.tagline || ''
+      }
+    },
     event: eventPayload,
     settings: {
-      organizationName: org.name || 'HappyPix Org',
-      boothTimeoutSec: 90,
-      payoutMode: 'wallet',
-      upiId: null,
-      paymentDisplayName: org.name || 'HappyPix',
-      currency: 'INR',
-      maximumPrints: 10
+      organizationName: orgDefaults?.displayName || org.name || 'HappyPix Org',
+      boothTimeoutSec: orgDefaults?.boothTimeoutSec ?? 90,
+      payoutMode: orgDefaults?.payoutMode || 'wallet',
+      upiId: orgDefaults?.upiId || null,
+      paymentDisplayName: orgDefaults?.displayName || org.name || 'HappyPix',
+      currency: orgDefaults?.currency || 'INR',
+      maximumPrints: orgDefaults?.maximumPrints || 10,
+      branding: {
+        logoUrl: orgDefaults?.logoUrl || null,
+        tagline: orgDefaults?.tagline || ''
+      }
     },
-    revision: eventPayload ? eventPayload.revision : new Date().toISOString(),
+    revision: snapshotRevision,
     serverTime: new Date().toISOString()
   };
 };
@@ -253,7 +278,9 @@ router.post('/login', async (req, res) => {
     if (!isMatch) return res.status(401).json({ error: 'Invalid admin credentials.' });
 
     const org = await Organization.findById(admin.organizationId);
-    if (!org || org.status === 'suspended') return res.status(403).json({ error: 'Organization suspended.' });
+    if (!org || org.status === 'suspended' || org.status === 'banned') {
+      return res.status(403).json({ error: `Organization is ${org?.status || 'inactive'}. Booth access not permitted.` });
+    }
 
     // Link or create device
     let device = await Device.findOne({ deviceUuid, organizationId: org._id });
@@ -327,6 +354,11 @@ router.post('/heartbeat', authenticateBooth, async (req, res) => {
     await req.device.save();
 
     const snapshot = await buildSnapshot(req.device, req.organization);
+    const knownRevision = req.body.knownRevision;
+    // Only send full snapshot when something actually changed
+    if (knownRevision && knownRevision === snapshot.revision) {
+      return res.json({ changed: false });
+    }
     res.json({ changed: true, snapshot });
   } catch (error) {
     res.status(500).json({ error: 'Heartbeat failed.' });

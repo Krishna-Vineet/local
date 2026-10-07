@@ -9,6 +9,8 @@ import Template from '../../models/Template.js';
 import PlatformSupportRequest from '../../models/PlatformSupportRequest.js';
 import AuditLog from '../../models/AuditLog.js';
 import Payment from '../../models/Payment.js';
+import Setting from '../../models/Setting.js';
+import { PLAN_DEVICE_LIMITS } from '../../models/Organization.js';
 import crypto from 'crypto';
 
 const router = express.Router();
@@ -170,20 +172,28 @@ router.get('/organizations', async (req, res) => {
       const onlineDevCount = await Device.countDocuments({ organizationId: o._id, status: 'active' });
       const activeEvCount = await Event.countDocuments({ organizationId: o._id, status: 'live' });
       
+      const planKey = (o.plan || 'starter').toLowerCase();
+      const planDeviceLimit = PLAN_DEVICE_LIMITS[planKey] ?? (planKey === 'professional' ? 5 : planKey === 'business' ? 10 : 1);
+      const planEventLimit = planKey === 'starter' ? 1 : planKey === 'basic' ? 2 : planKey === 'professional' ? 5 : planKey === 'business' ? 10 : 2;
+      
       return {
         id: o._id,
         name: o.name,
-        ownerName: ownerUser.name || 'Unknown',
-        email: ownerUser.email || 'N/A',
-        planName: o.plan || 'Free',
+        ownerName: ownerUser.name || o.ownerName || 'Unknown',
+        email: ownerUser.email || o.email || 'N/A',
+        plan: planKey,
+        planKey: planKey,
+        planName: o.plan || 'Starter',
         planStatus: o.status,
-        planExpiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        planExpiry: o.planExpiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         planDaysLeft: 30,
         onlineDevices: onlineDevCount,
         devices: devCount,
+        deviceLimit: planDeviceLimit === -1 ? 'Unlimited' : planDeviceLimit,
         activeEvents: activeEvCount,
+        eventLimit: planEventLimit,
         createdAt: o.createdAt,
-        lastActiveAt: new Date().toISOString(),
+        lastActiveAt: o.updatedAt || o.createdAt,
         status: o.status
       };
     }));
@@ -204,35 +214,41 @@ router.get('/organizations/:id', async (req, res) => {
     const orgEvents = await Event.find({ organizationId: o._id });
     const orgPayments = await Payment.find({ organizationId: o._id, status: 'paid' });
 
+    const planKey = (o.plan || 'starter').toLowerCase();
+    const planDeviceLimit = PLAN_DEVICE_LIMITS[planKey] ?? (planKey === 'professional' ? 5 : planKey === 'business' ? 10 : 1);
+    const planEventLimit = planKey === 'starter' ? 1 : planKey === 'basic' ? 2 : planKey === 'professional' ? 5 : planKey === 'business' ? 10 : 2;
+
     const planData = {
-      planName: o.plan || 'Free',
+      planName: o.plan || 'Starter',
       status: o.status,
       startDate: o.createdAt,
-      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      deviceLimit: 5,
-      eventLimit: 2,
+      endDate: o.planExpiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      deviceLimit: planDeviceLimit === -1 ? 'Unlimited' : planDeviceLimit,
+      eventLimit: planEventLimit,
       daysLeft: 30
     };
 
     res.json({
       id: o._id,
       name: o.name,
-      planName: o.plan || 'Free',
-      suspendReason: null,
+      planName: o.plan || 'Starter',
+      suspendReason: o.suspendReason || null,
       status: o.status,
-      ownerName: ownerUser.name || 'Unknown',
-      email: ownerUser.email || 'N/A',
-      phone: 'N/A',
-      country: 'IN',
+      ownerName: ownerUser.name || o.ownerName || 'Unknown',
+      email: ownerUser.email || o.email || 'N/A',
+      phone: o.phone || 'N/A',
+      country: o.country || 'IN',
       createdAt: o.createdAt,
-      lastActiveAt: new Date().toISOString(),
+      lastActiveAt: o.updatedAt || o.createdAt,
       plan: planData,
+      deviceLimit: planDeviceLimit === -1 ? 'Unlimited' : planDeviceLimit,
+      eventLimit: planEventLimit,
       subscription: null,
       devices: orgDevices.map(d => ({
         id: d._id,
         online: d.status === 'active',
         deviceName: d.deviceName || d.macAddress,
-        location: 'Unknown',
+        location: d.location || 'Unknown',
         eventName: 'N/A'
       })),
       events: orgEvents.map(e => ({
@@ -383,7 +399,7 @@ router.delete('/templates/:id', async (req, res) => {
 
 // ─── USERS ─────────────────────────────────────────────────────────────────
 
-router.get('/users', requireOwner, async (req, res) => {
+router.get('/users', async (req, res) => {
   try {
     const usersList = await User.find({ organizationId: null }).select('-password -forgotPasswordCodeHash');
     res.json({
@@ -393,7 +409,8 @@ router.get('/users', requireOwner, async (req, res) => {
         email: u.email,
         role: u.role,
         status: u.status,
-        lastLoginAt: new Date().toISOString() // placeholder if not tracked
+        lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
+        createdAt: u.createdAt
       }))
     });
   } catch (error) {
@@ -401,10 +418,9 @@ router.get('/users', requireOwner, async (req, res) => {
   }
 });
 
-router.post('/users', requireOwner, async (req, res) => {
+router.post('/users', async (req, res) => {
   try {
     const { name, email, role, password } = req.body;
-    // Real password hash will be handled by pre-save hook in User model
     const user = new User({ name, email, role, password: password, organizationId: null, status: 'active' });
     await user.save();
     await logAction(req.user._id, 'platform.user.created', 'user', `Created internal user: ${email} (${role})`);
@@ -414,12 +430,14 @@ router.post('/users', requireOwner, async (req, res) => {
   }
 });
 
-router.put('/users/:id', requireOwner, async (req, res) => {
+router.put('/users/:id', async (req, res) => {
   try {
     const { status } = req.body;
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.role === 'OWNER') return res.status(403).json({ error: 'Cannot modify owner' });
+    if (user.role === 'OWNER' && req.user.role !== 'OWNER') {
+      return res.status(403).json({ error: 'Cannot modify owner' });
+    }
     
     user.status = status;
     await user.save();
@@ -433,16 +451,23 @@ router.put('/users/:id', requireOwner, async (req, res) => {
 
 router.get('/support', async (req, res) => {
   try {
-    const tickets = await PlatformSupportRequest.find().sort({ createdAt: -1 }).populate('organizationId', 'name');
+    const reqs = await PlatformSupportRequest.find().sort({ createdAt: -1 }).populate('organizationId createdBy');
     res.json({
-      items: tickets.map(t => ({
-        id: t._id,
-        organization: { name: t.organizationId ? t.organizationId.name : 'Unknown' },
-        status: t.status,
-        subject: t.subject,
-        priority: t.priority || 'medium',
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt
+      requests: reqs.map(r => ({
+        id: r._id,
+        ticketNo: r.ticketNo || ('T-' + r._id.toString().substring(0, 4).toUpperCase()),
+        organizationId: r.organizationId?._id,
+        organizationName: r.organizationId?.name || 'Organization',
+        subject: r.subject,
+        category: r.category || 'technical',
+        priority: r.priority || 'medium',
+        status: r.status,
+        messages: r.messages || [],
+        reapplyCount: r.reapplyCount || 0,
+        decision: r.decision,
+        resolution: r.resolution,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt
       }))
     });
   } catch (error) {
@@ -452,77 +477,234 @@ router.get('/support', async (req, res) => {
 
 router.get('/support/:id', async (req, res) => {
   try {
-    const t = await PlatformSupportRequest.findById(req.params.id).populate('organizationId', 'name');
-    if (!t) return res.status(404).json({ error: 'Not found' });
+    const r = await PlatformSupportRequest.findById(req.params.id).populate('organizationId createdBy');
+    if (!r) return res.status(404).json({ error: 'Not found' });
     res.json({
-      id: t._id,
-      organization: { id: t.organizationId?._id, name: t.organizationId?.name },
-      status: t.status,
-      subject: t.subject,
-      description: t.description || t.messages?.[0]?.text,
-      priority: t.priority || 'medium',
-      createdAt: t.createdAt,
-      updatedAt: t.updatedAt,
-      messages: t.messages || []
+      request: {
+        id: r._id,
+        ticketNo: r.ticketNo || ('T-' + r._id.toString().substring(0, 4).toUpperCase()),
+        organizationId: r.organizationId?._id,
+        organizationName: r.organizationId?.name || 'Organization',
+        subject: r.subject,
+        category: r.category || 'technical',
+        priority: r.priority || 'medium',
+        status: r.status,
+        messages: r.messages || [],
+        reapplyCount: r.reapplyCount || 0,
+        decision: r.decision,
+        resolution: r.resolution,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt
+      }
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch ticket' });
   }
 });
 
-router.post('/support/:id/reply', async (req, res) => {
+router.post('/support/:id/accept', async (req, res) => {
   try {
+    const { message } = req.body;
     const r = await PlatformSupportRequest.findByIdAndUpdate(
       req.params.id,
       {
         status: 'open',
+        decision: { type: 'accepted', at: new Date(), by: req.user._id, reason: message || 'Accepted' },
+        acceptedAt: new Date()
+      },
+      { new: true }
+    ).populate('organizationId createdBy');
+    res.json({
+      request: {
+        id: r._id,
+        ticketNo: r.ticketNo || ('T-' + r._id.toString().substring(0, 4).toUpperCase()),
+        organizationId: r.organizationId?._id,
+        organizationName: r.organizationId?.name || 'Organization',
+        status: r.status,
+        messages: r.messages || [],
+        decision: r.decision,
+        ...r.toObject()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to accept request' });
+  }
+});
+
+router.post('/support/:id/deny', async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const r = await PlatformSupportRequest.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: 'denied',
+        decision: { type: 'denied', reason: reason || 'Not eligible', at: new Date(), by: req.user._id }
+      },
+      { new: true }
+    ).populate('organizationId createdBy');
+    res.json({
+      request: {
+        id: r._id,
+        ticketNo: r.ticketNo || ('T-' + r._id.toString().substring(0, 4).toUpperCase()),
+        organizationId: r.organizationId?._id,
+        organizationName: r.organizationId?.name || 'Organization',
+        status: r.status,
+        decision: r.decision,
+        ...r.toObject()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to deny request' });
+  }
+});
+
+router.post('/support/:id/reply', async (req, res) => {
+  try {
+    const { message, text, images } = req.body;
+    const r = await PlatformSupportRequest.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: 'in_progress',
         $push: {
           messages: {
             authorId: req.user._id,
             authorName: req.user.name,
             authorRole: req.user.role,
             side: 'platform',
-            text: req.body.message || req.body.text,
+            text: message || text || '',
+            images: images || [],
             at: new Date()
           }
         }
       },
       { new: true }
-    );
-    res.json({ id: r._id, status: r.status, messages: r.messages });
+    ).populate('organizationId createdBy');
+    res.json({
+      request: {
+        id: r._id,
+        ticketNo: r.ticketNo || ('T-' + r._id.toString().substring(0, 4).toUpperCase()),
+        organizationId: r.organizationId?._id,
+        organizationName: r.organizationId?.name || 'Organization',
+        status: r.status,
+        messages: r.messages || [],
+        ...r.toObject()
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to reply' });
+  }
+});
+
+router.post('/support/:id/resolve', async (req, res) => {
+  try {
+    const { resolution } = req.body;
+    const r = await PlatformSupportRequest.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: 'resolved',
+        resolution: resolution || 'Resolved by HappyPix platform team',
+        resolvedAt: new Date()
+      },
+      { new: true }
+    ).populate('organizationId createdBy');
+    res.json({
+      request: {
+        id: r._id,
+        ticketNo: r.ticketNo || ('T-' + r._id.toString().substring(0, 4).toUpperCase()),
+        organizationId: r.organizationId?._id,
+        organizationName: r.organizationId?.name || 'Organization',
+        status: r.status,
+        resolution: r.resolution,
+        ...r.toObject()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to resolve support ticket' });
+  }
+});
+
+router.post('/support/:id/reopen', async (req, res) => {
+  try {
+    const r = await PlatformSupportRequest.findByIdAndUpdate(
+      req.params.id,
+      { status: 'open' },
+      { new: true }
+    ).populate('organizationId createdBy');
+    res.json({
+      request: {
+        id: r._id,
+        ticketNo: r.ticketNo || ('T-' + r._id.toString().substring(0, 4).toUpperCase()),
+        organizationId: r.organizationId?._id,
+        organizationName: r.organizationId?.name || 'Organization',
+        status: r.status,
+        ...r.toObject()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to reopen support ticket' });
   }
 });
 
 // ─── GALLERY SETTINGS ────────────────────────────────────────────────────────
 
 router.get('/gallery-settings', async (req, res) => {
-  // Placeholder for global platform gallery settings
-  res.json({ galleryEnabled: true, requireGuestConsent: false });
+  try {
+    let s = await Setting.findOne({ organizationId: null });
+    if (!s) {
+      s = new Setting({ organizationId: null, galleryEnabled: true, requireGuestConsent: false });
+      await s.save();
+    }
+    res.json({
+      galleryEnabled: s.galleryEnabled !== false,
+      requireGuestConsent: !!s.requireGuestConsent
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch gallery settings' });
+  }
 });
 
 router.put('/gallery-settings', async (req, res) => {
-  // Save settings (placeholder)
-  res.json({ settings: { ...req.body } });
+  try {
+    const { galleryEnabled, requireGuestConsent } = req.body;
+    let s = await Setting.findOneAndUpdate(
+      { organizationId: null },
+      {
+        galleryEnabled: galleryEnabled !== undefined ? galleryEnabled : true,
+        requireGuestConsent: galleryEnabled === false ? false : (requireGuestConsent !== undefined ? requireGuestConsent : false)
+      },
+      { new: true, upsert: true }
+    );
+    res.json({
+      settings: {
+        galleryEnabled: s.galleryEnabled !== false,
+        requireGuestConsent: !!s.requireGuestConsent
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update gallery settings' });
+  }
 });
 
 // ─── AUDIT LOGS ────────────────────────────────────────────────────────────
 
 router.get('/audit', async (req, res) => {
   try {
-    const logs = await AuditLog.find().sort({ createdAt: -1 }).limit(100).populate('actorId', 'name role');
+    const logs = await AuditLog.find().sort({ at: -1 }).limit(100).populate('actorId', 'name role');
+    const internalUsers = await User.find({ organizationId: null }).select('name role');
     res.json({
       items: logs.map(l => ({
         id: l._id,
         action: l.action,
         entity: l.entity,
+        actorId: l.actorId ? (l.actorId._id || l.actorId) : null,
         actorName: l.actorId ? l.actorId.name : 'System',
         actorRole: l.actorId ? l.actorId.role : 'SYSTEM',
         summary: l.summary,
         severity: l.severity || 'info',
-        at: l.createdAt
-      }))
+        ip: l.ip || '—',
+        at: l.at
+      })),
+      actors: internalUsers.map(u => ({ id: u._id, name: u.name, role: u.role }))
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch audit logs' });

@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Organization from '../models/Organization.js';
 
 /**
  * JWT Authentication Middleware
@@ -29,6 +30,15 @@ export const authenticate = async (req, res, next) => {
     // Sessions are killed if status is inactive
     if (user.status !== 'active') {
       return res.status(403).json({ error: 'Account is deactivated.' });
+    }
+
+    // If tenant role, check organization status
+    if (user.organizationId) {
+      const org = await Organization.findById(user.organizationId);
+      if (!org || org.status === 'banned') {
+        return res.status(403).json({ error: 'Organization has been banned. Access denied.', code: 'ORG_BANNED' });
+      }
+      req.organization = org;
     }
 
     req.user = user;

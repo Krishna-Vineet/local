@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import User from '../../models/User.js';
+import Organization from '../../models/Organization.js';
 import { requireAuth } from '../../middleware/auth.js';
 
 const router = express.Router();
@@ -32,8 +33,14 @@ router.post('/login', async (req, res) => {
 
     if (user.status !== 'active') return res.status(403).json({ error: 'Account is deactivated.' });
 
-    user.lastLoginAt = new Date();
-    await user.save();
+    if (user.organizationId) {
+      const org = await Organization.findById(user.organizationId);
+      if (org && org.status === 'banned') {
+        return res.status(403).json({ error: 'Your organization has been banned. Access denied.', code: 'ORG_BANNED' });
+      }
+    }
+
+    await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
 
     const token = generateToken(user._id);
 

@@ -38,6 +38,17 @@ router.post('/login', async (req, res) => {
     const isMatch = await user.comparePassword(password);
     if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
 
+    if (user.status !== 'active') return res.status(403).json({ error: 'Account is deactivated.' });
+
+    if (user.organizationId) {
+      const org = await Organization.findById(user.organizationId);
+      if (org && org.status === 'banned') {
+        return res.status(403).json({ error: 'Your organization has been banned. Access denied.', code: 'ORG_BANNED' });
+      }
+    }
+
+    await User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() });
+
     // Include organizationId in JWT so all subsequent requests are org-scoped
     const token = jwt.sign(
       { 

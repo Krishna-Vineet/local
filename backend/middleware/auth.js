@@ -5,7 +5,7 @@ import Organization from '../models/Organization.js';
 /**
  * JWT Authentication Middleware
  */
-export const authenticate = async (req, res, next) => {
+export const authenticate = async (req, res, next, { allowBannedOrganization = false } = {}) => {
   try {
     let token = req.cookies?.hp_admin_token;
 
@@ -35,7 +35,7 @@ export const authenticate = async (req, res, next) => {
     // If tenant role, check organization status
     if (user.organizationId) {
       const org = await Organization.findById(user.organizationId);
-      if (!org || org.status === 'banned') {
+      if (!org || (org.status === 'banned' && !allowBannedOrganization)) {
         return res.status(403).json({ error: 'Organization has been banned. Access denied.', code: 'ORG_BANNED' });
       }
       req.organization = org;
@@ -52,6 +52,10 @@ export const authenticate = async (req, res, next) => {
     return res.status(401).json({ error: 'Invalid token.' });
   }
 };
+
+export const authenticateSession = (req, res, next) => (
+  authenticate(req, res, next, { allowBannedOrganization: true })
+);
 
 /**
  * Role-based Authorization Middleware

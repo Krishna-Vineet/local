@@ -67,6 +67,9 @@ export default function AppShell({ children }) {
   const path = useRoute()
   const nav = user ? navForRole(user.role) : []
   const platform = isPlatformRole(user?.role)
+  const orgName = user?.orgName || 'Loading organization…'
+  const orgStatus = user?.planStatus ? statusMeta(user.planStatus) : null
+  const orgBrandContext = orgStatus ? `${orgName} · ${orgStatus.label}` : orgName
 
   return (
     <div className="shell">
@@ -74,7 +77,7 @@ export default function AppShell({ children }) {
         <div className="sidebar-brand">
           <FullLogo size={18} height={30} onDark />
           <div className="brand-text">
-            <Wordmark size={13} onDark suffix="CRM" sub={platform ? 'HappyPix Platform' : user?.orgName || 'Organization'} />
+            <Wordmark size={13} onDark suffix="CRM" sub={platform ? 'HappyPix Platform' : orgBrandContext} />
           </div>
         </div>
         <nav className="sidebar-nav">
@@ -107,6 +110,7 @@ export default function AppShell({ children }) {
 function TopContext() {
   const { user } = useApp()
   if (!user) return null
+  const orgStatus = user.planStatus ? statusMeta(user.planStatus) : null
   if (isPlatformRole(user.role)) {
     return (
       <span className="chip chip-pink" style={{ height: 26, fontSize: 12 }}>
@@ -118,10 +122,10 @@ function TopContext() {
   return (
     <span className="chip chip-neutral" style={{ height: 26, fontSize: 12, gap: 8 }}>
       <Icon name="building" size={13} />
-      {user.orgName || 'Organization'}
-      {user.planStatus ? (
-        <span className={`chip ${statusMeta(user.planStatus).chip}`} style={{ height: 18, padding: '0 7px', fontSize: 10.5 }}>
-          {statusMeta(user.planStatus).label}
+      {user.orgName || 'Loading organization…'}
+      {orgStatus ? (
+        <span className={`chip ${orgStatus.chip}`} style={{ height: 18, padding: '0 7px', fontSize: 10.5 }}>
+          {orgStatus.label}
         </span>
       ) : null}
     </span>

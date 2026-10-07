@@ -185,7 +185,7 @@ export default function PlatformSupport() {
               {pending.map((row) => (
                 <button key={row.id} type="button" className={review?.id === row.id ? 'active' : ''} onClick={() => { setReviewId(row.id); setDenyReason('') }}>
                   <div className="t12 fw6 ellipsis">{row.subject}</div>
-                  <div className="t11 muted ellipsis">{row.organization?.name} · {relativeTime(row.updatedAt)}</div>
+                  <div className="t11 muted ellipsis">{supportOrgName(row)} · {relativeTime(row.updatedAt)}</div>
                 </button>
               ))}
             </div>
@@ -194,7 +194,7 @@ export default function PlatformSupport() {
                 <>
                   <SupportMeta request={review} />
                   <h3 style={{ fontSize: 17, margin: '14px 0 4px' }}>{review.subject}</h3>
-                  <div className="t12 muted">{review.organization?.name} · raised by {review.creator?.name} · {dateMed(review.createdAt)}</div>
+                  <div className="t12 muted">{supportOrgName(review)} · raised by {review.creator?.name} · {dateMed(review.createdAt)}</div>
                   <div className="t11 fw7 faint mt-16" style={{ letterSpacing: '.07em', textTransform: 'uppercase' }}>Original request</div>
                   <div className="card card-pad mt-8" style={{ boxShadow: 'none', background: 'var(--surface-2)' }}>
                     <SupportThread request={{ ...review, messages: review.messages.slice(0, 1) }} mineSide="platform" />
@@ -237,7 +237,7 @@ export default function PlatformSupport() {
         open={!!openId}
         onClose={() => { setOpenId(null); setRequest(null) }}
         title={request?.subject || 'Support ticket'}
-        sub={request ? `${request.ticketNo || 'Request'} · ${request.organization?.name || 'Organization'}` : ''}
+        sub={request ? `${request.ticketNo || 'Request'} · ${supportOrgName(request)}` : ''}
         icon="headset"
         footer={request && ['open', 'in_progress'].includes(request.status) ? (
           <div>
@@ -293,7 +293,7 @@ function SupportTable({ rows, onOpen, archive }) {
             return (
               <tr key={row.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(row.id)}>
                 <td><div className="cell-main">{row.subject}</div><div className="cell-sub">{row.ticketNo || SUPPORT_CATEGORIES[row.category]}</div></td>
-                <td className="t13">{row.organization?.name || '—'}</td>
+                <td className="t13">{supportOrgName(row)}</td>
                 <td><Chip tone={priority?.tone || 'neutral'}>{priority?.label || row.priority}</Chip></td>
                 <td><Chip tone={status?.tone || 'neutral'} dot>{status?.label || row.status}</Chip></td>
                 <td className="t12 muted">{relativeTime(row.updatedAt)}</td>
@@ -305,4 +305,8 @@ function SupportTable({ rows, onOpen, archive }) {
       </table>
     </div>
   )
+}
+
+function supportOrgName(request) {
+  return request.organizationName || request.organization?.name || request.organizationId?.name || '—'
 }

@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import User from '../../models/User.js';
 import Organization from '../../models/Organization.js';
-import { requireAuth } from '../../middleware/auth.js';
+import { requireAuth, authenticateSession } from '../../middleware/auth.js';
 
 const router = express.Router();
 
@@ -33,8 +33,9 @@ router.post('/login', async (req, res) => {
 
     if (user.status !== 'active') return res.status(403).json({ error: 'Account is deactivated.' });
 
+    let org = null;
     if (user.organizationId) {
-      const org = await Organization.findById(user.organizationId);
+      org = await Organization.findById(user.organizationId);
       if (org && org.status === 'banned') {
         return res.status(403).json({ error: 'Your organization has been banned. Access denied.', code: 'ORG_BANNED' });
       }
@@ -52,14 +53,31 @@ router.post('/login', async (req, res) => {
       maxAge: 8 * 60 * 60 * 1000 // 8 hours
     });
 
-    res.json({ token, user, expiresInMin: 480 });
+    const sessionUser = user.toObject();
+    delete sessionUser.password;
+    res.json({
+      token,
+      user: {
+        ...sessionUser,
+        orgName: org?.name || null,
+        planStatus: org?.status || null,
+      },
+      expiresInMin: 480,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Server error during login.' });
   }
 });
 
-router.get('/me', requireAuth, async (req, res) => {
-  res.json({ token: req.cookies?.hp_admin_token || req.headers.authorization?.split(' ')[1], user: req.user });
+router.get('/me', authenticateSession, async (req, res) => {
+  res.json({
+    token: req.cookies?.hp_admin_token || req.headers.authorization?.split(' ')[1],
+    user: {
+      ...req.user.toObject(),
+      orgName: req.organization?.name || null,
+      planStatus: req.organization?.status || null,
+    },
+  });
 });
 
 router.post('/logout', requireAuth, (req, res) => {

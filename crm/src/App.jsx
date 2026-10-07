@@ -54,7 +54,7 @@ export default function App() {
 
   // Attach org name for the topbar chip (org roles only).
   useEffect(() => {
-    if (user && !isPlatformRole(user.role) && !user.orgName) {
+    if (user && !isPlatformRole(user.role) && (!user.orgName || !user.planStatus)) {
       api.org.dashboard()
         .then((r) => updateUser({ ...user, orgName: r.organization.name, planStatus: r.plan.status }))
         .catch(() => {})

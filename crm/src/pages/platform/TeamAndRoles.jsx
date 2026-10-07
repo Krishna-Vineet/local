@@ -58,7 +58,7 @@ export default function TeamAndRoles() {
           <div className="page-title">Team & Roles</div>
           <div className="page-sub">
             {isOwner
-              ? 'Internal HappyPix platform team. Existing names and emails are self-managed; the Owner can only deactivate or re-activate accounts.'
+              ? 'Internal HappyPix platform team. Existing names and emails are self-managed; the Owner can only deactivate or re-activate non-owner accounts.'
               : 'Read-only view of the internal platform team. Permissions are fixed by platform policy.'}
           </div>
         </div>
@@ -92,7 +92,7 @@ export default function TeamAndRoles() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                     <Chip tone={u.role === ROLES.OWNER ? 'pink' : u.role === ROLES.PLATFORM_ADMIN ? 'purple' : 'info'}>{ROLE_LABELS[u.role]}</Chip>
-                    {isOwner && u.id !== user.id && (
+                    {isOwner && u.id !== user.id && (u.role !== ROLES.OWNER || u.status !== 'active') && (
                       <Button
                         size="sm"
                         variant="ghost"

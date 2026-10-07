@@ -332,7 +332,11 @@ router.get('/bootstrap', authenticateBooth, async (req, res) => {
 router.post('/heartbeat', authenticateBooth, async (req, res) => {
   try {
     req.device.lastSeenAt = new Date();
-    req.device.ipAddress = req.ip || req.headers['x-forwarded-for'] || null;
+    const forwardedFor = req.headers['x-forwarded-for'];
+    req.device.ipAddress = (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor?.split(',')[0])?.trim()
+      || req.ip
+      || req.socket?.remoteAddress
+      || null;
     req.device.userAgent = req.headers['user-agent'] || null;
     
     if (req.body.hardware) {

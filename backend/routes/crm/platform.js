@@ -19,8 +19,20 @@ const router = express.Router();
 router.use(requirePlatformRole);
 
 // Helper for Audit Logs
-const logAction = async (actorId, action, entity, summary, severity = 'info') => {
-  await AuditLog.create({ actorId, action, entity, summary, severity });
+const logAction = async (req, action, entity, summary, severity = 'info') => {
+  await AuditLog.create({
+    actorId: req.user._id,
+    action,
+    entity,
+    summary,
+    severity,
+    ip: (Array.isArray(req.headers['x-forwarded-for'])
+      ? req.headers['x-forwarded-for'][0]
+      : req.headers['x-forwarded-for']?.split(',')[0])?.trim()
+      || req.ip
+      || req.socket?.remoteAddress
+      || null,
+  });
 };
 
 // ─── DASHBOARD ─────────────────────────────────────────────────────────────
@@ -272,7 +284,8 @@ router.post('/organizations/:id/suspend', requireOwner, async (req, res) => {
   try {
     const { reason } = req.body;
     const org = await Organization.findByIdAndUpdate(req.params.id, { status: 'suspended' }, { new: true });
-    await logAction(req.user._id, 'platform.org.suspended', 'organization', `Suspended organization: ${org.name}. Reason: ${reason}`, 'warn');
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    await logAction(req, 'platform.org.suspended', 'organization', `Suspended organization: ${org.name}. Reason: ${reason}`, 'warn');
     res.json({ id: org._id, status: org.status });
   } catch (error) {
     res.status(500).json({ error: 'Failed to suspend organization' });
@@ -283,7 +296,8 @@ router.post('/organizations/:id/ban', requireOwner, async (req, res) => {
   try {
     const { reason } = req.body;
     const org = await Organization.findByIdAndUpdate(req.params.id, { status: 'banned' }, { new: true });
-    await logAction(req.user._id, 'platform.org.banned', 'organization', `Banned organization: ${org.name}. Reason: ${reason}`, 'danger');
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    await logAction(req, 'platform.org.banned', 'organization', `Banned organization: ${org.name}. Reason: ${reason}`, 'danger');
     res.json({ id: org._id, status: org.status });
   } catch (error) {
     res.status(500).json({ error: 'Failed to ban organization' });
@@ -293,7 +307,8 @@ router.post('/organizations/:id/ban', requireOwner, async (req, res) => {
 router.post('/organizations/:id/restore', requireOwner, async (req, res) => {
   try {
     const org = await Organization.findByIdAndUpdate(req.params.id, { status: 'active' }, { new: true });
-    await logAction(req.user._id, 'platform.org.restored', 'organization', `Restored organization: ${org.name}`);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    await logAction(req, 'platform.org.restored', 'organization', `Restored organization: ${org.name}`);
     res.json({ id: org._id, status: org.status });
   } catch (error) {
     res.status(500).json({ error: 'Failed to restore organization' });
@@ -423,7 +438,7 @@ router.post('/users', async (req, res) => {
     const { name, email, role, password } = req.body;
     const user = new User({ name, email, role, password: password, organizationId: null, status: 'active' });
     await user.save();
-    await logAction(req.user._id, 'platform.user.created', 'user', `Created internal user: ${email} (${role})`);
+    await logAction(req, 'platform.user.created', 'user', `Created internal user: ${email} (${role})`);
     res.status(201).json({ user: { id: user._id, name: user.name, email: user.email, role: user.role, status: user.status } });
   } catch (error) {
     res.status(500).json({ error: 'Failed to create user' });
@@ -435,8 +450,11 @@ router.put('/users/:id', async (req, res) => {
     const { status } = req.body;
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.role === 'OWNER' && req.user.role !== 'OWNER') {
-      return res.status(403).json({ error: 'Cannot modify owner' });
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be active or inactive' });
+    }
+    if (user.role === 'OWNER' && status === 'inactive') {
+      return res.status(403).json({ error: 'The Owner account cannot be deactivated' });
     }
     
     user.status = status;
@@ -689,7 +707,10 @@ router.put('/gallery-settings', async (req, res) => {
 
 router.get('/audit', async (req, res) => {
   try {
-    const logs = await AuditLog.find().sort({ at: -1 }).limit(100).populate('actorId', 'name role');
+    const logs = await AuditLog.find({ action: { $ne: 'booth.heartbeat' } })
+      .sort({ at: -1 })
+      .limit(100)
+      .populate('actorId', 'name role');
     const internalUsers = await User.find({ organizationId: null }).select('name role');
     res.json({
       items: logs.map(l => ({

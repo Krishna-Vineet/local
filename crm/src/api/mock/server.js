@@ -341,6 +341,15 @@ function userPublic(u) {
   }
 }
 
+function userSessionView(db, u) {
+  const organization = db.organizations.find((org) => org.id === u.organizationId)
+  return {
+    ...userPublic(u),
+    orgName: organization?.name || null,
+    planStatus: organization?.status || null,
+  }
+}
+
 // ---------- aggregates ----------
 
 function revenueAgg(db, orgId, { from, to, eventId, deviceId, status } = {}) {
@@ -460,7 +469,7 @@ export function handle(method, path, body, token) {
       summary: `${u.name} signed in to CRM`,
     })
     persist()
-    return { status: 200, data: { token, user: userPublic(u), expiresInMin: SESSION_TTL_MIN } }
+    return { status: 200, data: { token, user: userSessionView(db, u), expiresInMin: SESSION_TTL_MIN } }
   }
 
   let user = null
@@ -482,7 +491,7 @@ export function handle(method, path, body, token) {
   if (p === 'auth') {
     if (p2 === 'me' && method === 'GET') {
       authed()
-      return { status: 200, data: { user: userPublic(user) } }
+      return { status: 200, data: { user: userSessionView(db, user) } }
     }
     if (p2 === 'logout' && method === 'POST') {
       // Idempotent: revoke this token if it exists. Always 200.
@@ -834,7 +843,7 @@ export function handle(method, path, body, token) {
     if (p2 === 'audit' && method === 'GET') {
       authed(PERMS.PLATFORM_AUDIT_VIEW)
       const q = url.searchParams
-      let rows = db.audit.filter((a) => !a.organizationId) // platform scope
+      let rows = db.audit.filter((a) => !a.organizationId && a.action !== 'booth.heartbeat') // platform scope
       if (q.get('from')) rows = rows.filter((a) => new Date(a.at) >= new Date(q.get('from')))
       if (q.get('to')) rows = rows.filter((a) => new Date(a.at) <= new Date(q.get('to') + 'T23:59:59'))
       if (q.get('action')) rows = rows.filter((a) => a.action.includes(q.get('action')))
@@ -1034,6 +1043,7 @@ export function handle(method, path, body, token) {
         throw new ApiError(403, 'The Owner cannot edit a team member’s name, email or role. Team members manage their own identity; only activation status can be changed here.')
       }
       if (!['active', 'inactive'].includes(body && body.status)) throw new ApiError(400, 'Status must be active or inactive.')
+      if (u.role === ROLES.OWNER && body.status === 'inactive') throw new ApiError(403, 'The Owner account cannot be deactivated.')
       if (u.id === user.id && body.status !== 'active') throw new ApiError(400, 'You cannot deactivate your own account.')
       u.status = body.status
       if (u.status !== 'active') killSessions(db, u.id)

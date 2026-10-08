@@ -154,7 +154,6 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
       <View
         style={[
           styles.container,
-          { flexDirection: isLandscape ? 'row' : 'column' },
           contentStyle,
         ]}
       >

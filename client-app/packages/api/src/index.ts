@@ -50,6 +50,18 @@ export interface QuoteInput {
   couponCode?: string;
 }
 
+export interface SupportTicketInput {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  category?: 'printing' | 'payment' | 'quality' | 'general';
+  sessionId?: string;
+  paymentReference?: string;
+  eventId?: string;
+  deviceId?: string;
+}
+
 export interface BoothApi {
   login(input: LoginInput): Promise<{ installation: Installation; snapshot: BoothSnapshot }>;
   bootstrap(installation: Installation): Promise<BoothSnapshot>;
@@ -58,7 +70,8 @@ export interface BoothApi {
   createPayment(installation: Installation, quote: CheckoutQuote): Promise<PaymentOrder>;
   paymentStatus(installation: Installation, paymentId: string): Promise<PaymentOrder['status']>;
   completeFree(installation: Installation, quote: CheckoutQuote): Promise<void>;
-  completeSession(installation: Installation, input: { sessionId: string; digitalCopy: boolean }): Promise<{ shareUrl: string | null }>;
+  completeSession(installation: Installation, input: { sessionId: string; digitalCopy: boolean; guestConsent?: boolean }): Promise<{ shareUrl: string | null }>;
+  submitTicket(installation: Installation | null, input: SupportTicketInput): Promise<{ success: boolean; ticketId?: string }>;
 }
 
 const svgData = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -293,6 +306,14 @@ export const demoBoothApi: BoothApi = {
       shareUrl: input.digitalCopy ? `https://happypix.in/share/${encodeURIComponent(input.sessionId)}` : null,
     };
   },
+
+  async submitTicket(_installation, input) {
+    await delay(400);
+    return {
+      success: true,
+      ticketId: `tkt-demo-${Date.now()}`,
+    };
+  },
 };
 
 export class HttpBoothApi implements BoothApi {
@@ -362,7 +383,7 @@ export class HttpBoothApi implements BoothApi {
     await this.request('/api/booth/checkout/free-complete', { method: 'POST', body: JSON.stringify({ quote }) }, installation);
   }
 
-  completeSession(installation: Installation, input: { sessionId: string; digitalCopy: boolean }) {
+  completeSession(installation: Installation, input: { sessionId: string; digitalCopy: boolean; guestConsent?: boolean }) {
     return this.request<{ shareUrl: string | null }>(
       '/api/booth/sessions/complete',
       {
@@ -370,6 +391,17 @@ export class HttpBoothApi implements BoothApi {
         body: JSON.stringify(input),
       },
       installation
+    );
+  }
+
+  submitTicket(installation: Installation | null, input: SupportTicketInput) {
+    return this.request<{ success: boolean; ticketId?: string }>(
+      installation ? '/api/booth/support' : '/api/support',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+      installation || undefined
     );
   }
 }
@@ -424,6 +456,7 @@ export const boothApi: BoothApi = {
   paymentStatus: (inst, id) => getBoothApi().paymentStatus(inst, id),
   completeFree: (inst, q) => getBoothApi().completeFree(inst, q),
   completeSession: (inst, inp) => getBoothApi().completeSession(inst, inp),
+  submitTicket: (inst, inp) => getBoothApi().submitTicket(inst, inp),
 };
 
 export const isDemoMode = (): boolean => !activeApiUrl;

@@ -7,7 +7,6 @@ import {
   TextInput,
   ActivityIndicator,
   useWindowDimensions,
-  ScrollView,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -22,6 +21,7 @@ import {
   verticalScale,
 } from '../../../../packages/ui/src/index';
 import { useBooth } from '../context/BoothProvider';
+import { ScreenHeader } from '../components/ScreenHeader';
 import SoundManager from '../utils/SoundManager';
 import { InactivityToast } from '../components/InactivityToast';
 import type { RootStackParamList } from '../../App';
@@ -44,7 +44,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
   } = useBooth();
 
   const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
+  const isLandscape = width > 700;
 
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
   const [coupon, setCoupon] = useState('');
@@ -66,7 +66,6 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
     setIdleTimerEnabled(true);
     resetIdleTimer();
 
-    // Initial quote request
     let active = true;
     requestQuote()
       .then((q) => {
@@ -144,7 +143,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
         updateSession({ quote, payment: null });
         setTimeout(() => {
           navigation.navigate('Camera');
-        }, 900);
+        }, 800);
         return;
       }
 
@@ -163,16 +162,16 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
             updateSession({ quote, payment: { ...order, status } });
             setTimeout(() => {
               navigation.navigate('Camera');
-            }, 1100);
+            }, 1000);
           } else if (status === 'failed') {
             stopPolling();
             setPhase('error');
             setError('Payment was not completed. Please try again.');
           }
         } catch {
-          // Temporary network blip, continue polling
+          // Ignore network blip, continue polling
         }
-      }, 1800);
+      }, 1600);
     } catch (reason: any) {
       setError(reason.message || 'Could not start payment.');
       setPhase('error');
@@ -193,14 +192,16 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer style={{ backgroundColor: '#050508' }}>
       <LayoutContainer>
-        <View style={styles.header}>
-          <Text style={styles.title}>Secure Payment</Text>
-          <Text style={styles.subtitle}>
-            Your price and discount are verified by HappyPix before shooting begins.
-          </Text>
-        </View>
+        {/* Prominent Header with Countdown Timer */}
+        <ScreenHeader
+          title="Payment & Order Review"
+          subtitle="All prices and discounts are verified securely before shooting begins"
+          onBack={handleBack}
+          secondsLeft={secondsLeft}
+          step="STEP 4 OF 5"
+        />
 
         {phase === 'quoting' || phase === 'creating' ? (
           <View style={styles.centerState}>
@@ -208,10 +209,10 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.stateTitle}>
               {phase === 'quoting' ? 'Verifying event price…' : 'Generating UPI QR code…'}
             </Text>
-            <Text style={styles.stateSub}>Please keep this screen open.</Text>
+            <Text style={styles.stateSub}>Please wait a moment…</Text>
           </View>
         ) : phase === 'waiting' && quote && payment ? (
-          <View style={[styles.waitingLayout, isLandscape ? styles.rowLayout : styles.colLayout]}>
+          <View style={[styles.mainLayout, isLandscape ? styles.rowLayout : styles.colLayout]}>
             {/* QR Panel */}
             <View style={styles.qrCard}>
               <Text style={styles.kicker}>SCAN WITH ANY UPI APP</Text>
@@ -219,7 +220,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
               <View style={styles.qrFrame}>
                 <QRCode
                   value={payment.qrPayload}
-                  size={scale(200)}
+                  size={scale(190)}
                   backgroundColor="#ffffff"
                   color="#000000"
                 />
@@ -234,12 +235,12 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.statusWaitText}>Waiting for payment…</Text>
               </View>
               <Text style={styles.statusDesc}>
-                This screen will continue automatically once your UPI app approves the payment.
+                This screen will advance automatically as soon as your UPI app approves the payment.
               </Text>
 
               <View style={styles.infoTable}>
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Payment ID</Text>
+                  <Text style={styles.infoLabel}>Payment Ref</Text>
                   <Text style={styles.infoValue}>{payment.paymentId}</Text>
                 </View>
                 <View style={styles.infoRow}>
@@ -249,7 +250,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
                   </Text>
                 </View>
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Amount</Text>
+                  <Text style={styles.infoLabel}>Final Amount</Text>
                   <Text style={styles.infoValue}>₹{quote.finalAmount}</Text>
                 </View>
               </View>
@@ -269,15 +270,15 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.checkIcon}>✓</Text>
             </View>
             <Text style={styles.stateTitle}>
-              {quote?.finalAmount === 0 ? 'Free Order Registered!' : 'Payment Received!'}
+              {quote?.finalAmount === 0 ? 'Free Session Approved!' : 'Payment Verified!'}
             </Text>
-            <Text style={styles.stateSub}>Get ready for your photo session…</Text>
+            <Text style={styles.stateSub}>Opening camera for your photo booth session…</Text>
           </View>
         ) : (
-          <View style={[styles.summaryLayout, isLandscape ? styles.rowLayout : styles.colLayout]}>
-            {/* Summary Card */}
+          <View style={[styles.mainLayout, isLandscape ? styles.rowLayout : styles.colLayout]}>
+            {/* Order Summary Card */}
             <View style={styles.summaryCard}>
-              <Text style={styles.kicker}>ORDER SUMMARY</Text>
+              <Text style={styles.kicker}>ORDER BREAKDOWN</Text>
               {quote && (
                 <>
                   <View style={styles.summaryLine}>
@@ -299,13 +300,15 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
                   )}
 
                   <View style={styles.summaryTotalRow}>
-                    <Text style={styles.totalLabel}>Final total</Text>
+                    <Text style={styles.totalLabel}>Total Payable</Text>
                     <Text style={styles.totalValue}>₹{quote.finalAmount}</Text>
                   </View>
 
-                  {quote.couponMessage && (
+                  {quote.couponCode && (
                     <View style={styles.couponBadge}>
-                      <Text style={styles.couponBadgeText}>✓ {quote.couponMessage}</Text>
+                      <Text style={styles.couponBadgeText}>
+                        ✓ {quote.couponMessage || quote.couponCode}
+                      </Text>
                       <TouchableOpacity onPress={removeCoupon}>
                         <Text style={styles.removeCouponText}>Remove</Text>
                       </TouchableOpacity>
@@ -315,12 +318,12 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
               )}
             </View>
 
-            {/* Coupon Card */}
+            {/* Coupon / Voucher Card */}
             <View style={styles.couponCard}>
               <Text style={styles.kicker}>PROMO / COUPON</Text>
               <Text style={styles.couponTitle}>Have a coupon code?</Text>
               <Text style={styles.couponSub}>
-                We will validate the discount securely against the current event.
+                Enter code to apply event or organizer discounts.
               </Text>
 
               {!quote?.couponCode && (
@@ -329,7 +332,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
                     style={styles.couponInput}
                     value={coupon}
                     onChangeText={(val) => setCoupon(val.toUpperCase())}
-                    placeholder="ENTER CODE"
+                    placeholder="ENTER CODE (e.g. PIX20)"
                     placeholderTextColor="#52525b"
                     autoCapitalize="characters"
                     autoCorrect={false}
@@ -358,7 +361,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
 
               <View style={styles.trustFooter}>
                 <Text style={styles.trustText}>
-                  🛡 Payment is verified before capturing photos.
+                  🛡 Payment is held securely until photos are printed.
                 </Text>
               </View>
             </View>
@@ -383,7 +386,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
               activeOpacity={0.85}
             >
               <Text style={styles.nextBtnText}>
-                {quote?.finalAmount === 0 ? 'Register Free Order →' : 'Generate UPI QR →'}
+                {quote?.finalAmount === 0 ? 'Register Free Order →' : 'Generate UPI QR Code →'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -398,22 +401,20 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  header: {
+  mainLayout: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: verticalScale(14),
-    marginBottom: verticalScale(16),
+    paddingHorizontal: scale(16),
+    gap: scale(20),
   },
-  title: {
-    color: '#ffffff',
-    fontSize: fontSize(24),
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: 4,
+  rowLayout: {
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
-  subtitle: {
-    color: '#a1a1aa',
-    fontSize: fontSize(13),
-    textAlign: 'center',
+  colLayout: {
+    flexDirection: 'column',
+    justifyContent: 'center',
   },
   centerState: {
     flex: 1,
@@ -423,7 +424,7 @@ const styles = StyleSheet.create({
   },
   stateTitle: {
     color: '#ffffff',
-    fontSize: fontSize(20),
+    fontSize: fontSize(22),
     fontWeight: '800',
     marginTop: verticalScale(16),
   },
@@ -433,81 +434,72 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   bigCheck: {
-    width: moderateScale(70),
-    height: moderateScale(70),
-    borderRadius: moderateScale(35),
+    width: moderateScale(72),
+    height: moderateScale(72),
+    borderRadius: moderateScale(36),
     backgroundColor: '#22c55e',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#22c55e',
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 8,
   },
   checkIcon: {
     color: '#ffffff',
     fontSize: fontSize(36),
     fontWeight: '900',
   },
-  waitingLayout: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: scale(16),
-  },
-  summaryLayout: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: scale(16),
-  },
-  rowLayout: {
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-  },
-  colLayout: {
-    flexDirection: 'column',
-    justifyContent: 'space-evenly',
-  },
   qrCard: {
-    backgroundColor: '#121217',
-    borderRadius: moderateScale(22),
+    backgroundColor: '#0f0f16',
+    borderRadius: moderateScale(24),
     borderWidth: 1.5,
-    borderColor: '#22222a',
-    padding: scale(20),
-    width: scale(300),
+    borderColor: '#222232',
+    padding: scale(24),
+    width: scale(320),
     alignItems: 'center',
-    margin: scale(10),
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 6,
   },
   kicker: {
     color: '#8b5cf6',
     fontSize: fontSize(10),
     fontWeight: '800',
     letterSpacing: 2,
-    marginBottom: verticalScale(10),
+    marginBottom: verticalScale(8),
   },
   qrAmount: {
     color: '#ffffff',
-    fontSize: fontSize(28),
+    fontSize: fontSize(30),
     fontWeight: '900',
-    marginBottom: verticalScale(12),
+    marginBottom: verticalScale(14),
   },
   qrFrame: {
     backgroundColor: '#ffffff',
     padding: scale(14),
     borderRadius: 16,
-    marginBottom: verticalScale(12),
+    marginBottom: verticalScale(14),
   },
   upiAppsText: {
     color: '#a1a1aa',
     fontSize: fontSize(11),
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   statusCard: {
-    backgroundColor: '#121217',
-    borderRadius: moderateScale(22),
+    backgroundColor: '#0f0f16',
+    borderRadius: moderateScale(24),
     borderWidth: 1.5,
-    borderColor: '#22222a',
-    padding: scale(24),
-    width: scale(320),
-    margin: scale(10),
+    borderColor: '#222232',
+    padding: scale(26),
+    width: scale(330),
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 6,
   },
   pulseContainer: {
     flexDirection: 'row',
@@ -516,8 +508,8 @@ const styles = StyleSheet.create({
   },
   statusWaitText: {
     color: '#ffffff',
-    fontSize: fontSize(16),
-    fontWeight: '700',
+    fontSize: fontSize(17),
+    fontWeight: '800',
     marginLeft: 10,
   },
   statusDesc: {
@@ -529,10 +521,10 @@ const styles = StyleSheet.create({
   },
   infoTable: {
     width: '100%',
-    backgroundColor: '#18181f',
+    backgroundColor: '#161622',
     borderRadius: 12,
-    padding: scale(12),
-    marginBottom: verticalScale(16),
+    padding: scale(14),
+    marginBottom: verticalScale(18),
   },
   infoRow: {
     flexDirection: 'row',
@@ -542,17 +534,20 @@ const styles = StyleSheet.create({
   infoLabel: {
     color: '#71717a',
     fontSize: fontSize(11),
+    fontWeight: '600',
   },
   infoValue: {
     color: '#e4e4e7',
     fontSize: fontSize(12),
-    fontWeight: '700',
+    fontWeight: '800',
   },
   cancelQrBtn: {
     paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(20),
+    paddingHorizontal: scale(22),
     borderRadius: 10,
-    backgroundColor: '#1c1c24',
+    backgroundColor: '#1c1c28',
+    borderWidth: 1,
+    borderColor: '#2b2b3a',
   },
   cancelQrText: {
     color: '#f87171',
@@ -560,13 +555,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   summaryCard: {
-    backgroundColor: '#121217',
-    borderRadius: moderateScale(22),
+    backgroundColor: '#0f0f16',
+    borderRadius: moderateScale(24),
     borderWidth: 1.5,
-    borderColor: '#22222a',
-    padding: scale(24),
-    width: scale(310),
-    margin: scale(10),
+    borderColor: '#222232',
+    padding: scale(26),
+    width: scale(330),
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 6,
   },
   summaryLine: {
     flexDirection: 'row',
@@ -576,60 +574,64 @@ const styles = StyleSheet.create({
   summaryLabel: {
     color: '#d4d4d8',
     fontSize: fontSize(14),
+    fontWeight: '600',
   },
   summaryVal: {
     color: '#ffffff',
     fontSize: fontSize(15),
-    fontWeight: '700',
+    fontWeight: '800',
   },
   summaryTotalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: verticalScale(14),
-    marginTop: verticalScale(8),
+    marginTop: verticalScale(10),
     borderTopWidth: 1,
-    borderTopColor: '#27272a',
+    borderTopColor: '#222232',
   },
   totalLabel: {
     color: '#ffffff',
-    fontSize: fontSize(16),
+    fontSize: fontSize(17),
     fontWeight: '800',
   },
   totalValue: {
     color: '#8b5cf6',
-    fontSize: fontSize(24),
+    fontSize: fontSize(26),
     fontWeight: '900',
   },
   couponBadge: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(34, 197, 94, 0.1)',
-    borderRadius: 8,
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.25)',
+    borderColor: 'rgba(34, 197, 94, 0.3)',
     padding: 10,
-    marginTop: verticalScale(12),
+    marginTop: verticalScale(14),
   },
   couponBadgeText: {
     color: '#4ade80',
     fontSize: fontSize(12),
-    fontWeight: '600',
+    fontWeight: '700',
   },
   removeCouponText: {
     color: '#f87171',
     fontSize: fontSize(11),
-    fontWeight: '700',
+    fontWeight: '800',
   },
   couponCard: {
-    backgroundColor: '#121217',
-    borderRadius: moderateScale(22),
+    backgroundColor: '#0f0f16',
+    borderRadius: moderateScale(24),
     borderWidth: 1.5,
-    borderColor: '#22222a',
-    padding: scale(24),
-    width: scale(310),
-    margin: scale(10),
+    borderColor: '#222232',
+    padding: scale(26),
+    width: scale(330),
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 6,
   },
   couponTitle: {
     color: '#ffffff',
@@ -649,33 +651,34 @@ const styles = StyleSheet.create({
   },
   couponInput: {
     flex: 1,
-    backgroundColor: '#18181f',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#27272a',
+    backgroundColor: '#171722',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#28283a',
     color: '#ffffff',
-    fontSize: fontSize(14),
-    padding: scale(10),
+    fontSize: fontSize(13),
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(12),
     marginRight: scale(8),
   },
   applyBtn: {
     backgroundColor: '#8b5cf6',
-    paddingVertical: scale(10),
+    paddingVertical: verticalScale(10),
     paddingHorizontal: scale(16),
-    borderRadius: 10,
+    borderRadius: 12,
   },
   applyBtnDisabled: {
-    opacity: 0.4,
+    opacity: 0.35,
   },
   applyBtnText: {
     color: '#ffffff',
     fontSize: fontSize(13),
-    fontWeight: '700',
+    fontWeight: '800',
   },
   couponErrorBox: {
     marginTop: 8,
     padding: 8,
-    borderRadius: 6,
+    borderRadius: 8,
     backgroundColor: 'rgba(239, 68, 68, 0.12)',
   },
   couponErrorText: {
@@ -686,7 +689,7 @@ const styles = StyleSheet.create({
     marginTop: verticalScale(20),
     paddingTop: verticalScale(12),
     borderTopWidth: 1,
-    borderTopColor: '#22222a',
+    borderTopColor: '#1f1f2c',
   },
   trustText: {
     color: '#71717a',
@@ -704,7 +707,9 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(12),
     paddingHorizontal: scale(22),
     borderRadius: moderateScale(12),
-    backgroundColor: '#1c1c24',
+    backgroundColor: '#171720',
+    borderWidth: 1,
+    borderColor: '#262634',
   },
   backBtnText: {
     color: '#d4d4d8',
@@ -716,13 +721,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(28),
     borderRadius: moderateScale(12),
     backgroundColor: '#8b5cf6',
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 5,
   },
   nextBtnDisabled: {
-    opacity: 0.4,
+    opacity: 0.35,
+    shadowOpacity: 0,
   },
   nextBtnText: {
     color: '#ffffff',
     fontSize: fontSize(15),
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });

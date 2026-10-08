@@ -20,6 +20,7 @@ import {
   verticalScale,
 } from '../../../../packages/ui/src/index';
 import { useBooth } from '../context/BoothProvider';
+import { ScreenHeader } from '../components/ScreenHeader';
 import SoundManager from '../utils/SoundManager';
 import { getTemplatePrice } from '../utils/pricing';
 import { InactivityToast } from '../components/InactivityToast';
@@ -98,16 +99,18 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer style={{ backgroundColor: '#050508' }}>
       <LayoutContainer>
-        <View style={styles.header}>
-          <Text style={styles.title}>Pick your favourite look</Text>
-          <Text style={styles.subtitle}>
-            Filter by print size and number of photos, then select a design.
-          </Text>
-        </View>
+        {/* Prominent Header with Countdown Timer */}
+        <ScreenHeader
+          title="Pick Your Favourite Look"
+          subtitle="Filter by print size and number of photos, then choose one design"
+          onBack={handleBack}
+          secondsLeft={secondsLeft}
+          step="STEP 2 OF 5"
+        />
 
-        {/* Filter Bar */}
+        {/* Filter Chips Bar */}
         <View style={styles.filterBar}>
           {/* Print Size Filters */}
           <View style={styles.filterGroup}>
@@ -151,7 +154,7 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* Slot Count Filters */}
           <View style={styles.filterGroup}>
-            <Text style={styles.filterGroupLabel}>PHOTOS</Text>
+            <Text style={styles.filterGroupLabel}>SHOTS</Text>
             <TouchableOpacity
               style={[
                 styles.filterChip,
@@ -190,7 +193,7 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Templates Carousel */}
+        {/* Templates Carousel (Direct Template View Without Enclosing Card Box) */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -199,41 +202,59 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
           {filtered.map((item) => {
             const isSelected = session.template?.id === item.id;
             const price = getTemplatePrice(item, event?.layoutPrices);
+            const isPortrait = item.layout.orientation === 'portrait';
+            const canvasWidth = isPortrait ? scale(180) : scale(250);
+            const canvasHeight = isPortrait ? verticalScale(260) : verticalScale(175);
 
             return (
               <TouchableOpacity
                 key={item.id}
                 style={[
-                  styles.templateCard,
-                  isSelected && styles.templateCardSelected,
+                  styles.templateItem,
+                  { width: canvasWidth + scale(16) },
                 ]}
                 onPress={() => handleSelectTemplate(item)}
-                activeOpacity={0.88}
+                activeOpacity={0.9}
               >
-                <View style={styles.canvasWrapper}>
+                {/* Raw Print Template Canvas with radiant glowing selection ring */}
+                <View
+                  style={[
+                    styles.canvasGlowWrap,
+                    isSelected && styles.canvasGlowWrapSelected,
+                  ]}
+                >
                   <TemplateCanvas
                     template={item}
-                    style={{ width: scale(190), height: verticalScale(260) }}
+                    style={{
+                      width: canvasWidth,
+                      height: canvasHeight,
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                    }}
                   />
+
+                  {/* Floating Checkmark Badge */}
                   {isSelected && (
                     <View style={styles.selectedBadge}>
-                      <Text style={styles.selectedBadgeText}>✓ Selected</Text>
+                      <Text style={styles.selectedBadgeText}>✓</Text>
                     </View>
                   )}
                 </View>
 
-                <View style={styles.templateMeta}>
-                  <View style={{ flex: 1, paddingRight: 8 }}>
-                    <Text numberOfLines={1} style={styles.templateName}>
+                {/* Bottom Floating Size & Price Pill */}
+                <View style={[styles.floatingPill, isSelected && styles.floatingPillSelected]}>
+                  <View style={{ flex: 1, paddingRight: 6 }}>
+                    <Text numberOfLines={1} style={styles.floatingTitle}>
                       {item.name}
                     </Text>
-                    <Text numberOfLines={1} style={styles.templateCategory}>
-                      {item.layout.label}
+                    <Text numberOfLines={1} style={styles.floatingSize}>
+                      {item.layout.printSize} • {item.layout.slots} {item.layout.slots === 1 ? 'shot' : 'shots'}
                     </Text>
                   </View>
-                  <View style={styles.pricePill}>
-                    <Text style={styles.priceText}>
-                      {price === 0 ? 'Free' : `₹${price}`}
+
+                  <View style={[styles.floatingPriceBadge, price === 0 && styles.floatingPriceFree]}>
+                    <Text style={[styles.floatingPriceText, price === 0 && styles.floatingPriceTextFree]}>
+                      {price === 0 ? 'FREE' : `₹${price}`}
                     </Text>
                   </View>
                 </View>
@@ -243,13 +264,13 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
 
           {filtered.length === 0 && (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>No templates in this combination</Text>
+              <Text style={styles.emptyTitle}>No templates found</Text>
               <Text style={styles.emptySub}>Try selecting another size or photo count.</Text>
             </View>
           )}
         </ScrollView>
 
-        {/* Action Buttons */}
+        {/* Footer Actions */}
         <View style={styles.footerActions}>
           <TouchableOpacity
             style={styles.backBtn}
@@ -281,23 +302,6 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  header: {
-    alignItems: 'center',
-    paddingTop: verticalScale(12),
-    marginBottom: verticalScale(12),
-  },
-  title: {
-    color: '#ffffff',
-    fontSize: fontSize(24),
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  subtitle: {
-    color: '#a1a1aa',
-    fontSize: fontSize(13),
-    textAlign: 'center',
-  },
   filterBar: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -308,7 +312,7 @@ const styles = StyleSheet.create({
   filterGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: scale(8),
+    marginHorizontal: scale(10),
     marginVertical: 4,
   },
   filterGroupLabel: {
@@ -316,16 +320,16 @@ const styles = StyleSheet.create({
     fontSize: fontSize(10),
     fontWeight: '800',
     letterSpacing: 1.5,
-    marginRight: 6,
+    marginRight: 8,
   },
   filterChip: {
     paddingVertical: 5,
     paddingHorizontal: 12,
     borderRadius: 14,
-    backgroundColor: '#18181f',
+    backgroundColor: '#13131c',
     marginHorizontal: 3,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: '#242432',
   },
   filterChipActive: {
     backgroundColor: '#8b5cf6',
@@ -338,76 +342,98 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     color: '#ffffff',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   carouselContainer: {
     alignItems: 'center',
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(10),
+    gap: scale(16),
   },
-  templateCard: {
-    backgroundColor: '#121217',
-    borderRadius: moderateScale(20),
-    borderWidth: 2,
-    borderColor: '#27272a',
-    padding: scale(14),
-    marginHorizontal: scale(10),
+  templateItem: {
     alignItems: 'center',
-    width: scale(220),
+    marginHorizontal: scale(8),
   },
-  templateCardSelected: {
-    borderColor: '#8b5cf6',
-    backgroundColor: 'rgba(139, 92, 246, 0.08)',
-  },
-  canvasWrapper: {
+  canvasGlowWrap: {
+    padding: 3,
+    borderRadius: 15,
+    borderWidth: 2.5,
+    borderColor: 'transparent',
     position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: verticalScale(10),
+  },
+  canvasGlowWrapSelected: {
+    borderColor: '#8b5cf6',
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.8,
+    shadowRadius: 18,
+    elevation: 10,
   },
   selectedBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 10,
+    right: 10,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#8b5cf6',
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 4,
   },
   selectedBadgeText: {
     color: '#ffffff',
-    fontSize: fontSize(10),
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '900',
   },
-  templateMeta: {
+  floatingPill: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
-    paddingTop: 4,
+    marginTop: verticalScale(10),
+    backgroundColor: '#12121b',
+    borderWidth: 1.5,
+    borderColor: '#222230',
+    borderRadius: 14,
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(12),
   },
-  templateName: {
+  floatingPillSelected: {
+    borderColor: '#8b5cf6',
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+  },
+  floatingTitle: {
     color: '#ffffff',
-    fontSize: fontSize(14),
+    fontSize: fontSize(13),
     fontWeight: '800',
   },
-  templateCategory: {
+  floatingSize: {
     color: '#a1a1aa',
-    fontSize: fontSize(11),
+    fontSize: fontSize(10),
     marginTop: 2,
   },
-  pricePill: {
-    backgroundColor: 'rgba(236, 72, 153, 0.15)',
+  floatingPriceBadge: {
+    backgroundColor: 'rgba(236, 72, 153, 0.16)',
     borderWidth: 1,
     borderColor: 'rgba(236, 72, 153, 0.4)',
+    borderRadius: 8,
     paddingVertical: 3,
     paddingHorizontal: 8,
-    borderRadius: 8,
   },
-  priceText: {
+  floatingPriceFree: {
+    backgroundColor: 'rgba(34, 197, 94, 0.16)',
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+  },
+  floatingPriceText: {
     color: '#f472b6',
     fontSize: fontSize(12),
-    fontWeight: '800',
+    fontWeight: '900',
+  },
+  floatingPriceTextFree: {
+    color: '#4ade80',
   },
   emptyContainer: {
     padding: 40,
@@ -417,7 +443,7 @@ const styles = StyleSheet.create({
   emptyTitle: {
     color: '#ffffff',
     fontSize: fontSize(16),
-    fontWeight: '700',
+    fontWeight: '800',
   },
   emptySub: {
     color: '#71717a',
@@ -435,7 +461,9 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(12),
     paddingHorizontal: scale(22),
     borderRadius: moderateScale(12),
-    backgroundColor: '#1c1c24',
+    backgroundColor: '#171720',
+    borderWidth: 1,
+    borderColor: '#262634',
   },
   backBtnText: {
     color: '#d4d4d8',
@@ -447,13 +475,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(28),
     borderRadius: moderateScale(12),
     backgroundColor: '#8b5cf6',
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 5,
   },
   nextBtnDisabled: {
-    opacity: 0.4,
+    opacity: 0.35,
+    shadowOpacity: 0,
   },
   nextBtnText: {
     color: '#ffffff',
     fontSize: fontSize(15),
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });

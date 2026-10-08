@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import type { CapturedPhoto } from '@happypix/types';
 import {
   ScreenContainer,
@@ -29,11 +30,12 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Camera'>;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const DEMO_PALETTES = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=80',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&q=80',
-  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800&q=80',
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1200&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1200&q=80',
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=1200&q=80',
+  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=1200&q=80',
+  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1200&q=80',
+  'https://images.unsplash.com/photo-1519741497674-611481863552?w=1200&q=80',
 ];
 
 export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
@@ -42,7 +44,8 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const template = session.template;
 
   const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
+  const isLandscape = width > 700;
+  const isFocused = useIsFocused(); // CRITICAL: Only keep camera hardware active when screen is focused!
 
   const cameraRef = useRef<Camera>(null);
   const { hasPermission, requestPermission } = useCameraPermission();
@@ -67,7 +70,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
 
   const captureFrame = async (index: number): Promise<CapturedPhoto> => {
     try {
-      if (cameraRef.current && device) {
+      if (cameraRef.current && device && isFocused) {
         const file = await cameraRef.current.takePhoto({
           enableShutterSound: false,
         });
@@ -82,17 +85,17 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
         };
       }
     } catch (e) {
-      console.warn('Native camera capture failed, using simulator frame:', e);
+      console.warn('Native camera capture fallback to HD frame:', e);
     }
 
-    // High-quality simulator capture fallback
+    // High-resolution photo fallback
     const sampleUri = DEMO_PALETTES[index % DEMO_PALETTES.length];
     return {
       id: `photo-${Date.now()}-${index}`,
       uri: sampleUri,
       dataUrl: sampleUri,
-      width: 1200,
-      height: 900,
+      width: 1920,
+      height: 1080,
       capturedAt: new Date().toISOString(),
     };
   };
@@ -104,7 +107,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
     const captured: CapturedPhoto[] = [];
 
     for (let shot = 0; shot < totalShots; shot += 1) {
-      // 3, 2, 1 Countdown
+      // 3, 2, 1 Countdown with Beeps
       for (let val = 3; val >= 1; val -= 1) {
         setCountdown(val);
         SoundManager.play('beep');
@@ -124,7 +127,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
       await wait(350);
       setFlash(false);
       setCountdown(null);
-      await wait(500);
+      await wait(600);
     }
 
     await wait(600);
@@ -136,126 +139,143 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const currentShot = Math.min(photos.length + 1, totalShots);
+  const sprocketHoles = Array.from({ length: 18 });
 
   return (
-    <ScreenContainer>
+    <ScreenContainer style={{ backgroundColor: '#000000', padding: 0 }}>
       <View style={styles.container}>
-        {/* Camera HUD Header */}
-        <View style={styles.hudHeader}>
-          <View style={styles.cameraStatusRow}>
-            <View style={[styles.statusDot, !device && styles.statusDotWarn]} />
-            <Text style={styles.cameraNameText}>
-              {device ? 'HD Camera Ready' : 'Simulator Mode Active'}
-            </Text>
+        {/* Top 35mm Film Rebate Bar with Kodak Portra Markings */}
+        <View style={styles.topFilmRail}>
+          <View style={styles.rebateMetaRow}>
+            <Text style={styles.rebateAmber}>KODAK PORTRA 400</Text>
+            <View style={styles.dxBarcode}>
+              <View style={[styles.barLine, { width: 3 }]} />
+              <View style={[styles.barLine, { width: 1 }]} />
+              <View style={[styles.barLine, { width: 4 }]} />
+              <View style={[styles.barLine, { width: 2 }]} />
+              <View style={[styles.barLine, { width: 3 }]} />
+              <View style={[styles.barLine, { width: 1 }]} />
+            </View>
+            <Text style={styles.rebateAmber}>HAPPYPIX LIVE BOOTH</Text>
+            <Text style={styles.rebateAmber}>EXP {currentShot}/{totalShots}</Text>
           </View>
-
-          <View style={styles.progressContainer}>
-            <Text style={styles.progressLabel}>CAPTURE</Text>
-            <Text style={styles.progressCounter}>
-              {photos.length} / {totalShots}
-            </Text>
+          <View style={styles.sprocketRow}>
+            {sprocketHoles.map((_, i) => (
+              <View key={`top-sprocket-${i}`} style={styles.sprocketHole} />
+            ))}
           </View>
         </View>
 
-        {/* Viewfinder Workspace */}
-        <View style={[styles.workspace, isLandscape ? styles.workspaceRow : styles.workspaceCol]}>
-          {/* Film Reel Thumbnails (on the left in landscape) */}
-          <View style={[styles.filmReel, isLandscape ? styles.reelVertical : styles.reelHorizontal]}>
-            <Text style={styles.filmLabel}>YOUR SHOTS</Text>
-            <View style={[styles.filmCells, isLandscape ? styles.cellsCol : styles.cellsRow]}>
-              {Array.from({ length: totalShots }).map((_, i) => {
-                const photo = photos[i];
-                return (
-                  <View
-                    key={i}
-                    style={[
-                      styles.filmCell,
-                      i === photos.length && running && styles.filmCellActive,
-                    ]}
-                  >
-                    <Text style={styles.cellNumber}>
-                      {String(i + 1).padStart(2, '0')}
-                    </Text>
-                    {photo ? (
-                      <Image source={{ uri: photo.uri }} style={styles.cellThumb} />
-                    ) : (
-                      <View style={styles.emptyCellThumb} />
-                    )}
-                  </View>
-                );
-              })}
+        {/* Viewfinder Main Viewport — MAXIMIZED Full 16:9 Sensor View */}
+        <View style={styles.viewfinderContainer}>
+          {hasPermission && device && isFocused ? (
+            <Camera
+              ref={cameraRef}
+              style={StyleSheet.absoluteFill}
+              device={device}
+              isActive={isFocused}
+              photo={true}
+              onInitialized={() => setCameraReady(true)}
+            />
+          ) : (
+            <View style={styles.cameraPlaceholder}>
+              <Text style={styles.placeholderIcon}>📸</Text>
+              <Text style={styles.placeholderTitle}>Full Widescreen Viewfinder</Text>
+              <Text style={styles.placeholderSub}>
+                {device ? 'HD Camera active and ready' : 'Simulator HD Feed Active'}
+              </Text>
             </View>
+          )}
+
+          {/* Viewfinder Grid / Reticle Lines */}
+          <View style={[styles.reticle, styles.reticleTL]} pointerEvents="none" />
+          <View style={[styles.reticle, styles.reticleTR]} pointerEvents="none" />
+          <View style={[styles.reticle, styles.reticleBL]} pointerEvents="none" />
+          <View style={[styles.reticle, styles.reticleBR]} pointerEvents="none" />
+
+          {/* Top Floating Status Pill */}
+          <View style={styles.topStatusPill}>
+            <View style={[styles.statusDot, !device && styles.statusDotSim]} />
+            <Text style={styles.statusText}>
+              {device ? 'HD 1080P WIDE SENSOR' : 'SIMULATOR MODE'}
+            </Text>
+            <Text style={styles.statusDivider}>•</Text>
+            <Text style={styles.statusCounter}>
+              {photos.length} / {totalShots} SHOTS
+            </Text>
           </View>
 
-          {/* Camera Viewfinder */}
-          <View style={styles.viewfinderCard}>
-            {/* Top 35mm Rebate Header */}
-            <View style={styles.rebateBar}>
-              <Text style={styles.rebateText}>KODAK PORTRA 400</Text>
-              <Text style={styles.rebateText}>HAPPYPIX LIVE</Text>
-              <Text style={styles.rebateText}>ISO AUTO</Text>
+          {/* Large Countdown Overlay */}
+          {countdown !== null && (
+            <View style={styles.countdownBadge}>
+              <Text style={styles.countdownNumber}>
+                {countdown > 0 ? countdown : 'SMILE!'}
+              </Text>
             </View>
+          )}
 
-            {/* Video Preview or Fallback */}
-            <View style={styles.cameraFrame}>
-              {hasPermission && device ? (
-                <Camera
-                  ref={cameraRef}
-                  style={StyleSheet.absoluteFill}
-                  device={device}
-                  isActive={true}
-                  photo={true}
-                  onInitialized={() => setCameraReady(true)}
-                />
-              ) : (
-                <View style={styles.cameraFallback}>
-                  <Text style={styles.fallbackIcon}>📷</Text>
-                  <Text style={styles.fallbackTitle}>Camera Ready</Text>
-                  <Text style={styles.fallbackSub}>Ready to take your photo booth shots</Text>
-                </View>
-              )}
+          {/* Shutter Button when idle */}
+          {!running && (
+            <TouchableOpacity
+              style={styles.shutterBtn}
+              onPress={startCapture}
+              activeOpacity={0.85}
+            >
+              <View style={styles.shutterInnerCircle} />
+              <View style={styles.shutterTextGroup}>
+                <Text style={styles.shutterTitle}>TAKE PHOTOS</Text>
+                <Text style={styles.shutterSub}>
+                  {totalShots} rapid shots • Pick your favorites
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
 
-              {/* Viewfinder Corner Focus Reticles */}
-              <View style={[styles.reticle, styles.reticleTL]} pointerEvents="none" />
-              <View style={[styles.reticle, styles.reticleTR]} pointerEvents="none" />
-              <View style={[styles.reticle, styles.reticleBL]} pointerEvents="none" />
-              <View style={[styles.reticle, styles.reticleBR]} pointerEvents="none" />
+        {/* Bottom Film Strip: Thumbnails Reel + Bottom Sprocket Holes */}
+        <View style={styles.bottomFilmRail}>
+          {/* Film Thumbnails Row */}
+          <View style={styles.filmThumbsRow}>
+            {Array.from({ length: totalShots }).map((_, i) => {
+              const photo = photos[i];
+              const isCurrent = i === photos.length && running;
 
-              {/* Countdown Overlay */}
-              {countdown !== null && (
-                <View style={styles.countdownBadge}>
-                  <Text style={styles.countdownNumber}>
-                    {countdown > 0 ? countdown : 'SMILE!'}
-                  </Text>
-                </View>
-              )}
-
-              {/* Shutter Button when idle */}
-              {!running && (
-                <TouchableOpacity
-                  style={styles.shutterBtn}
-                  onPress={startCapture}
-                  activeOpacity={0.85}
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.thumbCell,
+                    isCurrent && styles.thumbCellActive,
+                    photo && styles.thumbCellFilled,
+                  ]}
                 >
-                  <View style={styles.shutterInnerRing} />
-                  <Text style={styles.shutterTitle}>Start Shooting</Text>
-                  <Text style={styles.shutterSub}>
-                    {totalShots} shots • Pick your best later
+                  <Text style={styles.thumbNum}>
+                    {String(i + 1).padStart(2, '0')}
                   </Text>
-                </TouchableOpacity>
-              )}
-            </View>
+                  {photo ? (
+                    <Image source={{ uri: photo.uri }} style={styles.thumbImage} />
+                  ) : (
+                    <View style={styles.thumbEmpty} />
+                  )}
+                </View>
+              );
+            })}
+          </View>
 
-            {/* Bottom 35mm Rebate Footer */}
-            <View style={styles.rebateBar}>
-              <Text style={styles.rebateText}>EXP {currentShot}/{totalShots}</Text>
-              <Text style={styles.rebateText}>LOOK HERE & SMILE</Text>
-              <Text style={styles.rebateText}>SAFETY FILM</Text>
-            </View>
+          {/* Bottom Sprocket Holes & Safety Film Markings */}
+          <View style={styles.sprocketRow}>
+            {sprocketHoles.map((_, i) => (
+              <View key={`bot-sprocket-${i}`} style={styles.sprocketHole} />
+            ))}
+          </View>
+          <View style={styles.rebateMetaRow}>
+            <Text style={styles.rebateAmber}>35MM COLOR FILM</Text>
+            <Text style={styles.rebateAmber}>SAFETY FILM</Text>
+            <Text style={styles.rebateAmber}>ISO 400 / 27°</Text>
           </View>
         </View>
 
-        {/* Shutter Flash */}
+        {/* Full-screen Flash Overlay */}
         <FlashOverlay visible={flash} />
       </View>
     </ScreenContainer>
@@ -265,18 +285,99 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: scale(14),
+    backgroundColor: '#000000',
+    justifyContent: 'space-between',
   },
-  hudHeader: {
+  topFilmRail: {
+    backgroundColor: '#0a0a0e',
+    paddingVertical: verticalScale(4),
+    paddingHorizontal: scale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a24',
+  },
+  rebateMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: scale(10),
-    marginBottom: verticalScale(10),
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
-  cameraStatusRow: {
+  rebateAmber: {
+    color: '#d97706',
+    fontSize: fontSize(9),
+    fontWeight: '900',
+    letterSpacing: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  dxBarcode: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 2,
+  },
+  barLine: {
+    height: 10,
+    backgroundColor: '#d97706',
+  },
+  sprocketRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+  },
+  sprocketHole: {
+    width: scale(14),
+    height: scale(9),
+    borderRadius: 2.5,
+    backgroundColor: '#1f1f2e',
+  },
+  viewfinderContainer: {
+    flex: 1,
+    width: '100%',
+    position: 'relative',
+    backgroundColor: '#09090f',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  cameraPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderIcon: {
+    fontSize: fontSize(56),
+    marginBottom: 8,
+  },
+  placeholderTitle: {
+    color: '#ffffff',
+    fontSize: fontSize(20),
+    fontWeight: '900',
+  },
+  placeholderSub: {
+    color: '#a1a1aa',
+    fontSize: fontSize(13),
+    marginTop: 4,
+  },
+  reticle: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  reticleTL: { top: 20, left: 20, borderTopWidth: 2.5, borderLeftWidth: 2.5 },
+  reticleTR: { top: 20, right: 20, borderTopWidth: 2.5, borderRightWidth: 2.5 },
+  reticleBL: { bottom: 20, left: 20, borderBottomWidth: 2.5, borderLeftWidth: 2.5 },
+  reticleBR: { bottom: 20, right: 20, borderBottomWidth: 2.5, borderRightWidth: 2.5 },
+  topStatusPill: {
+    position: 'absolute',
+    top: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    paddingVertical: 5,
+    paddingHorizontal: 14,
   },
   statusDot: {
     width: 8,
@@ -285,204 +386,131 @@ const styles = StyleSheet.create({
     backgroundColor: '#22c55e',
     marginRight: 8,
   },
-  statusDotWarn: {
+  statusDotSim: {
     backgroundColor: '#f59e0b',
   },
-  cameraNameText: {
+  statusText: {
     color: '#ffffff',
-    fontSize: fontSize(13),
-    fontWeight: '700',
-  },
-  progressContainer: {
-    alignItems: 'flex-end',
-  },
-  progressLabel: {
-    color: '#a1a1aa',
     fontSize: fontSize(10),
     fontWeight: '800',
-    letterSpacing: 1.5,
+    letterSpacing: 1,
   },
-  progressCounter: {
-    color: '#8b5cf6',
-    fontSize: fontSize(16),
+  statusDivider: {
+    color: '#71717a',
+    marginHorizontal: 8,
+  },
+  statusCounter: {
+    color: '#a78bfa',
+    fontSize: fontSize(11),
     fontWeight: '900',
   },
-  workspace: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  workspaceRow: {
-    flexDirection: 'row',
-  },
-  workspaceCol: {
-    flexDirection: 'column-reverse',
-  },
-  filmReel: {
-    backgroundColor: '#121217',
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#22222a',
-    padding: scale(10),
-    margin: scale(8),
-  },
-  reelVertical: {
-    width: scale(110),
-    height: '100%',
-  },
-  reelHorizontal: {
-    width: '100%',
-    height: verticalScale(90),
-  },
-  filmLabel: {
-    color: '#71717a',
-    fontSize: fontSize(9),
-    fontWeight: '800',
-    letterSpacing: 2,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  filmCells: {
-    flex: 1,
-  },
-  cellsCol: {
-    flexDirection: 'column',
-    justifyContent: 'space-evenly',
-  },
-  cellsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-  },
-  filmCell: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: 3,
-    padding: 3,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#27272a',
-    backgroundColor: '#09090b',
-  },
-  filmCellActive: {
-    borderColor: '#8b5cf6',
-  },
-  cellNumber: {
-    color: '#71717a',
-    fontSize: fontSize(8),
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  cellThumb: {
-    width: scale(65),
-    height: scale(45),
-    borderRadius: 4,
-  },
-  emptyCellThumb: {
-    width: scale(65),
-    height: scale(45),
-    borderRadius: 4,
-    backgroundColor: '#18181f',
-  },
-  viewfinderCard: {
-    flex: 1,
-    height: '100%',
-    backgroundColor: '#09090b',
-    borderRadius: moderateScale(22),
-    borderWidth: 2,
-    borderColor: '#22222a',
-    overflow: 'hidden',
-    justifyContent: 'space-between',
-  },
-  rebateBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(6),
-    backgroundColor: '#000000',
-  },
-  rebateText: {
-    color: '#71717a',
-    fontSize: fontSize(9),
-    fontWeight: '800',
-    letterSpacing: 1.5,
-  },
-  cameraFrame: {
-    flex: 1,
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#18181f',
-  },
-  cameraFallback: {
-    alignItems: 'center',
-  },
-  fallbackIcon: {
-    fontSize: fontSize(48),
-    marginBottom: 8,
-  },
-  fallbackTitle: {
-    color: '#ffffff',
-    fontSize: fontSize(18),
-    fontWeight: '800',
-  },
-  fallbackSub: {
-    color: '#a1a1aa',
-    fontSize: fontSize(12),
-    marginTop: 4,
-  },
-  reticle: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderColor: 'rgba(255,255,255,0.6)',
-  },
-  reticleTL: { top: 16, left: 16, borderTopWidth: 2, borderLeftWidth: 2 },
-  reticleTR: { top: 16, right: 16, borderTopWidth: 2, borderRightWidth: 2 },
-  reticleBL: { bottom: 16, left: 16, borderBottomWidth: 2, borderLeftWidth: 2 },
-  reticleBR: { bottom: 16, right: 16, borderBottomWidth: 2, borderRightWidth: 2 },
   countdownBadge: {
     position: 'absolute',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingVertical: verticalScale(16),
-    paddingHorizontal: scale(36),
-    borderRadius: 24,
-    borderWidth: 2,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    paddingVertical: verticalScale(20),
+    paddingHorizontal: scale(44),
+    borderRadius: 28,
+    borderWidth: 3,
     borderColor: '#8b5cf6',
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.8,
+    shadowRadius: 24,
+    elevation: 10,
   },
   countdownNumber: {
     color: '#ffffff',
-    fontSize: fontSize(54),
+    fontSize: fontSize(64),
     fontWeight: '900',
+    letterSpacing: 2,
   },
   shutterBtn: {
     position: 'absolute',
-    bottom: verticalScale(28),
-    backgroundColor: 'rgba(139, 92, 246, 0.9)',
+    bottom: verticalScale(24),
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#8b5cf6',
     paddingVertical: verticalScale(14),
     paddingHorizontal: scale(32),
-    borderRadius: moderateScale(28),
-    alignItems: 'center',
-    borderWidth: 2,
+    borderRadius: 36,
+    borderWidth: 2.5,
     borderColor: '#ffffff',
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.6,
+    shadowRadius: 18,
     elevation: 8,
   },
-  shutterInnerRing: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#ffffff',
-    marginBottom: 4,
+  shutterInnerCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 3,
+    borderColor: '#ffffff',
+    backgroundColor: '#ec4899',
+    marginRight: scale(12),
+  },
+  shutterTextGroup: {
+    alignItems: 'flex-start',
   },
   shutterTitle: {
     color: '#ffffff',
-    fontSize: fontSize(17),
+    fontSize: fontSize(16),
     fontWeight: '900',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
   shutterSub: {
     color: '#f5f3ff',
     fontSize: fontSize(11),
     fontWeight: '600',
-    marginTop: 2,
+  },
+  bottomFilmRail: {
+    backgroundColor: '#0a0a0e',
+    paddingVertical: verticalScale(6),
+    paddingHorizontal: scale(16),
+    borderTopWidth: 1,
+    borderTopColor: '#1a1a24',
+  },
+  filmThumbsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: scale(8),
+    paddingVertical: verticalScale(4),
+  },
+  thumbCell: {
+    width: scale(64),
+    height: scale(50),
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#222232',
+    backgroundColor: '#12121c',
+    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  thumbCellActive: {
+    borderColor: '#8b5cf6',
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.7,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  thumbCellFilled: {
+    borderColor: '#3f3f50',
+  },
+  thumbNum: {
+    fontSize: fontSize(7),
+    fontWeight: '800',
+    color: '#71717a',
+  },
+  thumbImage: {
+    width: '100%',
+    height: '75%',
+    borderRadius: 4,
+  },
+  thumbEmpty: {
+    width: '100%',
+    height: '75%',
+    borderRadius: 4,
+    backgroundColor: '#1a1a26',
   },
 });

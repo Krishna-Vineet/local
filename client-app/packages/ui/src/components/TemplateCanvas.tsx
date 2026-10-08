@@ -32,17 +32,17 @@ const defaultCustomization: Customization = {
 const getFilterOverlay = (filter: FilterId): ViewStyle | null => {
   switch (filter) {
     case 'bw':
-      return { backgroundColor: 'rgba(30, 30, 30, 0.45)' };
+      return { backgroundColor: 'rgba(25, 25, 30, 0.55)' };
     case 'warm':
-      return { backgroundColor: 'rgba(255, 140, 0, 0.18)' };
+      return { backgroundColor: 'rgba(245, 158, 11, 0.22)' };
     case 'cool':
-      return { backgroundColor: 'rgba(0, 150, 255, 0.16)' };
+      return { backgroundColor: 'rgba(14, 165, 233, 0.20)' };
     case 'vintage':
-      return { backgroundColor: 'rgba(180, 120, 60, 0.22)' };
+      return { backgroundColor: 'rgba(180, 115, 50, 0.30)' };
     case 'soft':
-      return { backgroundColor: 'rgba(255, 200, 220, 0.18)' };
+      return { backgroundColor: 'rgba(244, 114, 182, 0.22)' };
     case 'party':
-      return { backgroundColor: 'rgba(220, 40, 160, 0.18)' };
+      return { backgroundColor: 'rgba(236, 72, 153, 0.26)' };
     default:
       return null;
   }
@@ -118,17 +118,65 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
 
   const renderOrnament = () => {
     if (ornament === 'none') return null;
-    let symbol = '';
-    if (ornament === 'hearts') symbol = '♡  ♥  ♡';
-    else if (ornament === 'stars') symbol = '✦  ✧  ✦';
-    else if (ornament === 'bubbles') symbol = '◌  ○  ◌';
-    else if (ornament === 'confetti') symbol = '⌁  ★  ⌁';
+    const accent = design.accent || '#8b5cf6';
 
-    return (
-      <View pointerEvents="none" style={styles.ornamentBanner}>
-        <Text style={[styles.ornamentSymbol, { color: design.accent + '70' }]}>{symbol}</Text>
-      </View>
-    );
+    if (ornament === 'hearts') {
+      return (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Text style={[styles.cornerMotif, styles.flourishTL, { color: accent }]}>♥ ♡</Text>
+          <Text style={[styles.cornerMotif, styles.flourishTR, { color: accent }]}>♡ ♥</Text>
+          <Text style={[styles.cornerMotif, styles.flourishBL, { color: accent }]}>♡ ♥</Text>
+          <Text style={[styles.cornerMotif, styles.flourishBR, { color: accent }]}>♥ ♡</Text>
+          <View style={styles.ornamentBanner}>
+            <Text style={[styles.ornamentSymbol, { color: accent }]}>♡  ♥  ♡  ♥  ♡</Text>
+          </View>
+        </View>
+      );
+    }
+
+    if (ornament === 'stars') {
+      return (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Text style={[styles.cornerMotif, styles.flourishTL, { color: accent }]}>✦ ✧</Text>
+          <Text style={[styles.cornerMotif, styles.flourishTR, { color: accent }]}>✧ ✦</Text>
+          <Text style={[styles.cornerMotif, styles.flourishBL, { color: accent }]}>✧ ✦</Text>
+          <Text style={[styles.cornerMotif, styles.flourishBR, { color: accent }]}>✦ ✧</Text>
+          <View style={styles.ornamentBanner}>
+            <Text style={[styles.ornamentSymbol, { color: accent }]}>✦  ✧  ⋆  ✧  ✦</Text>
+          </View>
+        </View>
+      );
+    }
+
+    if (ornament === 'bubbles') {
+      return (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Text style={[styles.cornerMotif, styles.flourishTL, { color: accent }]}>◌ ○</Text>
+          <Text style={[styles.cornerMotif, styles.flourishTR, { color: accent }]}>○ ◌</Text>
+          <Text style={[styles.cornerMotif, styles.flourishBL, { color: accent }]}>○ ◌</Text>
+          <Text style={[styles.cornerMotif, styles.flourishBR, { color: accent }]}>◌ ○</Text>
+          <View style={styles.ornamentBanner}>
+            <Text style={[styles.ornamentSymbol, { color: accent }]}>◌  ○  ◯  ○  ◌</Text>
+          </View>
+        </View>
+      );
+    }
+
+    if (ornament === 'confetti') {
+      return (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Text style={[styles.cornerMotif, styles.flourishTL, { color: accent }]}>▲ ● ★</Text>
+          <Text style={[styles.cornerMotif, styles.flourishTR, { color: accent }]}>★ ● ▲</Text>
+          <Text style={[styles.cornerMotif, styles.flourishBL, { color: accent }]}>◆ ⌁ ★</Text>
+          <Text style={[styles.cornerMotif, styles.flourishBR, { color: accent }]}>★ ⌁ ◆</Text>
+          <View style={styles.ornamentBanner}>
+            <Text style={[styles.ornamentSymbol, { color: accent }]}>⌁  ★  ◆  ★  ⌁</Text>
+          </View>
+        </View>
+      );
+    }
+
+    return null;
   };
 
   const canvasContent = (
@@ -282,7 +330,9 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
             { left: `${st.x}%` as any, top: `${st.y}%` as any },
           ]}
         >
-          <Text style={styles.stickerText}>{st.emoji}</Text>
+          <Text style={[styles.stickerText, st.size ? { fontSize: st.size } : null]}>
+            {st.emoji}
+          </Text>
         </View>
       ))}
     </View>
@@ -410,8 +460,15 @@ const styles = StyleSheet.create({
     fontSize: 20,
     opacity: 0.6,
   },
+  cornerMotif: {
+    position: 'absolute',
+    fontSize: 14,
+    opacity: 0.75,
+    fontWeight: '800',
+  },
   flourishTL: { top: 8, left: 10 },
   flourishTR: { top: 8, right: 10 },
+  flourishBL: { bottom: 10, left: 10 },
   flourishBR: { bottom: 10, right: 10 },
   flourishBorder: {
     position: 'absolute',

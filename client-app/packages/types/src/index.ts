@@ -93,6 +93,8 @@ export interface BoothSettings {
   paymentDisplayName: string;
   currency: 'INR';
   maximumPrints: number;
+  galleryEnabled?: boolean;
+  requireGuestConsent?: boolean;
 }
 
 export interface Installation {
@@ -254,9 +256,13 @@ export interface PrinterProvider {
 
 export interface PlacedSticker {
   id: string;
-  emoji: string;
-  x: number; // percentage (0..100)
-  y: number; // percentage (0..100)
+  emoji?: string;
+  url?: string;
+  x: number; // percentage (0..100) or pixels
+  y: number; // percentage (0..100) or pixels
+  size?: number;
+  scale?: number;
+  rotation?: number;
 }
 
 export interface Customization {
@@ -266,6 +272,7 @@ export interface Customization {
   title: string;
   subtitle: string;
   stickers: PlacedSticker[];
+  guestConsent?: boolean;
 }
 
 export interface BoothSession {

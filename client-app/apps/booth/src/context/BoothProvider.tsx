@@ -372,6 +372,7 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const completed = await boothApi.completeSession(inst, {
         sessionId: session.id,
         digitalCopy: session.digitalCopy,
+        guestConsent: session.customization?.guestConsent ?? true,
       });
       shareUrl = completed.shareUrl;
     } catch (e: any) {

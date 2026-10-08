@@ -11,7 +11,8 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [mode, setMode] = useState<ThemeMode>(Appearance.getColorScheme() === 'light' ? 'light' : 'dark');
+  // Always default to dark kiosk mode for rich contrast and vibrant neon aesthetics
+  const [mode, setMode] = useState<ThemeMode>('dark');
 
   const toggleTheme = () => {
     setMode((prev) => (prev === 'light' ? 'dark' : 'light'));

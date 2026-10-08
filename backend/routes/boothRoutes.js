@@ -8,6 +8,8 @@ import Photo from '../models/Photo.js';
 import Template from '../models/Template.js';
 import Payment from '../models/Payment.js';
 import OrganizationDefaults from '../models/OrganizationDefaults.js';
+import Setting from '../models/Setting.js';
+import SupportTicket from '../models/SupportTicket.js';
 
 const router = express.Router();
 
@@ -43,6 +45,7 @@ const authenticateBooth = async (req, res, next) => {
 const buildSnapshot = async (device, org) => {
   let eventPayload = null;
   const orgDefaults = await OrganizationDefaults.findOne({ organizationId: org._id }).lean();
+  const orgSetting = (await Setting.findOne({ organizationId: org._id }).lean()) || (await Setting.findOne({ organizationId: null }).lean());
   
   if (device.assignedEventId) {
     const event = await Event.findById(device.assignedEventId).populate('templateIds').lean();
@@ -255,6 +258,8 @@ const arrangeSlots = (w, h, n) => {
       paymentDisplayName: orgDefaults?.displayName || org.name || 'HappyPix',
       currency: orgDefaults?.currency || 'INR',
       maximumPrints: orgDefaults?.maximumPrints || 10,
+      galleryEnabled: orgSetting ? (orgSetting.galleryEnabled !== false) : true,
+      requireGuestConsent: orgSetting ? Boolean(orgSetting.requireGuestConsent) : false,
       branding: {
         logoUrl: orgDefaults?.logoUrl || null,
         tagline: orgDefaults?.tagline || ''
@@ -528,15 +533,42 @@ router.post('/checkout/free-complete', authenticateBooth, async (req, res) => {
 
 router.post('/sessions/complete', authenticateBooth, async (req, res) => {
   try {
-    const { sessionId, digitalCopy } = req.body;
-    // Log the session usage telemetry to device?
+    const { sessionId, digitalCopy, guestConsent } = req.body;
+    // Log the session usage telemetry to device
     req.device.telemetry = req.device.telemetry || {};
     req.device.telemetry.prints = (req.device.telemetry.prints || 0) + 1;
+    if (guestConsent !== undefined) {
+      req.device.telemetry.lastGuestConsent = Boolean(guestConsent);
+    }
     await req.device.save();
     
     res.json({ shareUrl: digitalCopy ? `https://happypix.in/share/${sessionId}` : null });
   } catch (error) {
     res.status(500).json({ error: 'Failed to complete session' });
+  }
+});
+
+router.post('/support', authenticateBooth, async (req, res) => {
+  try {
+    const { name, email, subject, message, category, sessionId, paymentReference } = req.body;
+    const ticket = new SupportTicket({
+      ticketType: 'end_user',
+      name: (name || 'Booth Guest').trim(),
+      email: (email || 'guest@happypix.in').trim().toLowerCase(),
+      subject: (subject || `Issue reported from ${category || 'Booth'}`).trim(),
+      message: (message || 'No description provided.').trim(),
+      organizationId: req.organization._id,
+      eventId: req.device.assignedEventId || null,
+      deviceId: req.device._id,
+      sessionId: sessionId || null,
+      paymentReference: paymentReference || null,
+      holdPhotos: Boolean(sessionId),
+    });
+    await ticket.save();
+    res.status(201).json({ success: true, ticketId: ticket._id.toString() });
+  } catch (err) {
+    console.error('Failed to create support ticket from booth:', err);
+    res.status(500).json({ error: 'Failed to submit support ticket.' });
   }
 });
 

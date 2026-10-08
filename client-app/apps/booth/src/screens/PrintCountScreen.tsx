@@ -18,6 +18,7 @@ import {
   verticalScale,
 } from '../../../../packages/ui/src/index';
 import { useBooth } from '../context/BoothProvider';
+import { ScreenHeader } from '../components/ScreenHeader';
 import SoundManager from '../utils/SoundManager';
 import { getTemplatePrice } from '../utils/pricing';
 import { InactivityToast } from '../components/InactivityToast';
@@ -38,7 +39,7 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
   } = useBooth();
 
   const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
+  const isLandscape = width > 700;
 
   const event = snapshot?.event;
   const maxPrints = snapshot?.settings?.maximumPrints ?? 10;
@@ -64,6 +65,9 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
   const unitPrice = getTemplatePrice(template, event?.layoutPrices);
   const total = session.prints * unitPrice;
   const choices = [1, 2, 4, 6, 8, 10].filter((item) => item <= maxPrints);
+  const isPortrait = template.layout.orientation === 'portrait';
+  const previewWidth = isPortrait ? scale(190) : scale(260);
+  const previewHeight = isPortrait ? verticalScale(270) : verticalScale(185);
 
   const handleSelectCount = (count: number) => {
     SoundManager.play('click');
@@ -86,19 +90,21 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer style={{ backgroundColor: '#050508' }}>
       <LayoutContainer>
-        <View style={styles.header}>
-          <Text style={styles.title}>Almost ready</Text>
-          <Text style={styles.subtitle}>
-            Choose how many copies you want. Every copy uses the selected event price.
-          </Text>
-        </View>
+        {/* Prominent Header with Countdown Timer */}
+        <ScreenHeader
+          title="Print Copies & Digital Pass"
+          subtitle="Select copies for your friends and family. Final discount is verified next."
+          onBack={handleBack}
+          secondsLeft={secondsLeft}
+          step="STEP 3 OF 5"
+        />
 
         <View style={[styles.mainLayout, isLandscape ? styles.rowLayout : styles.colLayout]}>
           {/* Options Panel */}
           <View style={styles.optionsPanel}>
-            <Text style={styles.kicker}>NUMBER OF PRINTS</Text>
+            <Text style={styles.kicker}>NUMBER OF PHYSICAL PRINTS</Text>
             <View style={styles.choicesGrid}>
               {choices.map((n) => {
                 const isActive = session.prints === n;
@@ -121,8 +127,8 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
             {event?.digitalCopy && (
               <View style={styles.digitalOption}>
                 <View style={styles.digitalInfo}>
-                  <Text style={styles.digitalTitle}>Add digital copy?</Text>
-                  <Text style={styles.digitalSub}>Show a phone download QR after printing.</Text>
+                  <Text style={styles.digitalTitle}>Include Digital Download QR?</Text>
+                  <Text style={styles.digitalSub}>Instant phone download link on success screen.</Text>
                 </View>
                 <View style={styles.yesNoGroup}>
                   <TouchableOpacity
@@ -130,7 +136,7 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
                     onPress={() => handleToggleDigital(true)}
                   >
                     <Text style={[styles.yesNoText, session.digitalCopy && styles.yesNoTextActive]}>
-                      Yes
+                      YES
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -138,39 +144,51 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
                     onPress={() => handleToggleDigital(false)}
                   >
                     <Text style={[styles.yesNoText, !session.digitalCopy && styles.yesNoTextActive]}>
-                      No
+                      NO
                     </Text>
                   </TouchableOpacity>
                 </View>
               </View>
             )}
-          </View>
 
-          {/* Order Preview Card */}
-          <View style={styles.orderCard}>
-            <View style={styles.previewCanvasWrap}>
-              <TemplateCanvas
-                template={template}
-                style={{ width: scale(170), height: verticalScale(230) }}
-              />
-            </View>
-
-            <View style={styles.orderMeta}>
-              <Text style={styles.orderTemplateName}>{template.name}</Text>
-              <Text style={styles.orderTemplateLabel}>{template.layout.label}</Text>
-
+            {/* Order Price Breakdown */}
+            <View style={styles.orderMathBox}>
               <View style={styles.mathRow}>
-                <Text style={styles.mathLeft}>
+                <Text style={styles.mathLabel}>
                   {session.prints} × {unitPrice === 0 ? 'Free' : `₹${unitPrice}`}
                 </Text>
-                <Text style={styles.mathRight}>
+                <Text style={styles.mathValue}>
                   {total === 0 ? 'Free' : `₹${total}`}
                 </Text>
               </View>
-
-              <Text style={styles.discountNote}>
-                Final discount, if any, is calculated securely on the next screen.
+              <Text style={styles.mathNote}>
+                Coupon code and payment options applied securely on the next step.
               </Text>
+            </View>
+          </View>
+
+          {/* Template Live Preview (Properly Fitted, No Overflow) */}
+          <View style={styles.previewPanel}>
+            <View style={styles.previewHeader}>
+              <Text style={styles.previewBadge}>SELECTED DESIGN</Text>
+              <Text style={styles.previewTitle} numberOfLines={1}>
+                {template.name}
+              </Text>
+              <Text style={styles.previewSub}>
+                {template.layout.printSize} • {template.layout.slots} {template.layout.slots === 1 ? 'shot' : 'shots'}
+              </Text>
+            </View>
+
+            <View style={styles.canvasContainer}>
+              <TemplateCanvas
+                template={template}
+                style={{
+                  width: previewWidth,
+                  height: previewHeight,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                }}
+              />
             </View>
           </View>
         </View>
@@ -203,45 +221,32 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  header: {
-    alignItems: 'center',
-    paddingTop: verticalScale(14),
-    marginBottom: verticalScale(16),
-  },
-  title: {
-    color: '#ffffff',
-    fontSize: fontSize(24),
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  subtitle: {
-    color: '#a1a1aa',
-    fontSize: fontSize(13),
-    textAlign: 'center',
-  },
   mainLayout: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: scale(16),
+    gap: scale(20),
   },
   rowLayout: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    justifyContent: 'center',
   },
   colLayout: {
     flexDirection: 'column',
-    justifyContent: 'space-evenly',
+    justifyContent: 'center',
   },
   optionsPanel: {
-    backgroundColor: '#121217',
-    borderRadius: moderateScale(22),
+    backgroundColor: '#0f0f16',
+    borderRadius: moderateScale(24),
     borderWidth: 1.5,
-    borderColor: '#22222a',
-    padding: scale(24),
-    width: scale(320),
-    margin: scale(10),
+    borderColor: '#222232',
+    padding: scale(26),
+    width: scale(340),
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 6,
   },
   kicker: {
     color: '#8b5cf6',
@@ -260,15 +265,19 @@ const styles = StyleSheet.create({
     width: scale(52),
     height: scale(52),
     borderRadius: moderateScale(14),
-    backgroundColor: '#18181f',
+    backgroundColor: '#171722',
     borderWidth: 1.5,
-    borderColor: '#27272a',
+    borderColor: '#28283a',
     alignItems: 'center',
     justifyContent: 'center',
   },
   countChipActive: {
     backgroundColor: '#8b5cf6',
     borderColor: '#a78bfa',
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 4,
   },
   countChipText: {
     color: '#a1a1aa',
@@ -280,12 +289,15 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   digitalOption: {
-    paddingTop: verticalScale(16),
+    paddingVertical: verticalScale(14),
     borderTopWidth: 1,
-    borderTopColor: '#22222a',
+    borderTopColor: '#1f1f2c',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1f1f2c',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: verticalScale(14),
   },
   digitalInfo: {
     flex: 1,
@@ -293,8 +305,8 @@ const styles = StyleSheet.create({
   },
   digitalTitle: {
     color: '#ffffff',
-    fontSize: fontSize(14),
-    fontWeight: '700',
+    fontSize: fontSize(13),
+    fontWeight: '800',
   },
   digitalSub: {
     color: '#71717a',
@@ -303,10 +315,10 @@ const styles = StyleSheet.create({
   },
   yesNoGroup: {
     flexDirection: 'row',
-    backgroundColor: '#18181f',
+    backgroundColor: '#171722',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#27272a',
+    borderColor: '#28283a',
     padding: 3,
   },
   yesNoBtn: {
@@ -319,65 +331,80 @@ const styles = StyleSheet.create({
   },
   yesNoText: {
     color: '#71717a',
-    fontSize: fontSize(12),
-    fontWeight: '600',
+    fontSize: fontSize(11),
+    fontWeight: '700',
   },
   yesNoTextActive: {
     color: '#ffffff',
-    fontWeight: '700',
+    fontWeight: '900',
   },
-  orderCard: {
-    backgroundColor: '#121217',
-    borderRadius: moderateScale(22),
-    borderWidth: 1.5,
-    borderColor: '#22222a',
-    padding: scale(20),
-    width: scale(280),
-    alignItems: 'center',
-    margin: scale(10),
-  },
-  previewCanvasWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: verticalScale(12),
-  },
-  orderMeta: {
-    width: '100%',
-  },
-  orderTemplateName: {
-    color: '#ffffff',
-    fontSize: fontSize(15),
-    fontWeight: '800',
-  },
-  orderTemplateLabel: {
-    color: '#a1a1aa',
-    fontSize: fontSize(11),
-    marginBottom: verticalScale(10),
+  orderMathBox: {
+    backgroundColor: '#15151f',
+    borderRadius: 14,
+    padding: scale(14),
   },
   mathRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: verticalScale(8),
-    borderTopWidth: 1,
-    borderTopColor: '#27272a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#27272a',
+    paddingBottom: 6,
   },
-  mathLeft: {
-    color: '#a1a1aa',
+  mathLabel: {
+    color: '#d4d4d8',
     fontSize: fontSize(14),
+    fontWeight: '600',
   },
-  mathRight: {
+  mathValue: {
     color: '#ffffff',
-    fontSize: fontSize(18),
+    fontSize: fontSize(20),
     fontWeight: '900',
   },
-  discountNote: {
+  mathNote: {
     color: '#71717a',
-    fontSize: fontSize(10),
-    marginTop: verticalScale(8),
-    lineHeight: 14,
+    fontSize: fontSize(11),
+    lineHeight: 15,
+  },
+  previewPanel: {
+    backgroundColor: '#0f0f16',
+    borderRadius: moderateScale(24),
+    borderWidth: 1.5,
+    borderColor: '#222232',
+    padding: scale(22),
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  previewHeader: {
+    alignItems: 'center',
+    marginBottom: verticalScale(12),
+  },
+  previewBadge: {
+    color: '#8b5cf6',
+    fontSize: fontSize(9),
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    marginBottom: 2,
+  },
+  previewTitle: {
+    color: '#ffffff',
+    fontSize: fontSize(16),
+    fontWeight: '900',
+  },
+  previewSub: {
+    color: '#a1a1aa',
+    fontSize: fontSize(11),
+    marginTop: 2,
+  },
+  canvasContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+    borderRadius: 14,
+    backgroundColor: '#08080c',
+    borderWidth: 1,
+    borderColor: '#1f1f2e',
   },
   footerActions: {
     flexDirection: 'row',
@@ -390,7 +417,9 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(12),
     paddingHorizontal: scale(22),
     borderRadius: moderateScale(12),
-    backgroundColor: '#1c1c24',
+    backgroundColor: '#171720',
+    borderWidth: 1,
+    borderColor: '#262634',
   },
   backBtnText: {
     color: '#d4d4d8',
@@ -402,10 +431,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(28),
     borderRadius: moderateScale(12),
     backgroundColor: '#8b5cf6',
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 5,
   },
   nextBtnText: {
     color: '#ffffff',
     fontSize: fontSize(15),
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });

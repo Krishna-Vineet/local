@@ -1,121 +1,192 @@
 // ─────────────────────────────────────────────────────────────────
 //  Happypix Booth — Shared Type Definitions
-//  ALL hardware abstractions live here.
-//  UI + screens ONLY import from this package, never from SDKs directly.
+//  Full specification aligning mobile tablet app and electron kiosk
 // ─────────────────────────────────────────────────────────────────
 
-// ── Camera ───────────────────────────────────────────────────────
+export type ScreenId =
+  | 'boot'
+  | 'login'
+  | 'waiting'
+  | 'start'
+  | 'orientation'
+  | 'templates'
+  | 'prints'
+  | 'payment'
+  | 'camera'
+  | 'photos'
+  | 'customize'
+  | 'success';
 
-export type CameraType = 'phone' | 'sony' | 'canon' | 'ptp';
+export type Orientation = 'portrait' | 'landscape';
+export type FilterId = 'original' | 'warm' | 'cool' | 'bw' | 'vintage' | 'soft' | 'party';
+export type OrnamentId = 'none' | 'confetti' | 'stars' | 'bubbles' | 'hearts';
 
-export interface CameraStatus {
-  connected: boolean;
-  type: CameraType;
-  batteryLevel?: number; // 0–100
-  storageAvailable?: number; // MB
-  isRecording?: boolean;
-  error?: string;
+export interface LayoutSlot {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+}
+
+export interface LayoutDefinition {
+  id: string;
+  familyId: string;
+  label: string;
+  printSize: string;
+  sheetSize: string;
+  orientation: Orientation;
+  slots: number;
+  canvas: { width: number; height: number };
+  photoSlots: LayoutSlot[];
+}
+
+export interface TemplateDesign {
+  background: { type: 'solid' | 'gradient' | 'image'; colors: string[]; url?: string };
+  accent: string;
+  textColor: string;
+  ornament: OrnamentId;
+  slotShape: 'square' | 'rounded' | 'pill';
+  title: string;
+  subtitle: string;
+}
+
+export interface BoothTemplate {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  source: 'designer' | 'playground' | 'ai_generated';
+  componentId?: string;
+  layout: LayoutDefinition;
+  design: TemplateDesign;
+  active: boolean;
+}
+
+export interface BoothEvent {
+  id: string;
+  organizationId: string;
+  name: string;
+  clientName: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  status: 'live' | 'upcoming' | 'finished' | 'paused';
+  digitalCopy: boolean;
+  filters: FilterId[];
+  branding: {
+    logos: string[];
+    tagline: string;
+  };
+  layoutPrices: Record<string, number>;
+  templates: BoothTemplate[];
+  revision: string;
+  templateContractVersion: number;
+}
+
+export interface BoothSettings {
+  organizationName: string;
+  boothTimeoutSec: number;
+  payoutMode: 'upi' | 'wallet';
+  upiId: string | null;
+  paymentDisplayName: string;
+  currency: 'INR';
+  maximumPrints: number;
+}
+
+export interface Installation {
+  deviceUuid: string;
+  deviceToken: string;
+  deviceId: string;
+  organizationId: string;
+  pairedAt: string;
+  locationLabel?: string;
+}
+
+export interface BoothSnapshot {
+  device: { id: string; name: string; uuid: string };
+  organization: { id: string; name: string };
+  event: BoothEvent | null;
+  settings: BoothSettings;
+  revision: string;
+  serverTime: string;
+}
+
+export interface HardwareSnapshot {
+  capturedAt: string;
+  platform: string;
+  release: string;
+  camera: {
+    connected: boolean;
+    working: boolean;
+    provider: string;
+    model: string | null;
+    shutterCount: number;
+    batteryPct: number | null;
+    error: string | null;
+  };
+  printer: {
+    connected: boolean;
+    working: boolean;
+    provider: string;
+    model: string;
+    printsTotal: number;
+    queueDepth: number;
+    error: string | null;
+  };
+  kioskScreen: {
+    connected: boolean;
+    external: boolean;
+    displayCount: number;
+    width: number;
+    height: number;
+    scaleFactor: number;
+    error: string | null;
+  };
+}
+
+export interface CheckoutQuote {
+  quoteId: string;
+  unitPrice: number;
+  prints: number;
+  gross: number;
+  discount: number;
+  finalAmount: number;
+  couponCode: string | null;
+  couponMessage: string | null;
+  settlement: 'upi' | 'wallet';
+  expiresAt: string;
+}
+
+export interface PaymentOrder {
+  paymentId: string;
+  qrPayload: string;
+  amount: number;
+  status: 'pending' | 'paid' | 'failed';
 }
 
 export interface CapturedPhoto {
-  uri: string;          // local file:// URI
-  width: number;
-  height: number;
-  timestamp: number;
+  id?: string;
+  uri: string;
+  dataUrl?: string;
+  width?: number;
+  height?: number;
+  capturedAt?: string;
+  timestamp?: number;
   filter?: string;
 }
 
-export interface CameraDiscoveryResult {
-  type: CameraType;
-  name: string;
-  address?: string; // IP for network cameras
-  serial?: string;
-}
-
-/**
- * Every camera provider MUST implement this interface.
- * UI talks only to CameraManager — never to a specific provider.
- */
-export interface CameraProvider {
-  readonly type: CameraType;
-  connect(): Promise<void>;
-  disconnect(): Promise<void>;
-  startPreview(surfaceId?: string): Promise<void>;
-  stopPreview(): Promise<void>;
-  capture(): Promise<CapturedPhoto>;
-  applyFilter(filter: FilterType): Promise<void>;
-  getBattery(): Promise<number>;
-  getStatus(): Promise<CameraStatus>;
-}
-
-// ── Printer ──────────────────────────────────────────────────────
-
-export type PrinterType = 'dnp' | 'citizen' | 'fuji' | 'airprint' | 'ipp';
-export type PaperSize = '4x6' | '5x7' | '6x8' | '2x6_strip';
-
-export interface PrinterDevice {
-  type: PrinterType;
-  name: string;
-  address?: string;
-  model?: string;
-}
-
-export interface PrintJob {
-  /** base64 data URI of the fully rendered 300 DPI bitmap */
-  bitmap: string;
-  copies: number;
-  paperSize: PaperSize;
-  eventId?: string;
-}
-
-export interface PrintResult {
-  success: boolean;
-  jobId?: string;
-  error?: string;
-}
-
-export interface PrinterStatus {
-  connected: boolean;
-  type: PrinterType;
-  papersRemaining?: number;
-  isReady: boolean;
-  error?: string;
-}
-
-/**
- * Every printer provider MUST implement this interface.
- * UI talks only to PrinterManager — never to a specific provider.
- */
-export interface PrinterProvider {
-  readonly type: PrinterType;
-  discover(): Promise<PrinterDevice[]>;
-  connect(device: PrinterDevice): Promise<void>;
-  disconnect(): Promise<void>;
-  print(job: PrintJob): Promise<PrintResult>;
-  getStatus(): Promise<PrinterStatus>;
-}
-
-// ── Connection ───────────────────────────────────────────────────
-
-export type ConnectionType = 'usb' | 'tcp' | 'udp' | 'bluetooth' | 'wifi';
-
-export interface Connection {
-  readonly type: ConnectionType;
-  connect(): Promise<void>;
-  disconnect(): Promise<void>;
-  send(data: Buffer | Uint8Array): Promise<void>;
-  receive(): Promise<Buffer>;
-  isConnected(): boolean;
-}
-
-// ── Filters ──────────────────────────────────────────────────────
-
 export type FilterType =
   | 'none'
+  | 'original'
   | 'vintage'
   | 'blackwhite'
+  | 'bw'
   | 'warm'
   | 'cool'
+  | 'soft'
+  | 'party'
   | 'vivid';
 
 export type PhotoShape = 'rectangle' | 'circle' | 'heart' | 'rounded';
@@ -130,8 +201,6 @@ export interface Sticker {
   height: number;
   rotation?: number;
 }
-
-// ── Template / Print Rendering ────────────────────────────────────
 
 export interface TemplateSlot {
   x: number;
@@ -149,120 +218,119 @@ export interface PrintTemplate {
   frames: number;
   slots: TemplateSlot[];
   photoSlots?: any[];
-  canvas?: { width: number; height: number; };
+  canvas?: { width: number; height: number };
   dpi: 300 | 600;
   overlayUrl?: string;
   price?: number | null;
 }
 
-// ── Booth Session ────────────────────────────────────────────────
-
-export type BoothScreen = 'capture' | 'filter' | 'preview' | 'payment' | 'print';
-
-export interface ActiveEvent {
-  _id: string;
+export interface CameraDiscoveryResult {
+  type: CameraType;
   name: string;
-  shortCode: string;
-  location: string;
-  status: 'upcoming' | 'live' | 'finished';
-  selectedScreens?: BoothScreen[];
-  branding?: {
-    logoUrl?: string;
-    logoPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-    overlayUrl?: string;
-    primaryColor?: string;
-  };
-  logos?: string[];
-  allowedTemplates?: {
-    id: string;
-    label: string;
-    description: string;
-    frames: number;
-    orientation: 'vertical' | 'horizontal' | 'grid';
-    overlayUrl: string;
-    price: number | null;
-    isDefault: boolean;
-  }[];
-  allowedFilters?: FilterType[];
-  printingEnabled?: boolean;
-  printPrice?: number | null;
-  boothTimeout?: number;
-  razorpayKeyId?: string;
-  countdownDuration?: number;
-  passkey?: string;
-  // Per-cut grid pricing set by the event organizer
-  gridPrices?: {
-    cut1?: number | null;
-    cut2?: number | null;
-    cut4?: number | null;
-    cut6Vertical?: number | null;
-    cut6Horizontal?: number | null;
-  };
-  assignedTemplateIds?: any[];
-  // Per-format pricing (by paper size category)
-  formatPrices?: {
-    strip?: number | null;
-    standard?: number | null;
-    large?: number | null;
-    square?: number | null;
-  };
-  // Per-template price overrides { templateId -> price }
-  templatePrices?: Record<string, number>;
-  // ─── Digital Photo Sharing Settings ──────────────────────
-  sharingConfig?: {
-    enabled: boolean;
-    qr?: { enabled: boolean };
-    download?: { enabled: boolean };
-    whatsapp?: { enabled: boolean };
-    email?: { enabled: boolean };
-    sms?: { enabled: boolean };
-    nativeShare?: { enabled: boolean };
-    copyLink?: { enabled: boolean };
-    expirationDays?: number;
-  };
-  enabledLayouts?: string[];
+  address?: string;
+  serial?: string;
 }
 
-export interface GlobalSettings {
-  printPrice: number;
-  taxRate: number;
-  boothTimeout: number;
-  defaultPaperSize?: PaperSize;
-  upiId?: string;
-  upiName?: string;
-  upiQrImageUrl?: string;
-  razorpayKeyId?: string;
-  countdownDuration?: number;
+export interface CameraProvider {
+  readonly type: CameraType;
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  startPreview(surfaceId?: string): Promise<void>;
+  stopPreview(): Promise<void>;
+  capture(): Promise<CapturedPhoto>;
+  applyFilter(filter: FilterType): Promise<void>;
+  getBattery(): Promise<number>;
+  getStatus(): Promise<CameraStatus>;
+}
+
+export interface PrinterProvider {
+  readonly type: PrinterType;
+  discover(): Promise<PrinterDevice[]>;
+  connect(device: PrinterDevice): Promise<void>;
+  disconnect(): Promise<void>;
+  print(job: PrintJob): Promise<PrintResult>;
+  getStatus(): Promise<PrinterStatus>;
+}
+
+export interface PlacedSticker {
+  id: string;
+  emoji: string;
+  x: number; // percentage (0..100)
+  y: number; // percentage (0..100)
+}
+
+export interface Customization {
+  ornament: OrnamentId;
+  filter: FilterId;
+  logo: string | null;
+  title: string;
+  subtitle: string;
+  stickers: PlacedSticker[];
 }
 
 export interface BoothSession {
-  orientation: 'vertical' | 'horizontal';
-  frames: number;
-  images: CapturedPhoto[];
-  selectedImages: CapturedPhoto[];
-  retakeIndex: number | null;
-  activeEvent: ActiveEvent | null;
-  isAdminAssigned: boolean;
-  globalSettings: GlobalSettings;
-  selectedTemplate: PrintTemplate | null;
-  taglineText: string;
-  optionalLogoUrl: string;
-  activeFilter: FilterType;
+  id: string;
+  startedAt: string;
+  orientation: Orientation | null;
+  template: BoothTemplate | null;
+  prints: number;
+  digitalCopy: boolean;
+  quote: CheckoutQuote | null;
+  payment: PaymentOrder | null;
+  photos: CapturedPhoto[];
+  selectedPhotos: CapturedPhoto[];
+  customization: Customization;
 }
 
-// ── Device ───────────────────────────────────────────────────────
-
-export interface DeviceInfo {
-  token: string;
-  platform: 'android' | 'ios';
-  model: string;
-  osVersion: string;
+export interface PrintOutcome {
+  success: boolean;
+  jobId: string | null;
+  error: string | null;
+  shareUrl: string | null;
 }
 
-// ── Kiosk ────────────────────────────────────────────────────────
+// ── Hardware Abstraction Types ─────────────────────────────────────
 
-export interface KioskManager {
-  startKiosk(): Promise<void>;
-  stopKiosk(): Promise<void>;
-  isKioskEnabled(): Promise<boolean>;
+export type CameraType = 'phone' | 'sony' | 'canon' | 'ptp';
+
+export interface CameraStatus {
+  connected: boolean;
+  type: CameraType;
+  batteryLevel?: number;
+  storageAvailable?: number;
+  isRecording?: boolean;
+  error?: string;
+}
+
+export type PrinterType = 'dnp' | 'citizen' | 'fuji' | 'airprint' | 'ipp';
+export type PaperSize = '4x6' | '5x7' | '6x8' | '2x6_strip';
+
+export interface PrinterDevice {
+  type: PrinterType;
+  name: string;
+  address?: string;
+  model?: string;
+}
+
+export interface PrintJob {
+  bitmap?: string;
+  copies: number;
+  layoutId?: string;
+  templateName?: string;
+  paperSize?: PaperSize;
+  eventId?: string;
+}
+
+export interface PrintResult {
+  success: boolean;
+  jobId?: string;
+  error?: string;
+}
+
+export interface PrinterStatus {
+  connected: boolean;
+  type: PrinterType;
+  papersRemaining?: number;
+  isReady: boolean;
+  error?: string;
 }

@@ -1,68 +1,52 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Animated, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { cameraManager } from '../../../../packages/camera-core/src/index';
 import { printerManager } from '../../../../packages/printer-core/src/index';
 import { useBooth } from '../context/BoothProvider';
-import { isLargeScreen } from '@happypix/ui';
-import type { RootStackParamList } from '../../App';
-
 import { AppLogo } from '../components/AppLogo';
+import SoundManager from '../utils/SoundManager';
+import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Boot'>;
 type CheckStatus = 'checking' | 'ok' | 'failed';
 
 export const BootScreen: React.FC<Props> = ({ navigation }) => {
-  const { send } = useBooth();
+  const { bootReady, snapshot, installation } = useBooth();
   const [cameraStatus, setCameraStatus] = useState<CheckStatus>('checking');
   const [printerStatus, setPrinterStatus] = useState<CheckStatus>('checking');
   const [cameraType, setCameraType] = useState('');
 
-  // Anim values for Fade & Scale
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.85)).current;
 
-  // Sound Player Simulator
-  const playWelcomeSound = () => {
-    try {
-      console.log('🔊 [SoundPulse] Playing Welcome Sound: client-app/apps/booth/src/assets/sounds/startup.mp3');
-    } catch (e) {
-      console.warn('Could not play welcome sound:', e);
-    }
-  };
-
   useEffect(() => {
-    // 1. Play startup sound immediately on mount
-    playWelcomeSound();
+    SoundManager.play('beep');
 
-    // 2. Start parallel animations (Fade & Scale Zoom-In)
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 700,
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 700,
         useNativeDriver: true,
       }),
     ]).start();
 
-    // 3. Check Devices (Camera & Printer) in background
-    const checkDevicesAndNavigate = async () => {
-      const startTime = Date.now();
-
-      // Check camera
+    const checkDevices = async () => {
+      // 1. Camera check
       try {
         const type = await cameraManager.autoSelect();
-        setCameraType(type.toUpperCase());
+        setCameraType(type ? type.toUpperCase() : 'BUILT-IN');
         setCameraStatus('ok');
       } catch {
         setCameraStatus('failed');
       }
 
-      // Check printer (optional)
+      // 2. Printer check
       try {
         const devices = await printerManager.discover();
         if (devices.length > 0) {
@@ -74,40 +58,53 @@ export const BootScreen: React.FC<Props> = ({ navigation }) => {
       } catch {
         setPrinterStatus('failed');
       }
-
-      // Signal state machine that device check is done
-      send({ type: 'DEVICES_READY' });
-
-      // Enforce at least 1.5s splash visibility
-      const elapsedTime = Date.now() - startTime;
-      const remainingTime = Math.max(0, 1500 - elapsedTime);
-
-      setTimeout(() => {
-        navigation.replace('Login');
-      }, remainingTime);
     };
 
-    checkDevicesAndNavigate();
+    checkDevices();
   }, []);
+
+  // When boot ready, navigate
+  useEffect(() => {
+    if (!bootReady) return;
+
+    const timer = setTimeout(() => {
+      if (installation && snapshot) {
+        if (snapshot.event?.status === 'live') {
+          navigation.replace('Start');
+        } else {
+          navigation.replace('Waiting');
+        }
+      } else {
+        navigation.replace('Login');
+      }
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [bootReady, installation, snapshot, navigation]);
 
   const StatusRow = ({ label, status }: { label: string; status: CheckStatus }) => (
     <View style={styles.row}>
       <Text style={styles.statusLabel}>{label}</Text>
       {status === 'checking' && <ActivityIndicator size="small" color="#8b5cf6" />}
       {status === 'ok' && <Text style={styles.okText}>✓ Ready</Text>}
-      {status === 'failed' && <Text style={styles.warnText}>⚠ Not Found</Text>}
+      {status === 'failed' && <Text style={styles.warnText}>⚠ Simulator</Text>}
     </View>
   );
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[styles.brandContainer, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+      <Animated.View
+        style={[
+          styles.brandContainer,
+          { opacity: fadeAnim, transform: [{ scale: scaleAnim }] },
+        ]}
+      >
         <AppLogo width={180} height={160} forceDark />
         <View style={styles.divider} />
         <Text style={styles.sub}>PREMIUM PHOTO BOOTH EXPERIENCE</Text>
       </Animated.View>
 
-      {/* System Check Card */}
+      {/* Diagnostics Card */}
       <Animated.View style={[styles.checkCard, { opacity: fadeAnim }]}>
         <Text style={styles.cardTitle}>System Diagnostics</Text>
         <StatusRow

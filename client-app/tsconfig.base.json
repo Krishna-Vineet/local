@@ -6,6 +6,16 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "moduleResolution": "bundler",
+    "rootDir": ".",
+    "paths": {
+      "@happypix/types": ["./packages/types/src/index.ts"],
+      "@happypix/api": ["./packages/api/src/index.ts"],
+      "@happypix/ui": ["./packages/ui/src/index.ts"],
+      "@happypix/state-machine": ["./packages/state-machine/src/index.ts"],
+      "@happypix/camera-core": ["./packages/camera-core/src/index.ts"],
+      "@happypix/printer-core": ["./packages/printer-core/src/index.ts"],
+      "@happypix/kiosk-core": ["./packages/kiosk-core/src/index.ts"]
+    },
     "lib": ["ES2022", "DOM"],
     "target": "ES2022",
     "jsx": "react-native",

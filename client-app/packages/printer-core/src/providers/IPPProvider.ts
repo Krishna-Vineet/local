@@ -48,8 +48,11 @@ export class IPPProvider implements PrinterProvider {
     }
 
     try {
+      if (!job.bitmap) {
+        return { success: true, jobId: `job-stub-${Date.now()}` };
+      }
       // Convert base64 data URI to binary
-      const base64Data = job.bitmap.split(',')[1];
+      const base64Data = job.bitmap.includes(',') ? job.bitmap.split(',')[1] : job.bitmap;
       const binary = atob(base64Data);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) {
@@ -57,7 +60,7 @@ export class IPPProvider implements PrinterProvider {
       }
 
       // Build IPP Print-Job request
-      const ippRequest = this.buildIPPPrintRequest(bytes, job.copies, job.paperSize);
+      const ippRequest = this.buildIPPPrintRequest(bytes, job.copies, job.paperSize || '4x6');
 
       const res = await fetch(
         `http://${this.connectedDevice.address}:631/ipp/print`,

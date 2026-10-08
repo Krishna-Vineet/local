@@ -66,10 +66,14 @@ const PAPER_DIMENSIONS: Record<PaperSize, { width: number; height: number }> = {
 // CSS filter map (same as web client for consistency)
 const FILTER_CSS: Record<FilterType, string> = {
   none:       'none',
+  original:   'none',
   vintage:    'sepia(0.6) contrast(1.15) brightness(0.95) hue-rotate(-10deg)',
   blackwhite: 'grayscale(1) contrast(1.25) brightness(1.05)',
+  bw:         'grayscale(1) contrast(1.25) brightness(1.05)',
   warm:       'sepia(0.25) saturate(1.35) hue-rotate(5deg) contrast(1.05)',
   cool:       'saturate(1.15) hue-rotate(-15deg) brightness(1.05) contrast(1.02)',
+  soft:       'brightness(1.05) contrast(0.95) saturate(1.1)',
+  party:      'saturate(1.5) contrast(1.2) hue-rotate(15deg)',
   vivid:      'saturate(1.65) contrast(1.15) brightness(1.05)',
 };
 
@@ -122,7 +126,7 @@ export class RenderEngine {
   async compose(input: RenderInput): Promise<RenderOutput> {
     const { template, photos, filter = 'none', tagline, backgroundColor, photoShape = 'rectangle', framePatternUrl, framePatternId, stickers = [], logoUrl, logo } = input;
     const activeLogoUrl = logoUrl || logo;
-    const dims = PAPER_DIMENSIONS[template.paperSize];
+    const dims = (PAPER_DIMENSIONS as Record<string, { width: number; height: number }>)[template.paperSize] || PAPER_DIMENSIONS['4x6'];
 
     // In a React Native context, canvas is provided by react-native-skia.
     // This base implementation works in web/test environments.

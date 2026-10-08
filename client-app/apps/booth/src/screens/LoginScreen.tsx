@@ -1,72 +1,61 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, TextInput, StyleSheet, TouchableOpacity,
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
-  Dimensions, ScrollView
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AuthAPI, setAuthToken } from '../../../../packages/api/src/index';
-import type { RootStackParamList } from '../../App';
-
-import { AppLogo } from '../components/AppLogo';
+import { isDemoMode } from '@happypix/api';
 import { useBooth } from '../context/BoothProvider';
+import { AppLogo } from '../components/AppLogo';
+import {
+  fontSize,
+  moderateScale,
+  scale,
+  verticalScale,
+} from '../../../../packages/ui/src/index';
+import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export const LoginScreen: React.FC<Props> = ({ navigation }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const { login, bootError } = useBooth();
+  const demo = isDemoMode();
+
+  const [email, setEmail] = useState(demo ? 'booth@happypix.in' : '');
+  const [password, setPassword] = useState(demo ? 'demo123' : '');
+  const [locationLabel, setLocationLabel] = useState('Main Reception Booth');
   const [loading, setLoading] = useState(false);
-  const { state } = useBooth();
-
-  // Extract human-readable error from API error format if present
-  let displayError = state.context.error;
-  if (displayError && displayError.includes('failed [')) {
-    try {
-      const jsonPart = displayError.substring(displayError.indexOf('{'));
-      const parsed = JSON.parse(jsonPart);
-      if (parsed.error) displayError = parsed.error;
-    } catch (e) {
-      // Keep original if parsing fails
-    }
-  }
-
-  // Auto-login if token exists
-  useEffect(() => {
-    const checkToken = async () => {
-      try {
-        const savedToken = await AsyncStorage.getItem('hp_auth_token');
-        if (savedToken) {
-          setAuthToken(savedToken);
-          navigation.replace('ClientEvents');
-        }
-      } catch (e) {
-        console.warn('Failed to retrieve token:', e);
-      }
-    };
-    checkToken();
-  }, []);
+  const [error, setError] = useState<string | null>(bootError);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      Alert.alert('Required Fields', 'Please enter email and password.');
+      setError('Please enter your email and password.');
       return;
     }
 
     setLoading(true);
+    setError(null);
     try {
-      const res = await AuthAPI.login(email.trim(), password);
-      // Save token to AsyncStorage
-      await AsyncStorage.setItem('hp_auth_token', res.token);
-      await AsyncStorage.setItem('hp_auth_user', JSON.stringify(res.user));
-      // Update global API wrapper configuration
-      setAuthToken(res.token);
+      const { isLive } = await login({
+        email: email.trim(),
+        password,
+        locationLabel: locationLabel.trim() || 'Tablet Booth',
+      });
 
-      navigation.replace('ClientEvents');
+      if (isLive) {
+        navigation.replace('Start');
+      } else {
+        navigation.replace('Waiting');
+      }
     } catch (err: any) {
-      console.error('Login error:', err);
-      Alert.alert('Login Failed', 'Invalid email or password.');
+      setError(err.message || 'Login failed. Please check credentials.');
     } finally {
       setLoading(false);
     }
@@ -74,20 +63,25 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.container}
     >
-      <View style={styles.scrollContainer}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.formCard}>
           <View style={styles.logoContainer}>
             <AppLogo width={140} height={120} forceDark />
           </View>
-          <Text style={styles.badge}>CLIENT ACCESS</Text>
-          <Text style={styles.subTitle}>Log in to configure this photo booth device</Text>
+          <Text style={styles.badge}>BOOTH PAIRING</Text>
+          <Text style={styles.subTitle}>
+            Connect this tablet securely to your HappyPix organization
+          </Text>
 
-          {displayError && (
+          {error && (
             <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{displayError}</Text>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
 
@@ -96,7 +90,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             style={styles.input}
             value={email}
             onChangeText={setEmail}
-            placeholder="name@happypix.com"
+            placeholder="booth@happypix.in"
             placeholderTextColor="#52525b"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -115,19 +109,38 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
             autoCorrect={false}
           />
 
+          <Text style={styles.label}>BOOTH LOCATION LABEL</Text>
+          <TextInput
+            style={styles.input}
+            value={locationLabel}
+            onChangeText={setLocationLabel}
+            placeholder="Main reception, Hall A, Stage…"
+            placeholderTextColor="#52525b"
+            autoCapitalize="words"
+            autoCorrect={false}
+          />
+
           <TouchableOpacity
             style={[styles.submitBtn, loading && { opacity: 0.7 }]}
             onPress={handleLogin}
             disabled={loading}
+            activeOpacity={0.85}
           >
             {loading ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={styles.submitBtnText}>Verify Credentials →</Text>
+              <Text style={styles.submitBtnText}>Pair Booth Device →</Text>
             )}
           </TouchableOpacity>
+
+          {demo && (
+            <View style={styles.demoNote}>
+              <Text style={styles.demoTitle}>Demo Build Active</Text>
+              <Text style={styles.demoText}>booth@happypix.in  •  demo123</Text>
+            </View>
+          )}
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 };
@@ -141,15 +154,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: scale(24),
   },
   formCard: {
     backgroundColor: '#121217',
-    borderRadius: 24,
+    borderRadius: moderateScale(24),
     borderWidth: 1.5,
     borderColor: '#22222a',
-    paddingVertical: 20,
-    paddingHorizontal: 32,
+    paddingVertical: verticalScale(28),
+    paddingHorizontal: scale(32),
     width: '100%',
     maxWidth: 440,
     elevation: 8,
@@ -160,10 +173,10 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: verticalScale(12),
   },
   badge: {
-    fontSize: 10,
+    fontSize: fontSize(10),
     fontWeight: '800',
     color: '#8b5cf6',
     letterSpacing: 2,
@@ -171,18 +184,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subTitle: {
-    fontSize: 13,
+    fontSize: fontSize(13),
     color: '#71717a',
     lineHeight: 18,
-    marginBottom: 20,
+    marginBottom: verticalScale(20),
     textAlign: 'center',
   },
   label: {
-    fontSize: 10,
+    fontSize: fontSize(10),
     fontWeight: '700',
     color: '#a1a1aa',
     letterSpacing: 1.5,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   errorBox: {
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
@@ -190,34 +203,54 @@ const styles = StyleSheet.create({
     borderColor: '#ef4444',
     padding: 12,
     borderRadius: 8,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   errorText: {
     color: '#f87171',
-    fontSize: 13,
+    fontSize: fontSize(12),
     textAlign: 'center',
     fontWeight: '600',
   },
   input: {
     backgroundColor: '#18181f',
-    borderRadius: 12,
+    borderRadius: moderateScale(12),
     borderWidth: 1.5,
     borderColor: '#27272a',
     color: '#ffffff',
-    padding: 16,
-    fontSize: 16,
-    marginBottom: 20,
+    padding: scale(14),
+    fontSize: fontSize(15),
+    marginBottom: verticalScale(16),
   },
   submitBtn: {
     backgroundColor: '#8b5cf6',
-    borderRadius: 12,
-    padding: 18,
+    borderRadius: moderateScale(12),
+    paddingVertical: verticalScale(16),
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: verticalScale(8),
   },
   submitBtnText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: fontSize(15),
     fontWeight: '700',
+  },
+  demoNote: {
+    marginTop: verticalScale(18),
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.25)',
+    alignItems: 'center',
+  },
+  demoTitle: {
+    color: '#a78bfa',
+    fontSize: fontSize(11),
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  demoText: {
+    color: '#e4e4e7',
+    fontSize: fontSize(12),
   },
 });

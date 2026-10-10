@@ -482,6 +482,26 @@ export function setStorageAdapter(adapter: StorageAdapter) {
 
 const INSTALLATION_KEY = 'happypix_booth_installation_v2';
 const SNAPSHOT_KEY = 'happypix_booth_snapshot_v2';
+const DEVICE_PERSISTENT_UUID_KEY = 'happypix_booth_device_persistent_uuid_v2';
+
+export async function getPersistentDeviceUuid(): Promise<string> {
+  try {
+    const existing = await currentStorage.getItem(DEVICE_PERSISTENT_UUID_KEY);
+    if (existing && typeof existing === 'string' && existing.trim().length > 8) {
+      return existing.trim();
+    }
+    // Standard RFC4122 v4 UUID generator
+    const newUuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+    await currentStorage.setItem(DEVICE_PERSISTENT_UUID_KEY, newUuid);
+    return newUuid;
+  } catch {
+    return 'tablet-uuid-' + Math.random().toString(36).slice(2, 12);
+  }
+}
 
 export async function saveInstallation(installation: Installation): Promise<void> {
   try {

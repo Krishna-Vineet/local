@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -40,7 +41,7 @@ const DEMO_PALETTES = [
 
 export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useAppTheme();
-  const { session, updateSession } = useBooth();
+  const { session, updateSession, setIdleTimerEnabled } = useBooth();
   const template = session.template;
 
   const { width, height } = useWindowDimensions();
@@ -61,6 +62,12 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
 
   const slots = template?.layout?.slots ?? 1;
   const totalShots = Math.max(3, Math.min(10, slots * 2));
+
+  useEffect(() => {
+    // Explicitly disable idle timer on camera screen
+    setIdleTimerEnabled(false);
+    return () => setIdleTimerEnabled(false);
+  }, []);
 
   useEffect(() => {
     if (!hasPermission) {
@@ -179,7 +186,14 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
             />
           ) : (
             <View style={styles.cameraPlaceholder}>
-              <Text style={styles.placeholderIcon}>📸</Text>
+              <View style={styles.placeholderIconWrap}>
+                <Svg width={48} height={48} viewBox="0 0 24 24">
+                  <Path
+                    fill="#8b5cf6"
+                    d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm0 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm8-7.5h-3.17L15 4.17C14.65 3.82 14.17 3.63 13.68 3.63h-3.36c-.49 0-.97.19-1.32.54L7.17 6H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 13H4V8h3.83l1.83-2h4.68l1.83 2H20v11z"
+                  />
+                </Svg>
+              </View>
               <Text style={styles.placeholderTitle}>Full Widescreen Viewfinder</Text>
               <Text style={styles.placeholderSub}>
                 {device ? 'HD Camera active and ready' : 'Simulator HD Feed Active'}
@@ -221,7 +235,14 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
               onPress={startCapture}
               activeOpacity={0.85}
             >
-              <View style={styles.shutterInnerCircle} />
+              <View style={styles.cameraIconBadge}>
+                <Svg width={22} height={22} viewBox="0 0 24 24">
+                  <Path
+                    fill="#ffffff"
+                    d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm0 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm8-7.5h-3.17L15 4.17C14.65 3.82 14.17 3.63 13.68 3.63h-3.36c-.49 0-.97.19-1.32.54L7.17 6H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 13H4V8h3.83l1.83-2h4.68l1.83 2H20v11z"
+                  />
+                </Svg>
+              </View>
               <View style={styles.shutterTextGroup}>
                 <Text style={styles.shutterTitle}>TAKE PHOTOS</Text>
                 <Text style={styles.shutterSub}>
@@ -343,9 +364,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  placeholderIcon: {
-    fontSize: fontSize(56),
-    marginBottom: 8,
+  placeholderIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(139, 92, 246, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
   },
   placeholderTitle: {
     color: '#ffffff',
@@ -439,13 +467,13 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 8,
   },
-  shutterInnerCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 3,
-    borderColor: '#ffffff',
-    backgroundColor: '#ec4899',
+  cameraIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: scale(12),
   },
   shutterTextGroup: {

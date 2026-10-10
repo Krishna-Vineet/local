@@ -69,11 +69,6 @@ export const WaitingScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    navigation.replace('Login');
-  };
-
   return (
     <ScreenContainer>
       <View style={styles.container}>
@@ -82,9 +77,6 @@ export const WaitingScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={[styles.orgName, { color: theme.colors.primary }]}>
             {snapshot?.organization?.name?.toUpperCase() || 'HAPPYPIX BOOTH'}
           </Text>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-            <Text style={styles.logoutText}>Unpair</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Center Card */}

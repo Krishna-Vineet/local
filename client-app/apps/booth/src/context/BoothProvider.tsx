@@ -12,6 +12,7 @@ import {
   clearInstallation,
   getCachedSnapshot,
   saveCachedSnapshot,
+  getPersistentDeviceUuid,
   isDemoMode,
   type BoothEvent,
   type BoothSession,
@@ -231,8 +232,15 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setOutcome(null);
     resetIdleTimer();
     if (navigation) {
-      const isLive = snapshotRef.current?.event?.status === 'live';
-      navigation.replace(isLive ? 'Start' : 'Waiting');
+      const targetScreen = snapshotRef.current?.event?.status === 'live' ? 'Start' : 'Waiting';
+      if (typeof navigation.reset === 'function') {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: targetScreen }],
+        });
+      } else if (typeof navigation.replace === 'function') {
+        navigation.replace(targetScreen);
+      }
     }
   }, [resetIdleTimer]);
 
@@ -259,13 +267,14 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // ── 4. Login Action ──────────────────────────────────────────────
   const login = async (values: { email: string; password: string; locationLabel: string }): Promise<{ isLive: boolean }> => {
     const dim = Dimensions.get('window');
-    const deviceUuid = `device-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const deviceUuid = await getPersistentDeviceUuid();
+    const deviceName = values.locationLabel ? `Booth — ${values.locationLabel}` : `HappyPix Tablet (${Platform.OS})`;
 
     const result = await boothApi.login({
       email: values.email,
       password: values.password,
       deviceUuid,
-      deviceName: `Tablet (${Platform.OS})`,
+      deviceName,
       clientDateTime: new Date().toISOString(),
       location: { label: values.locationLabel },
       platform: Platform.OS,

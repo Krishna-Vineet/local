@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,11 +6,9 @@ import {
   TouchableOpacity,
   Animated,
   useWindowDimensions,
-  Modal,
-  TextInput,
-  Alert,
   Image,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ScreenContainer,
@@ -27,36 +25,39 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Start'>;
 
+const svgData = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+// Guaranteed visible embedded vector previews (zero network dependency)
 const PREVIEW_CARDS = [
-  'https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80', // wedding romance
-  'https://images.unsplash.com/photo-1511285560929-80b456fea0bc?w=600&q=80', // joyful laughter
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&q=80', // stylish portrait
+  svgData(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4c1d95"/><stop offset="100%" stop-color="#db2777"/></linearGradient></defs><rect width="300" height="400" fill="url(#g1)"/><circle cx="150" cy="140" r="55" fill="#fde047" opacity="0.85"/><path d="M70 330c15-80 65-110 80-110s65 30 80 110" fill="#ffffff" opacity="0.9"/><circle cx="150" cy="130" r="40" fill="#fbbf24"/><text x="150" y="370" font-family="sans-serif" font-size="16" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="3">PORTRAIT</text></svg>'
+  ),
+  svgData(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400"><defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#065f46"/><stop offset="100%" stop-color="#0284c7"/></linearGradient></defs><rect width="300" height="400" fill="url(#g2)"/><circle cx="110" cy="150" r="45" fill="#fbcfe8" opacity="0.9"/><circle cx="190" cy="150" r="45" fill="#fef08a" opacity="0.9"/><path d="M40 330c10-75 50-95 70-95s60 20 70 95" fill="#ffffff" opacity="0.85"/><path d="M120 330c10-75 50-95 70-95s60 20 70 95" fill="#c084fc" opacity="0.85"/><text x="150" y="370" font-family="sans-serif" font-size="16" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="3">CELEBRATION</text></svg>'
+  ),
+  svgData(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400"><defs><linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#7c2d12"/><stop offset="100%" stop-color="#e11d48"/></linearGradient></defs><rect width="300" height="400" fill="url(#g3)"/><circle cx="150" cy="140" r="50" fill="#fef08a" opacity="0.9"/><path d="M60 330c15-85 70-115 90-115s75 30 90 115" fill="#ffffff" opacity="0.95"/><circle cx="150" cy="130" r="35" fill="#fbcfe8"/><text x="150" y="370" font-family="sans-serif" font-size="16" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="3">MEMORIES</text></svg>'
+  ),
 ];
 
 export const StartScreen: React.FC<Props> = ({ navigation }) => {
-  const { theme } = useAppTheme();
-  const { snapshot, setSession, logout, refreshEvent } = useBooth();
+  const { snapshot, setSession } = useBooth();
   const event = snapshot?.event;
   const orgName = snapshot?.settings?.organizationName || snapshot?.organization?.name || 'HappyPix';
 
   const { width, height } = useWindowDimensions();
-  const isLandscape = width > 700;
+  const isLandscape = width > height;
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const floatAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0.4)).current;
 
-  // Secret admin unlock state
-  const [logoTapCount, setLogoTapCount] = useState(0);
-  const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminPin, setAdminPin] = useState('');
-
   useEffect(() => {
-    // Pulse animation for start bar
+    // Pulse animation for start button
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.03, duration: 1000, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.04, duration: 1100, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1100, useNativeDriver: true }),
       ])
     ).start();
 
@@ -83,35 +84,6 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('Orientation');
   };
 
-  const handleLogoTap = () => {
-    const next = logoTapCount + 1;
-    if (next >= 5) {
-      setLogoTapCount(0);
-      setShowAdminModal(true);
-    } else {
-      setLogoTapCount(next);
-      setTimeout(() => setLogoTapCount(0), 3000);
-    }
-  };
-
-  const handleAdminAction = async (action: 'refresh' | 'unpair') => {
-    if (adminPin !== '1234' && adminPin !== 'admin') {
-      Alert.alert('Invalid PIN', 'Please enter PIN (1234) for operator options.');
-      return;
-    }
-
-    setShowAdminModal(false);
-    setAdminPin('');
-
-    if (action === 'refresh') {
-      await refreshEvent();
-      Alert.alert('Refreshed', 'Event data refreshed from server.');
-    } else if (action === 'unpair') {
-      await logout();
-      navigation.replace('Login');
-    }
-  };
-
   return (
     <ScreenContainer style={{ backgroundColor: '#050508' }}>
       <TouchableOpacity
@@ -125,27 +97,15 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Top Header Bar */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={handleLogoTap} activeOpacity={0.85} style={styles.logoBtn}>
-            <AppLogo width={160} height={42} forceDark />
-          </TouchableOpacity>
-
-          <View style={styles.headerRight}>
-            <View style={styles.orgBadge}>
-              <Text style={styles.orgBadgeText}>{orgName.toUpperCase()}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.gearBtn}
-              onPress={() => setShowAdminModal(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.gearIcon}>⚙</Text>
-            </TouchableOpacity>
+          <AppLogo width={160} height={42} forceDark />
+          <View style={styles.orgBadge}>
+            <Text style={styles.orgBadgeText}>{orgName.toUpperCase()}</Text>
           </View>
         </View>
 
         {/* Main Hero Section */}
         <View style={[styles.heroBody, isLandscape ? styles.heroRow : styles.heroCol]}>
-          {/* Left / Center: Layered Floating Polaroids */}
+          {/* Layered Floating Polaroids */}
           <Animated.View
             style={[
               styles.cardsStage,
@@ -154,7 +114,7 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
           >
             {/* Card Left */}
             <View style={[styles.cardFrame, styles.cardLeft]}>
-              <Image source={{ uri: PREVIEW_CARDS[0] }} style={styles.cardPhoto} />
+              <Image source={{ uri: PREVIEW_CARDS[0] }} style={styles.cardPhoto} resizeMode="cover" />
               <View style={styles.cardFooter}>
                 <Text style={styles.cardBrandText}>HAPPYPIX LIVE</Text>
               </View>
@@ -162,7 +122,7 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
 
             {/* Card Right */}
             <View style={[styles.cardFrame, styles.cardRight]}>
-              <Image source={{ uri: PREVIEW_CARDS[1] }} style={styles.cardPhoto} />
+              <Image source={{ uri: PREVIEW_CARDS[1] }} style={styles.cardPhoto} resizeMode="cover" />
               <View style={styles.cardFooter}>
                 <Text style={styles.cardBrandText}>{orgName.toUpperCase()}</Text>
               </View>
@@ -170,20 +130,25 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
 
             {/* Card Center (Hero) */}
             <View style={[styles.cardFrame, styles.cardCenter]}>
-              <Image source={{ uri: PREVIEW_CARDS[2] }} style={styles.cardPhoto} />
+              <Image source={{ uri: PREVIEW_CARDS[2] }} style={styles.cardPhoto} resizeMode="cover" />
               <View style={styles.cardFooter}>
                 <Text style={styles.cardBrandText}>STUDIO EDITION</Text>
               </View>
               <View style={styles.cardGlossOverlay} />
             </View>
 
-            {/* Glowing Heart Stamp */}
+            {/* Pure Red Circle with White Heart SVG Icon */}
             <View style={styles.heartStamp}>
-              <Text style={styles.heartStampText}>♥</Text>
+              <Svg width={24} height={24} viewBox="0 0 24 24">
+                <Path
+                  fill="#ffffff"
+                  d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+                />
+              </Svg>
             </View>
           </Animated.View>
 
-          {/* Right / Center: Event Details & Branding */}
+          {/* Event Details & Branding */}
           <View style={styles.eventInfo}>
             <View style={styles.eyebrowContainer}>
               <View style={styles.eyebrowLine} />
@@ -214,65 +179,31 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
               </Text>
             ) : (
               <Text style={styles.taglineText}>
-                “Strike a pose, make a memory, take it home.”
+                “Together is a beautiful place to be”
               </Text>
             )}
           </View>
         </View>
 
-        {/* Bottom Glowing Animated Start Bar */}
+        {/* Bottom Vibe-Matched Start Button */}
         <View style={styles.ctaWrapper}>
           <Animated.View style={[styles.startPill, { transform: [{ scale: pulseAnim }] }]}>
             <View style={styles.startPillGlow} />
-            <Text style={styles.startPillText}>TOUCH ANYWHERE TO START</Text>
-            <View style={styles.startArrowCircle}>
-              <Text style={styles.startArrowText}>→</Text>
+            <View style={styles.apertureIcon}>
+              <Svg width={18} height={18} viewBox="0 0 24 24">
+                <Path
+                  fill="#ffffff"
+                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"
+                />
+              </Svg>
+            </View>
+            <Text style={styles.startPillText}>TOUCH TO START</Text>
+            <View style={styles.arrowCircle}>
+              <Text style={styles.arrowText}>→</Text>
             </View>
           </Animated.View>
         </View>
       </TouchableOpacity>
-
-      {/* Secret Admin / Operator Modal */}
-      <Modal visible={showAdminModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Booth Operator Menu</Text>
-            <Text style={styles.modalSub}>Enter PIN (1234) for operator options</Text>
-
-            <TextInput
-              style={styles.modalInput}
-              value={adminPin}
-              onChangeText={setAdminPin}
-              placeholder="PIN"
-              placeholderTextColor="#71717a"
-              secureTextEntry
-              keyboardType="number-pad"
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#3b82f6' }]}
-                onPress={() => handleAdminAction('refresh')}
-              >
-                <Text style={styles.modalBtnText}>Sync Event</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: '#ef4444' }]}
-                onPress={() => handleAdminAction('unpair')}
-              >
-                <Text style={styles.modalBtnText}>Unpair Booth</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              onPress={() => setShowAdminModal(false)}
-              style={styles.modalCloseBtn}
-            >
-              <Text style={styles.modalCloseText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </ScreenContainer>
   );
 };
@@ -292,7 +223,6 @@ const styles = StyleSheet.create({
     borderRadius: 160,
     backgroundColor: '#8b5cf6',
     opacity: 0.15,
-    filter: 'blur(60px)',
   },
   ambientOrbRight: {
     position: 'absolute',
@@ -303,7 +233,6 @@ const styles = StyleSheet.create({
     borderRadius: 150,
     backgroundColor: '#ec4899',
     opacity: 0.12,
-    filter: 'blur(60px)',
   },
   header: {
     flexDirection: 'row',
@@ -312,20 +241,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(10),
     paddingTop: verticalScale(4),
   },
-  logoBtn: {
-    padding: 4,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: scale(10),
-  },
   orgBadge: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
     paddingVertical: 5,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     borderRadius: 20,
   },
   orgBadgeText: {
@@ -333,20 +254,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize(11),
     fontWeight: '800',
     letterSpacing: 1.5,
-  },
-  gearBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gearIcon: {
-    color: '#a1a1aa',
-    fontSize: 16,
   },
   heroBody: {
     flex: 1,
@@ -403,7 +310,8 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   cardPhoto: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
     borderRadius: 6,
     backgroundColor: '#18181b',
   },
@@ -433,25 +341,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: verticalScale(8),
     right: scale(20),
-    width: moderateScale(46),
-    height: moderateScale(46),
-    borderRadius: moderateScale(23),
-    borderColor: '#ff0000',
-    border: 2,
-    backgroundColor: '#ff0000',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#dc2626',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 8,
-    shadowColor: '#ec4899',
-    shadowOpacity: 0.9,
+    shadowColor: '#dc2626',
+    shadowOpacity: 0.7,
     shadowRadius: 12,
     elevation: 8,
-  },
-  heartStampText: {
-    backgroundColor: '#ff0000',
-    color: '#ffffff',
-    fontSize: fontSize(22),
-    fontWeight: '900',
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
   eventInfo: {
     alignItems: 'center',
@@ -532,106 +434,47 @@ const styles = StyleSheet.create({
   startPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#8b5cf6',
-    paddingVertical: verticalScale(14),
-    paddingHorizontal: scale(36),
+    backgroundColor: '#181028',
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(28),
     borderRadius: 36,
-    borderWidth: 2,
-    borderColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#a855f7',
     shadowColor: '#8b5cf6',
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
+    shadowOpacity: 0.6,
+    shadowRadius: 18,
     elevation: 8,
   },
   startPillGlow: {
     ...StyleSheet.absoluteFill,
     borderRadius: 36,
     backgroundColor: '#8b5cf6',
-    opacity: 0.3,
+    opacity: 0.15,
+  },
+  apertureIcon: {
+    marginRight: scale(10),
   },
   startPillText: {
-    fontSize: fontSize(16),
+    fontSize: fontSize(15),
     fontWeight: '900',
     color: '#ffffff',
-    letterSpacing: 1.5,
-    marginRight: scale(14),
+    letterSpacing: 2,
+    marginRight: scale(12),
   },
-  startArrowCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#ffffff',
+  arrowCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#8b5cf6',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
   },
-  startArrowText: {
+  arrowText: {
     fontSize: 16,
     fontWeight: '900',
-    color: '#7c3aed',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: scale(20),
-  },
-  modalCard: {
-    backgroundColor: '#18181b',
-    borderRadius: moderateScale(20),
-    borderWidth: 1.5,
-    borderColor: '#27272a',
-    padding: scale(28),
-    width: '100%',
-    maxWidth: 380,
-    alignItems: 'center',
-  },
-  modalTitle: {
     color: '#ffffff',
-    fontSize: fontSize(18),
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  modalSub: {
-    color: '#a1a1aa',
-    fontSize: fontSize(12),
-    marginBottom: verticalScale(16),
-  },
-  modalInput: {
-    width: '100%',
-    backgroundColor: '#09090b',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#3f3f46',
-    color: '#ffffff',
-    fontSize: fontSize(16),
-    textAlign: 'center',
-    padding: scale(12),
-    marginBottom: verticalScale(16),
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: verticalScale(12),
-  },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: verticalScale(12),
-    borderRadius: 10,
-    alignItems: 'center',
-    marginHorizontal: scale(4),
-  },
-  modalBtnText: {
-    color: '#ffffff',
-    fontSize: fontSize(13),
-    fontWeight: '700',
-  },
-  modalCloseBtn: {
-    paddingVertical: 8,
-  },
-  modalCloseText: {
-    color: '#a1a1aa',
-    fontSize: fontSize(12),
   },
 });

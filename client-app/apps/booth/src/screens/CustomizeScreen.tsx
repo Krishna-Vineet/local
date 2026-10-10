@@ -204,14 +204,34 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [secondsLeft, printing]);
 
+  // Safe navigation redirect outside render phase
+  useEffect(() => {
+    if (!template) {
+      navigation.replace('Templates');
+    }
+  }, [template, navigation]);
+
   if (!template) {
-    navigation.replace('Templates');
     return null;
   }
 
-  const isPortrait = template.layout.orientation === 'portrait';
-  const canvasWidth = isPortrait ? scale(230) : scale(320);
-  const canvasHeight = isPortrait ? verticalScale(320) : verticalScale(220);
+  const isPortraitTemplate = template.layout.orientation === 'portrait';
+  const canvasWidth = isLandscape
+    ? isPortraitTemplate
+      ? scale(220)
+      : scale(310)
+    : isPortraitTemplate
+    ? scale(200)
+    : scale(270);
+  const canvasHeight = isLandscape
+    ? isPortraitTemplate
+      ? verticalScale(310)
+      : verticalScale(210)
+    : isPortraitTemplate
+    ? verticalScale(270)
+    : verticalScale(185);
+
+  const lastStickerAddRef = useRef(0);
 
   const update = (patch: Partial<Customization>) => {
     SoundManager.play('click');
@@ -221,9 +241,13 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const addSticker = (emoji: string) => {
+    const now = Date.now();
+    if (now - lastStickerAddRef.current < 350) return; // Prevent double taps
+    lastStickerAddRef.current = now;
+
     SoundManager.play('click');
     const newSticker: PlacedSticker = {
-      id: `st-${Date.now()}-${customization.stickers.length}`,
+      id: `st-${now}-${customization.stickers.length}`,
       emoji,
       x: 35 + (customization.stickers.length % 4) * 8,
       y: 35 + (customization.stickers.length % 4) * 8,
@@ -286,7 +310,6 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
         <ScreenHeader
           title="Make It Yours"
           subtitle="Customize your final print preview before sending to the printer"
-          onBack={handleBack}
           secondsLeft={secondsLeft}
           step="CUSTOMIZE"
         />
@@ -304,6 +327,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                 template={template}
                 photos={photos}
                 customization={customization}
+                renderStickers={false}
                 style={{
                   width: canvasWidth,
                   height: canvasHeight,

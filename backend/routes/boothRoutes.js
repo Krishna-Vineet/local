@@ -212,7 +212,7 @@ const arrangeSlots = (w, h, n) => {
       });
 
       const defaultLogos = orgDefaults?.logoUrl ? [orgDefaults.logoUrl] : [];
-      const defaultTagline = orgDefaults?.tagline || '';
+      const defaultTagline = (orgDefaults?.tagline && orgDefaults.tagline.trim()) || 'Together is a beautiful place to be';
 
       eventPayload = {
         id: event._id.toString(),
@@ -223,11 +223,13 @@ const arrangeSlots = (w, h, n) => {
         startDate: event.startDate,
         endDate: event.endDate,
         status: event.status || 'live',
-        digitalCopy: event.digitalCopy ?? true,
-        filters: event.filters?.length ? event.filters : ['original'],
+        digitalCopy: event.digitalCopy !== undefined ? Boolean(event.digitalCopy) : true,
+        filters: (event.filters && event.filters.length > 0)
+          ? event.filters
+          : ['original', 'warm', 'cool', 'bw', 'vintage', 'soft', 'party'],
         branding: {
           logos: (event.branding?.logos && event.branding.logos.length > 0) ? event.branding.logos : defaultLogos,
-          tagline: event.branding?.tagline || defaultTagline
+          tagline: (event.branding?.tagline && event.branding.tagline.trim()) || defaultTagline
         },
         layoutPrices: prices,
         templates: templates.map(mapTemplate),
@@ -287,23 +289,27 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ error: `Organization is ${org?.status || 'inactive'}. Booth access not permitted.` });
     }
 
-    // Link or create device
-    let device = await Device.findOne({ deviceUuid, organizationId: org._id });
+    // Link or create device by persistent deviceUuid
+    let device = await Device.findOne({ deviceUuid });
     if (!device) {
       device = new Device({
         organizationId: org._id,
         deviceUuid,
-        deviceName: deviceName || 'New Booth',
+        deviceName: deviceName || 'HappyPix Booth',
         location: location?.label || '',
         deviceToken: Device.generateToken(),
-        platform,
-        appVersion,
+        platform: platform || 'tablet',
+        appVersion: appVersion || '1.0.0',
         status: 'active'
       });
     } else {
+      device.organizationId = org._id;
+      if (deviceName) device.deviceName = deviceName;
+      if (location?.label) device.location = location.label;
       device.deviceToken = Device.generateToken();
-      device.platform = platform;
-      device.appVersion = appVersion;
+      device.platform = platform || device.platform;
+      device.appVersion = appVersion || device.appVersion;
+      device.status = 'active';
     }
     await device.save();
 
@@ -542,7 +548,27 @@ router.post('/sessions/complete', authenticateBooth, async (req, res) => {
     }
     await req.device.save();
     
-    res.json({ shareUrl: digitalCopy ? `https://happypix.in/share/${sessionId}` : null });
+    const shareUrl = digitalCopy ? `https://happypix.in/share/${sessionId}` : null;
+    const finalImageUrl = shareUrl || `https://happypix.in/prints/${sessionId}.jpg`;
+
+    // Save photo record for organization CRM gallery
+    try {
+      const photo = new Photo({
+        organizationId: req.organization._id,
+        eventId: req.device.assignedEventId || null,
+        deviceId: req.device._id,
+        url: finalImageUrl,
+        finalImageUrl,
+        guestConsent: guestConsent !== false,
+        s3Key: `sessions/${sessionId}.jpg`,
+        boothName: req.device.deviceName || 'Photo Booth',
+      });
+      await photo.save();
+    } catch (photoErr) {
+      console.warn('Failed to record photo in gallery:', photoErr);
+    }
+
+    res.json({ shareUrl });
   } catch (error) {
     res.status(500).json({ error: 'Failed to complete session' });
   }

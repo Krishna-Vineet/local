@@ -105,7 +105,6 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
         <ScreenHeader
           title="Pick Your Favourite Look"
           subtitle="Filter by print size and number of photos, then choose one design"
-          onBack={handleBack}
           secondsLeft={secondsLeft}
           step="STEP 2 OF 5"
         />

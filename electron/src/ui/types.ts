@@ -101,9 +101,9 @@ export interface Installation {
 
 export interface BoothSnapshot {
   device: { id: string; name: string; uuid: string }
-  organization: { id: string; name: string }
+  organization: { id: string; name: string; branding?: { logoUrl: string | null; tagline: string } }
   event: BoothEvent | null
-  settings: BoothSettings
+  settings: BoothSettings & { branding?: { logoUrl: string | null; tagline: string } }
   revision: string
   serverTime: string
 }
@@ -172,6 +172,7 @@ export interface PlacedSticker {
   emoji: string
   x: number
   y: number
+  scale: number
 }
 
 export interface Customization {

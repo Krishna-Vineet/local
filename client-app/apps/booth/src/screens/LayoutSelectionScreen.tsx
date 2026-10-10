@@ -84,7 +84,6 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
         <ScreenHeader
           title="Choose Your Orientation"
           subtitle="Select vertical strips or widescreen landscape for your final print"
-          onBack={handleBack}
           secondsLeft={secondsLeft}
           step="STEP 1 OF 5"
         />

@@ -1,13 +1,12 @@
 import React from 'react';
-import { StatusBar } from 'react-native';
+import { StatusBar, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import { BoothProvider } from './src/context/BoothProvider';
+import { BoothProvider, useBooth } from './src/context/BoothProvider';
 import { ThemeProvider } from '../../packages/ui/src/context/ThemeContext';
 
-import { BootScreen } from './src/screens/BootScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { WaitingScreen } from './src/screens/WaitingScreen';
 import { StartScreen } from './src/screens/StartScreen';
@@ -21,7 +20,6 @@ import { CustomizeScreen } from './src/screens/CustomizeScreen';
 import { OrderSuccessScreen } from './src/screens/OrderSuccessScreen';
 
 export type RootStackParamList = {
-  Boot: undefined;
   Login: undefined;
   Waiting: undefined;
   Start: undefined;
@@ -37,6 +35,43 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+function RootNavigator() {
+  const { bootReady, installation, snapshot } = useBooth();
+
+  if (!bootReady) {
+    return <View style={{ flex: 1, backgroundColor: '#050508' }} />;
+  }
+
+  const initialRoute: keyof RootStackParamList = !installation
+    ? 'Login'
+    : snapshot?.event?.status === 'live'
+    ? 'Start'
+    : 'Waiting';
+
+  return (
+    <Stack.Navigator
+      initialRouteName={initialRoute}
+      screenOptions={{
+        headerShown: false,
+        animation: 'fade',
+        contentStyle: { backgroundColor: '#000000' },
+      }}
+    >
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Waiting" component={WaitingScreen} />
+      <Stack.Screen name="Start" component={StartScreen} />
+      <Stack.Screen name="Orientation" component={LayoutSelectionScreen} />
+      <Stack.Screen name="Templates" component={SlotSelectionScreen} />
+      <Stack.Screen name="Prints" component={PrintCountScreen} />
+      <Stack.Screen name="Payment" component={PaymentScreen} />
+      <Stack.Screen name="Camera" component={CaptureScreen} />
+      <Stack.Screen name="Photos" component={PhotoSelectionScreen} />
+      <Stack.Screen name="Customize" component={CustomizeScreen} />
+      <Stack.Screen name="OrderSuccess" component={OrderSuccessScreen} />
+    </Stack.Navigator>
+  );
+}
+
 function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
@@ -44,27 +79,7 @@ function App(): React.JSX.Element {
         <BoothProvider>
           <NavigationContainer>
             <StatusBar hidden />
-            <Stack.Navigator
-              initialRouteName="Boot"
-              screenOptions={{
-                headerShown: false,
-                animation: 'fade',
-                contentStyle: { backgroundColor: '#000000' },
-              }}
-            >
-              <Stack.Screen name="Boot" component={BootScreen} />
-              <Stack.Screen name="Login" component={LoginScreen} />
-              <Stack.Screen name="Waiting" component={WaitingScreen} />
-              <Stack.Screen name="Start" component={StartScreen} />
-              <Stack.Screen name="Orientation" component={LayoutSelectionScreen} />
-              <Stack.Screen name="Templates" component={SlotSelectionScreen} />
-              <Stack.Screen name="Prints" component={PrintCountScreen} />
-              <Stack.Screen name="Payment" component={PaymentScreen} />
-              <Stack.Screen name="Camera" component={CaptureScreen} />
-              <Stack.Screen name="Photos" component={PhotoSelectionScreen} />
-              <Stack.Screen name="Customize" component={CustomizeScreen} />
-              <Stack.Screen name="OrderSuccess" component={OrderSuccessScreen} />
-            </Stack.Navigator>
+            <RootNavigator />
           </NavigationContainer>
         </BoothProvider>
       </ThemeProvider>

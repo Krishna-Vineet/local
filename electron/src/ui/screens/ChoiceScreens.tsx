@@ -79,11 +79,20 @@ export function TemplateScreen({ event, session, onSelect, onNext, onBack, secon
       <div className="template-carousel">
         {filtered.map((item) => {
           const selected = session.template?.id === item.id
+          const isLandscape = item.layout.orientation === 'landscape'
           return (
-            <button key={item.id} className={`template-card ${selected ? 'is-selected' : ''}`} onClick={() => { sound.select(); onSelect(item) }}>
+            // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+            <div
+              key={item.id}
+              role="button"
+              tabIndex={0}
+              className={`template-card ${selected ? 'is-selected' : ''} ${isLandscape ? 'is-landscape' : ''}`}
+              onClick={() => { sound.select(); onSelect(item) }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { sound.select(); onSelect(item) } }}
+            >
               <div className="template-card-preview"><TemplateCanvas template={item}/>{selected && <span className="selected-badge"><Icon name="check"/>Selected</span>}</div>
               <div className="template-card-copy"><div><h2>{item.name}</h2><p>{item.layout.label} · {item.category}</p></div><Pill tone="pink">{templatePrice(item, event.layoutPrices) === 0 ? 'Free' : `₹${templatePrice(item, event.layoutPrices)}`}</Pill></div>
-            </button>
+            </div>
           )
         })}
         {filtered.length === 0 && <div className="empty-filter"><Icon name="image" size={38}/><h3>No templates in this combination</h3><p>Try another print size or photo count.</p></div>}

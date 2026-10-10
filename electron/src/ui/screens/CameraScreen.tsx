@@ -35,9 +35,8 @@ function syntheticPhoto(index: number): string {
   return canvas.toDataURL('image/jpeg', 0.9)
 }
 
-export function CameraScreen({ template, secondsLeft, onComplete }: {
+export function CameraScreen({ template, onComplete }: {
   template: BoothTemplate
-  secondsLeft: number
   onComplete: (photos: CapturedPhoto[]) => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -131,7 +130,7 @@ export function CameraScreen({ template, secondsLeft, onComplete }: {
   const filmItems = useMemo(() => Array.from({ length: totalShots }, (_, index) => photos[index] ?? null), [photos, totalShots])
 
   return (
-    <ScreenShell screen="camera" secondsLeft={secondsLeft} className="camera-screen">
+    <ScreenShell screen="camera" className="camera-screen">
       <div className="camera-hud">
         <div><span className={`hardware-dot ${error ? 'warning' : ''}`}/><span><b>{cameraName}</b><small>{error ? 'Fallback simulator active' : 'Live preview · ready'}</small></span></div>
         <div className="capture-progress"><span>CAPTURE</span><strong>{photos.length} / {totalShots}</strong><i><b style={{ width: `${photos.length / totalShots * 100}%` }}/></i></div>

@@ -15,6 +15,7 @@ import { bridge } from './services/bridge'
 import { cacheSnapshot, readCachedSnapshot } from './services/cache'
 import { useIdleTimer } from './hooks/useIdleTimer'
 import { IdleWarning } from './components/ScreenShell'
+import { BoothProvider } from './context/BoothContext'
 import { BootScreen, LoginScreen, WaitingScreen } from './screens/ConnectionScreens'
 import { OrientationScreen, PrintCountScreen, StartScreen, TemplateScreen } from './screens/ChoiceScreens'
 import { PaymentScreen } from './screens/PaymentScreen'
@@ -120,8 +121,20 @@ function App() {
         })
         setOnline(true)
         if (response.changed && response.snapshot) applySnapshot(response.snapshot)
-      } catch {
-        setOnline(false)
+      } catch (reason) {
+        const msg = reason instanceof Error ? reason.message : ''
+        // 401 = device deleted, 403 = org banned — force re-login
+        if (msg.includes('401') || msg.includes('403') || msg.toLowerCase().includes('banned') || msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('inactive')) {
+          await bridge.clearInstallation()
+          installationRef.current = null
+          setInstallation(null)
+          setSnapshot(null)
+          snapshotRef.current = null
+          setLoginError('This device has been removed or access was revoked. Please sign in again.')
+          setScreen('login')
+        } else {
+          setOnline(false)
+        }
       }
     }
     const first = window.setTimeout(() => void heartbeat(), 3000)
@@ -289,7 +302,7 @@ function App() {
       content = <PaymentScreen secondsLeft={timeoutSeconds} onBack={() => setScreen('prints')} requestQuote={requestQuote} createPayment={createPayment} paymentStatus={paymentStatus} completeFree={completeFree} onComplete={paymentComplete}/>
       break
     case 'camera':
-      content = session.template ? <CameraScreen template={session.template} secondsLeft={timeoutSeconds} onComplete={(photos) => { setSession((current) => ({ ...current, photos, selectedPhotos: photos.slice(0, current.template?.layout.slots ?? 1) })); setScreen('photos') }}/> : null
+      content = session.template ? <CameraScreen template={session.template} onComplete={(photos) => { setSession((current) => ({ ...current, photos, selectedPhotos: photos.slice(0, current.template?.layout.slots ?? 1) })); setScreen('photos') }}/> : null
       break
     case 'photos':
       content = session.template ? <PhotoSelectionScreen template={session.template} photos={session.photos} initial={session.selectedPhotos} secondsLeft={secondsLeft} onBack={() => setScreen('camera')} onComplete={(selectedPhotos) => { setSession((current) => ({ ...current, selectedPhotos })); setScreen('customize') }}/> : null
@@ -304,7 +317,16 @@ function App() {
       content = <StartScreen event={event} onStart={() => setScreen('orientation')}/>
   }
 
-  return <>{content}{idleEnabled && <IdleWarning secondsLeft={secondsLeft} onContinue={resetTimer}/>} {!online && <div className="offline-banner">Working from the saved event. Payment needs a connection.</div>}</>
+  const orgName = snapshot.settings.organizationName || snapshot.organization.name || 'HappyPix'
+  const orgLogoUrl = snapshot.settings.branding?.logoUrl || snapshot.organization.branding?.logoUrl || null
+
+  return (
+    <BoothProvider orgName={orgName} orgLogoUrl={orgLogoUrl}>
+      {content}
+      {idleEnabled && <IdleWarning secondsLeft={secondsLeft} onContinue={resetTimer}/>}
+      {!online && <div className="offline-banner">Working from the saved event. Payment needs a connection.</div>}
+    </BoothProvider>
+  )
 }
 
 export default App

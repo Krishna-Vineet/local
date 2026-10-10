@@ -133,6 +133,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
     if (!quote) return;
     setError(null);
     setPhase('creating');
+    setIdleTimerEnabled(false);
     SoundManager.play('click');
 
     try {
@@ -183,6 +184,8 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
     stopPolling();
     setPayment(null);
     setPhase('summary');
+    setIdleTimerEnabled(true);
+    resetIdleTimer();
   };
 
   const handleBack = () => {
@@ -194,13 +197,13 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <ScreenContainer style={{ backgroundColor: '#050508' }}>
       <LayoutContainer>
-        {/* Prominent Header with Countdown Timer */}
+        {/* Prominent Header with Countdown Timer (hidden during QR payment) */}
         <ScreenHeader
           title="Payment & Order Review"
           subtitle="All prices and discounts are verified securely before shooting begins"
-          onBack={handleBack}
           secondsLeft={secondsLeft}
           step="STEP 4 OF 5"
+          showTimer={phase === 'summary' || phase === 'error'}
         />
 
         {phase === 'quoting' || phase === 'creating' ? (

@@ -1,50 +1,41 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { fontSize, scale, verticalScale } from '../../../../packages/ui/src/index';
 
 interface ScreenHeaderProps {
   title: string;
   subtitle?: string;
-  onBack?: () => void;
   secondsLeft?: number;
   step?: string;
-  rightAction?: React.ReactNode;
+  showTimer?: boolean;
 }
 
 export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
   title,
   subtitle,
-  onBack,
   secondsLeft,
   step,
-  rightAction,
+  showTimer = true,
 }) => {
   const isWarning = secondsLeft !== undefined && secondsLeft <= 20;
   const isUrgent = secondsLeft !== undefined && secondsLeft <= 10;
+  const shouldRenderTimer = showTimer && secondsLeft !== undefined && secondsLeft > 0;
 
   return (
     <View style={styles.container}>
       <View style={styles.topRow}>
-        {/* Left: Back button or Step Pill */}
+        {/* Left Column: Fixed Width matching Right Column for perfect symmetry */}
         <View style={styles.leftCol}>
-          {onBack ? (
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={onBack}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.backBtnText}>←</Text>
-            </TouchableOpacity>
-          ) : step ? (
+          {step ? (
             <View style={styles.stepPill}>
               <Text style={styles.stepPillText}>{step}</Text>
             </View>
           ) : (
-            <View style={{ width: 40 }} />
+            <View style={{ width: 84 }} />
           )}
         </View>
 
-        {/* Center: Title & Subtitle */}
+        {/* Center Column: Perfectly centered Title & Subtitle */}
         <View style={styles.centerCol}>
           <Text numberOfLines={1} style={styles.title}>
             {title}
@@ -56,11 +47,9 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
           ) : null}
         </View>
 
-        {/* Right: Timer Pill or custom action */}
+        {/* Right Column: Fixed Width Timer Pill */}
         <View style={styles.rightCol}>
-          {rightAction ? (
-            rightAction
-          ) : secondsLeft !== undefined && secondsLeft > 0 ? (
+          {shouldRenderTimer ? (
             <View
               style={[
                 styles.timerPill,
@@ -79,7 +68,7 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
               </Text>
             </View>
           ) : (
-            <View style={{ width: 40 }} />
+            <View style={{ width: 84 }} />
           )}
         </View>
       </View>
@@ -99,34 +88,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    width: '100%',
   },
   leftCol: {
-    minWidth: 50,
+    width: 84,
     alignItems: 'flex-start',
+    justifyContent: 'center',
   },
   centerCol: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: scale(12),
+    justifyContent: 'center',
+    paddingHorizontal: scale(8),
   },
   rightCol: {
-    minWidth: 50,
+    width: 84,
     alignItems: 'flex-end',
-  },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#18181f',
-    borderWidth: 1,
-    borderColor: '#27272a',
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  backBtnText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '700',
   },
   stepPill: {
     backgroundColor: 'rgba(139, 92, 246, 0.15)',
@@ -134,13 +112,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(139, 92, 246, 0.3)',
     borderRadius: 12,
     paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
   },
   stepPillText: {
     color: '#a78bfa',
-    fontSize: fontSize(11),
+    fontSize: fontSize(10),
     fontWeight: '800',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
   title: {
     color: '#ffffff',
@@ -152,16 +130,18 @@ const styles = StyleSheet.create({
   subtitle: {
     color: '#a1a1aa',
     fontSize: fontSize(13),
-    marginTop: 3,
+    marginTop: 2,
     textAlign: 'center',
   },
   timerPill: {
+    width: 78,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#18181f',
     borderRadius: 16,
     borderWidth: 1.5,
     borderColor: '#27272a',
     paddingVertical: 5,
-    paddingHorizontal: 12,
   },
   timerPillWarn: {
     borderColor: '#f59e0b',
@@ -176,6 +156,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize(12),
     fontWeight: '800',
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
   timerTextWarn: {
     color: '#fbbf24',

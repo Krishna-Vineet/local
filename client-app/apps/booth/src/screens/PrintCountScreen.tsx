@@ -57,8 +57,14 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [secondsLeft]);
 
+  // Safe navigation redirect outside render phase
+  useEffect(() => {
+    if (!template) {
+      navigation.replace('Templates');
+    }
+  }, [template, navigation]);
+
   if (!template) {
-    navigation.replace('Templates');
     return null;
   }
 
@@ -96,7 +102,6 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
         <ScreenHeader
           title="Print Copies & Digital Pass"
           subtitle="Select copies for your friends and family. Final discount is verified next."
-          onBack={handleBack}
           secondsLeft={secondsLeft}
           step="STEP 3 OF 5"
         />
@@ -124,7 +129,7 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
             </View>
 
             {/* Digital Copy Toggle */}
-            {event?.digitalCopy && (
+            {event?.digitalCopy !== false && (
               <View style={styles.digitalOption}>
                 <View style={styles.digitalInfo}>
                   <Text style={styles.digitalTitle}>Include Digital Download QR?</Text>

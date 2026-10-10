@@ -18,6 +18,7 @@ interface TemplateCanvasProps {
   interactiveSlot?: (index: number) => void;
   style?: StyleProp<ViewStyle>;
   containerWidth?: number;
+  renderStickers?: boolean;
 }
 
 const defaultCustomization: Customization = {
@@ -55,6 +56,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   interactiveSlot,
   style,
   containerWidth,
+  renderStickers = true,
 }) => {
   const { layout, design } = template;
   const canvas = layout.canvas || { width: 1000, height: 1500 };
@@ -321,20 +323,21 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
       </View>
 
       {/* Placed Stickers */}
-      {customization.stickers.map((st) => (
-        <View
-          key={st.id}
-          pointerEvents="none"
-          style={[
-            styles.stickerWrapper,
-            { left: `${st.x}%` as any, top: `${st.y}%` as any },
-          ]}
-        >
-          <Text style={[styles.stickerText, st.size ? { fontSize: st.size } : null]}>
-            {st.emoji}
-          </Text>
-        </View>
-      ))}
+      {renderStickers &&
+        customization.stickers.map((st) => (
+          <View
+            key={st.id}
+            pointerEvents="none"
+            style={[
+              styles.stickerWrapper,
+              { left: `${st.x}%` as any, top: `${st.y}%` as any },
+            ]}
+          >
+            <Text style={[styles.stickerText, st.size ? { fontSize: st.size } : null]}>
+              {st.emoji}
+            </Text>
+          </View>
+        ))}
     </View>
   );
 

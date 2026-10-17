@@ -75,7 +75,70 @@ const aiLimiter = rateLimit({
 
 const MIN_WITHDRAWAL = 500;
 
-// Every route is organization-scoped; platform roles are rejected here.
+// Public asset proxy — serves local disk assets or S3 template/branding assets
+// before auth middleware so browser <img>, SVG <image>, CSS url(), and Booth
+// <Image> elements can load template backgrounds & overlays without 401 errors.
+router.get('/asset-proxy', async (req, res) => {
+  try {
+    const rawKey = typeof req.query.key === 'string' ? req.query.key.trim() : '';
+    if (!rawKey) return res.status(400).json({ error: 'key query param required' });
+
+    // 1. If key is already a data URL
+    if (rawKey.startsWith('data:')) {
+      return res.redirect(rawKey);
+    }
+
+    // 2. Check local uploads directory first
+    const cleanKey = rawKey
+      .replace(/^https?:\/\/[^/]+\//, '')
+      .replace(/^(\/?uploads\/|\/)/, '')
+      .split('?')[0];
+    if (!cleanKey || cleanKey.includes('..')) {
+      return res.status(400).json({ error: 'Invalid asset key' });
+    }
+
+    const localPath = path.join(process.cwd(), 'uploads', cleanKey);
+    if (fs.existsSync(localPath)) {
+      const ext = path.extname(localPath).toLowerCase();
+      const contentType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      return fs.createReadStream(localPath).pipe(res);
+    }
+
+    // 3. Try S3 if bucket is configured
+    if (process.env.S3_BUCKET_NAME) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: process.env.S3_BUCKET_NAME,
+          Key: cleanKey,
+        });
+
+        const s3Response = await s3.send(command);
+        const contentType = s3Response.ContentType || (cleanKey.endsWith('.png') ? 'image/png' : 'image/jpeg');
+
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=31536000');
+
+        const chunks = [];
+        for await (const chunk of s3Response.Body) {
+          chunks.push(chunk);
+        }
+        return res.send(Buffer.concat(chunks));
+      } catch (s3Err) {
+        console.warn('⚠️ S3 asset proxy fetch failed:', s3Err.message);
+      }
+    }
+
+    // 4. Fallback 404
+    res.status(404).json({ error: 'Asset not found' });
+  } catch (err) {
+    console.error('Asset proxy error:', err);
+    res.status(500).json({ error: 'Failed to proxy asset' });
+  }
+});
+
+// Every route below is organization-scoped; platform roles are rejected here.
 router.use(authenticate, authorize(ROLES.ORG_ADMIN, ROLES.ORG_MANAGER));
 
 // ─── shared helpers ────────────────────────────────────────────
@@ -153,61 +216,6 @@ async function activeEventCount(organizationId) {
   const events = await Event.find({ organizationId }).select('startDate endDate paused');
   return events.filter(isActiveEvent).length;
 }
-
-
-// Asset proxy — serves local disk assets or S3 assets seamlessly without CORS issues
-router.get('/asset-proxy', async (req, res) => {
-  try {
-    const { key } = req.query;
-    if (!key) return res.status(400).json({ error: 'key query param required' });
-
-    // 1. If key is already a data URL
-    if (key.startsWith('data:')) {
-      return res.redirect(key);
-    }
-
-    // 2. Check local uploads directory first
-    const cleanKey = key.replace(/^(\/?uploads\/|\/)/, '');
-    const localPath = path.join(process.cwd(), 'uploads', cleanKey);
-    if (fs.existsSync(localPath)) {
-      const ext = path.extname(localPath).toLowerCase();
-      const contentType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=31536000');
-      return fs.createReadStream(localPath).pipe(res);
-    }
-
-    // 3. Try S3 if bucket is configured
-    if (process.env.S3_BUCKET_NAME) {
-      try {
-        const command = new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET_NAME,
-          Key: key,
-        });
-
-        const s3Response = await s3.send(command);
-        const contentType = s3Response.ContentType || 'image/jpeg';
-
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'public, max-age=31536000');
-
-        const chunks = [];
-        for await (const chunk of s3Response.Body) {
-          chunks.push(chunk);
-        }
-        return res.send(Buffer.concat(chunks));
-      } catch (s3Err) {
-        console.warn('⚠️ S3 asset proxy fetch failed:', s3Err.message);
-      }
-    }
-
-    // 4. Fallback 404
-    res.status(404).json({ error: 'Asset not found' });
-  } catch (err) {
-    console.error('Asset proxy error:', err);
-    res.status(500).json({ error: 'Failed to proxy asset' });
-  }
-});
 
 function deviceView(device, events = []) {
   const assigned = device.assignedEventId
@@ -1708,24 +1716,88 @@ router.get('/template-layouts', async (req, res) => {
   }
 });
 
+async function uploadDataUrlAsset(dataUrl) {
+  const commaIdx = dataUrl.indexOf(',');
+  if (commaIdx === -1) return null;
+  const header = dataUrl.slice(0, commaIdx);
+  const b64 = dataUrl.slice(commaIdx + 1).replace(/\s/g, '');
+  const mimeMatch = header.match(/^data:([^;]+)/);
+  const mimetype = mimeMatch ? mimeMatch[1] : 'image/png';
+  const ext = mimetype.includes('png') ? 'png' : mimetype.includes('webp') ? 'webp' : 'jpg';
+  const buffer = Buffer.from(b64, 'base64');
+
+  const uploaded = await uploadToS3({
+    buffer,
+    mimetype,
+    folder: 'templates/assets',
+    originalname: `ai-asset-${Date.now()}.${ext}`,
+  });
+
+  // If S3 was not available and uploadToS3 fell back to localhost disk URL,
+  // keep the inline dataUrl so remote booths (Android/Vercel) can still render it.
+  const isLocalhostFallback =
+    typeof uploaded.url === 'string' &&
+    (uploaded.url.startsWith('http://localhost') || uploaded.url.startsWith('http://127.0.0.1'));
+
+  return {
+    key: uploaded.key,
+    url: isLocalhostFallback ? dataUrl : uploaded.url,
+  };
+}
+
 async function processTempTemplateAssets(body) {
-  if (!body.assets || !Array.isArray(body.assets)) return;
-  for (const asset of body.assets) {
-    if (asset.isTemp && asset.url && asset.url.startsWith('data:')) {
-      try {
-        const matches = asset.url.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        if (matches) {
-          const mimetype = matches[1];
-          const buffer = Buffer.from(matches[2], 'base64');
-          const ext = mimetype === 'image/png' ? 'png' : 'jpg';
+  if (!body.assets || !Array.isArray(body.assets)) body.assets = [];
 
-          const uploaded = await uploadToS3({
-            buffer,
-            mimetype,
-            folder: `templates/assets`,
-            originalname: `ai-asset-${Date.now()}.${ext}`
+  // Sync any updated decoration/background data URLs (e.g. from Cutout Studio or Remove BG) into body.assets
+  if (body.design?.decorations && Array.isArray(body.design.decorations)) {
+    for (const dec of body.design.decorations) {
+      if (dec && typeof dec.url === 'string' && dec.url.startsWith('data:')) {
+        const existing = dec.assetId ? body.assets.find((a) => a.assetId === dec.assetId) : null;
+        if (existing) {
+          existing.url = dec.url;
+          existing.isTemp = true;
+        } else {
+          const tempId = dec.assetId || `temp-dec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          dec.assetId = tempId;
+          body.assets.push({
+            assetId: tempId,
+            url: dec.url,
+            type: 'decoration',
+            role: 'decoration',
+            isTemp: true,
           });
+        }
+      }
+    }
+  }
 
+  const rawBgUrl = body.design?.background?.url || body.design?.bg?.url;
+  if (typeof rawBgUrl === 'string' && rawBgUrl.startsWith('data:')) {
+    const bgAssetId = body.design?.background?.assetId || body.design?.bg?.assetId;
+    const existingBg = (bgAssetId && body.assets.find((a) => a.assetId === bgAssetId)) ||
+      body.assets.find((a) => a.role === 'background' || a.type === 'background');
+    if (existingBg) {
+      existingBg.url = rawBgUrl;
+      existingBg.isTemp = true;
+    } else {
+      const tempId = bgAssetId || `temp-bg-${Date.now()}`;
+      if (body.design?.background && typeof body.design.background === 'object') body.design.background.assetId = tempId;
+      if (body.design?.bg && typeof body.design.bg === 'object') body.design.bg.assetId = tempId;
+      body.assets.push({
+        assetId: tempId,
+        url: rawBgUrl,
+        type: 'background',
+        role: 'background',
+        isTemp: true,
+      });
+    }
+  }
+
+  for (const asset of body.assets) {
+    if (asset && asset.url && typeof asset.url === 'string' && asset.url.startsWith('data:')) {
+      try {
+        const uploaded = await uploadDataUrlAsset(asset.url);
+        if (uploaded) {
           const oldId = asset.assetId;
           asset.assetId = uploaded.key;
           asset.url = uploaded.url;
@@ -1739,9 +1811,9 @@ async function processTempTemplateAssets(body) {
             body.design.bg.assetId = uploaded.key;
             body.design.bg.url = uploaded.url;
           }
-          if (body.design?.decorations) {
-            body.design.decorations.forEach(d => {
-              if (d.assetId === oldId) {
+          if (body.design?.decorations && Array.isArray(body.design.decorations)) {
+            body.design.decorations.forEach((d) => {
+              if (d && d.assetId === oldId) {
                 d.assetId = uploaded.key;
                 d.url = uploaded.url;
               }

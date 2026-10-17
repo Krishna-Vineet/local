@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import type { CheckoutQuote, PaymentOrder } from '@happypix/types';
 import {
   ScreenContainer,
@@ -49,6 +50,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isFocused = useIsFocused();
 
   const [quote, setQuote] = useState<CheckoutQuote | null>(null);
   const [coupon, setCoupon] = useState('');
@@ -142,12 +144,19 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
 
   // Session reset when dedicated QR payment timer hits zero on waiting screen
   useEffect(() => {
-    if (paymentSecondsLeft === 0 && phase === 'waiting') {
+    if (paymentSecondsLeft === 0 && phase === 'waiting' && isFocused) {
       stopPolling();
       SoundManager.play('beep');
       resetGuestSession(navigation);
     }
-  }, [paymentSecondsLeft, phase]);
+  }, [paymentSecondsLeft, phase, isFocused]);
+
+  useEffect(() => {
+    if (secondsLeft === 0 && phase === 'summary' && isFocused) {
+      stopPolling();
+      resetGuestSession(navigation);
+    }
+  }, [secondsLeft, phase, isFocused]);
 
   const loadQuote = useCallback(
     async (code?: string) => {

@@ -350,7 +350,8 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
   canvasToDataUrl(canvasObj: any): string {
     const image = canvasObj.surface.makeImageSnapshot();
     try {
-      const data = image.encodeToBase64(this.skia.ImageFormat.JPEG, 88);
+      const jpegFmt = this.skia.ImageFormat?.JPEG ?? 3;
+      const data = image.encodeToBase64(jpegFmt, 82);
       if (data) return `data:image/jpeg;base64,${data}`;
     } catch {}
     const pngData = image.encodeToBase64();
@@ -362,7 +363,7 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
       throw new Error('Skia library is not loaded');
     }
 
-    let normalizedUri = uri;
+    let normalizedUri = String(uri || '').trim();
     if (
       normalizedUri &&
       !normalizedUri.startsWith('data:') &&
@@ -374,16 +375,46 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
       normalizedUri = `file://${normalizedUri}`;
     }
 
-    let data;
-    try {
-      data = await this.skia.Data.fromURI(normalizedUri);
-    } catch (err) {
+    const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`Timeout (${ms}ms) loading ${label}`)), ms);
+        promise.then(
+          (val) => {
+            clearTimeout(timer);
+            resolve(val);
+          },
+          (err) => {
+            clearTimeout(timer);
+            reject(err);
+          }
+        );
+      });
+
+    let data: any = null;
+
+    if (normalizedUri.startsWith('data:')) {
+      const commaIdx = normalizedUri.indexOf(',');
+      const b64 = (commaIdx >= 0 ? normalizedUri.slice(commaIdx + 1) : normalizedUri).replace(/\s/g, '');
+      data = this.skia.Data.fromBase64(b64);
+    } else if (normalizedUri.startsWith('http://') || normalizedUri.startsWith('https://')) {
+      // Never call Skia.Data.fromURI on remote HTTP(S) URLs on Android as it can block indefinitely.
+      const response = await withTimeout(fetch(normalizedUri), 5000, normalizedUri);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} loading ${normalizedUri}`);
+      }
+      const arrayBuffer = await withTimeout(response.arrayBuffer(), 5000, normalizedUri);
+      data = this.skia.Data.fromBytes(new Uint8Array(arrayBuffer));
+    } else {
       try {
-        const response = await fetch(normalizedUri);
-        const arrayBuffer = await response.arrayBuffer();
-        data = this.skia.Data.fromBytes(new Uint8Array(arrayBuffer));
-      } catch (fallbackErr) {
-        throw new Error(`SkiaRenderAdapter: Failed to load file from ${normalizedUri}: ${fallbackErr}`);
+        data = await withTimeout(this.skia.Data.fromURI(normalizedUri), 4000, normalizedUri);
+      } catch (err) {
+        try {
+          const response = await withTimeout(fetch(normalizedUri), 4000, normalizedUri);
+          const arrayBuffer = await withTimeout(response.arrayBuffer(), 4000, normalizedUri);
+          data = this.skia.Data.fromBytes(new Uint8Array(arrayBuffer));
+        } catch (fallbackErr) {
+          throw new Error(`SkiaRenderAdapter: Failed to load file from ${normalizedUri}: ${fallbackErr}`);
+        }
       }
     }
 

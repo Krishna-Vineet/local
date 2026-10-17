@@ -20,19 +20,30 @@ export const FilteredImage: React.FC<FilteredImageProps> = ({ uri, filter, style
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   if (!matrix) {
-    return <RNImage source={{ uri }} style={style as StyleProp<ImageStyle>} resizeMode="cover" />;
+    return (
+      <RNImage
+        source={{ uri }}
+        style={[StyleSheet.absoluteFillObject, styles.fullImage, style as StyleProp<ImageStyle>]}
+        resizeMode="cover"
+      />
+    );
   }
 
   return (
     <View
-      style={[StyleSheet.absoluteFill, style as StyleProp<ViewStyle>]}
+      style={[StyleSheet.absoluteFillObject, styles.fullContainer, style as StyleProp<ViewStyle>]}
       onLayout={(event) => {
         const { width, height } = event.nativeEvent.layout;
         if (width !== size.width || height !== size.height) setSize({ width, height });
       }}
     >
+      <RNImage
+        source={{ uri }}
+        style={[StyleSheet.absoluteFillObject, styles.fullImage]}
+        resizeMode="cover"
+      />
       {image && size.width > 0 ? (
-        <Canvas style={StyleSheet.absoluteFill}>
+        <Canvas style={StyleSheet.absoluteFillObject}>
           <Group layer={<Paint><SkiaColorMatrix matrix={matrix} /></Paint>}>
             <SkiaImage image={image} x={0} y={0} width={size.width} height={size.height} fit="cover" />
           </Group>
@@ -41,3 +52,15 @@ export const FilteredImage: React.FC<FilteredImageProps> = ({ uri, filter, style
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  fullContainer: {
+    width: '100%',
+    height: '100%',
+    overflow: 'hidden',
+  },
+  fullImage: {
+    width: '100%',
+    height: '100%',
+  },
+});

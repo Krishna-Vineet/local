@@ -660,10 +660,14 @@ function ManualBuilder({ globalLayouts, initial = null, onClose, onSaved }) {
     toast('Removing background from decoration…', 'info');
     try {
       const finalUrl = await processBgRemoval(dec.url);
+      const tempId = `temp-dec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       setF(x => {
         const decs = [...(x.design.decorations || [])];
-        decs[i] = { ...decs[i], url: finalUrl, overlay: true };
-        return { ...x, design: { ...x.design, decorations: decs } };
+        const prevAssetId = decs[i]?.assetId;
+        decs[i] = { ...decs[i], assetId: tempId, url: finalUrl, overlay: true };
+        const newAssets = (x.assets || []).filter(a => !prevAssetId || a.assetId !== prevAssetId);
+        newAssets.push({ assetId: tempId, url: finalUrl, type: 'decoration', role: 'decoration', mimeType: 'image/png', isTemp: true });
+        return { ...x, assets: newAssets, design: { ...x.design, decorations: decs } };
       });
       toast('Background removed! Item is now transparent.', 'success');
     } catch (err) {
@@ -1392,10 +1396,14 @@ function ManualBuilder({ globalLayouts, initial = null, onClose, onSaved }) {
               toast('Specific cutout element added! You can now drag and size it directly on the canvas.', 'success');
             } else {
               const idx = cutoutStudioTarget.index;
+              const tempId = `temp-dec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
               setF(x => {
                 const decs = [...(x.design.decorations || [])];
-                decs[idx] = { ...decs[idx], url: resultUrl, overlay: true };
-                return { ...x, design: { ...x.design, decorations: decs } };
+                const prevAssetId = decs[idx]?.assetId;
+                decs[idx] = { ...decs[idx], assetId: tempId, url: resultUrl, overlay: true };
+                const newAssets = (x.assets || []).filter(a => !prevAssetId || a.assetId !== prevAssetId);
+                newAssets.push({ assetId: tempId, url: resultUrl, type: 'decoration', role: 'decoration', mimeType: 'image/png', isTemp: true });
+                return { ...x, assets: newAssets, design: { ...x.design, decorations: decs } };
               });
               toast('Overlay cutout updated with pixel accuracy!', 'success');
             }

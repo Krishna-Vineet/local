@@ -7,6 +7,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { Dimensions, Platform } from 'react-native';
 import {
   boothApi,
+  normalizeSnapshot,
   getInstallation,
   saveInstallation,
   clearInstallation,
@@ -241,9 +242,23 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   sessionRef.current = session;
 
   const applySnapshot = useCallback((val: BoothSnapshot) => {
-    snapshotRef.current = val;
-    setSnapshot(val);
-    void saveCachedSnapshot(val);
+    const normalized = normalizeSnapshot(val as any);
+    snapshotRef.current = normalized;
+    setSnapshot(normalized);
+    void saveCachedSnapshot(normalized);
+
+    const currentTplId = sessionRef.current?.template?.id;
+    if (currentTplId && Array.isArray(normalized.event?.templates)) {
+      const updatedTpl = normalized.event.templates.find((t) => t.id === currentTplId);
+      if (updatedTpl) {
+        setSession((prev) => {
+          if (prev.template?.id !== currentTplId) return prev;
+          const next = { ...prev, template: updatedTpl };
+          sessionRef.current = next;
+          return next;
+        });
+      }
+    }
   }, []);
 
   // The server told us this booth may no longer operate. Decide what to forget:
@@ -284,8 +299,9 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const cached = await getCachedSnapshot();
         if (cached && active) {
-          setSnapshot(cached);
-          snapshotRef.current = cached;
+          const normalizedCached = normalizeSnapshot(cached as any);
+          setSnapshot(normalizedCached);
+          snapshotRef.current = normalizedCached;
         }
 
         const saved = await getInstallation();
@@ -583,6 +599,27 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const finishAndPrint = useCallback(async (): Promise<PrintOutcome> => {
+    setIdleEnabled(false);
+    if (idleTimerRef.current) {
+      clearInterval(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+
+    const withStepTimeout = <T,>(promise: Promise<T>, ms: number, msg: string): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(msg)), ms);
+        promise.then(
+          (val) => {
+            clearTimeout(timer);
+            resolve(val);
+          },
+          (err) => {
+            clearTimeout(timer);
+            reject(err);
+          }
+        );
+      });
+
     const inst = installationRef.current;
     const currentSession = sessionRef.current;
     if (!inst || !currentSession.template) {
@@ -599,7 +636,11 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // silently "printing" nothing.
     let compositeUrl: string | undefined;
     try {
-      compositeUrl = await renderSessionComposite(currentSession);
+      compositeUrl = await withStepTimeout(
+        renderSessionComposite(currentSession),
+        12000,
+        'Preparing the final print timed out'
+      );
     } catch (e: any) {
       printSuccess = false;
       printError = e.message || 'The final print could not be prepared';
@@ -607,13 +648,17 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (compositeUrl) {
       try {
-        const result = await printerManager.print({
-          bitmap: compositeUrl,
-          copies: currentSession.prints,
-          layoutId: currentSession.template.layout.id,
-          templateName: currentSession.template.name,
-          paperSize: boothTemplateToPrintTemplate(currentSession.template).paperSize,
-        });
+        const result = await withStepTimeout(
+          printerManager.print({
+            bitmap: compositeUrl,
+            copies: currentSession.prints,
+            layoutId: currentSession.template.layout.id,
+            templateName: currentSession.template.name,
+            paperSize: boothTemplateToPrintTemplate(currentSession.template).paperSize,
+          }),
+          8000,
+          'Could not reach the printer (timed out)'
+        );
         printSuccess = result.success;
         if (result.jobId) jobId = result.jobId;
         if (result.error) printError = formatFriendlyPrintError(result.error);
@@ -630,16 +675,47 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const effectiveConsent = requireConsent
         ? (currentSession.customization?.guestConsent ?? true)
         : true;
-      const encodedPhotos = await photosAsDataUrls((currentSession.selectedPhotos || []).map((p) => p.uri));
-      const completed = await boothApi.completeSession(inst, {
-        sessionId: currentSession.id,
-        digitalCopy: currentSession.digitalCopy !== false,
-        guestConsent: effectiveConsent,
-        photos: encodedPhotos.length > 0 ? encodedPhotos : (compositeUrl ? [compositeUrl] : []),
-        compositeUrl,
-        eventId,
-      });
-      shareUrl = completed.shareUrl;
+      const encodedPhotos = await withStepTimeout(
+        photosAsDataUrls((currentSession.selectedPhotos || []).map((p) => p.uri)),
+        8000,
+        'Encoding photos timed out'
+      ).catch(() => [] as string[]);
+
+      const primaryPhotos = encodedPhotos.length > 0 ? encodedPhotos : (compositeUrl ? [compositeUrl] : []);
+      try {
+        const completed = await withStepTimeout(
+          boothApi.completeSession(inst, {
+            sessionId: currentSession.id,
+            digitalCopy: currentSession.digitalCopy !== false,
+            guestConsent: effectiveConsent,
+            photos: primaryPhotos,
+            compositeUrl,
+            eventId,
+          }),
+          15000,
+          'Uploading session timed out'
+        );
+        shareUrl = completed.shareUrl;
+      } catch (firstErr) {
+        // Fallback: if uploading multiple full frames exceeded payload limits, upload the final composite alone
+        if (compositeUrl) {
+          const fallbackCompleted = await withStepTimeout(
+            boothApi.completeSession(inst, {
+              sessionId: currentSession.id,
+              digitalCopy: currentSession.digitalCopy !== false,
+              guestConsent: effectiveConsent,
+              photos: [compositeUrl],
+              compositeUrl,
+              eventId,
+            }),
+            15000,
+            'Uploading composite timed out'
+          );
+          shareUrl = fallbackCompleted.shareUrl;
+        } else {
+          throw firstErr;
+        }
+      }
     } catch (e: any) {
       if (!printError) printError = e.message || 'Could not prepare digital share';
     }

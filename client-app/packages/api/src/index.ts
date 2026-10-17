@@ -135,37 +135,31 @@ interface PartnerBoothSnapshot {
   serverTime: string
 }
 
-function resolveAssetUrl(rawUrl?: string | null, assetId?: string | null, baseUrl?: string | null): string | null {
+export function resolveAssetUrl(rawUrl?: string | null, assetId?: string | null, baseUrl?: string | null): string | null {
   const origin = (baseUrl || activeApiUrl || 'http://localhost:5000')
     .replace(/\/+$/, '')
     .replace(/\/api(\/booth)?$/, '');
   const u = typeof rawUrl === 'string' ? rawUrl.trim() : '';
   const aid = typeof assetId === 'string' ? assetId.trim() : '';
+  const validAid = aid && !aid.startsWith('temp-') && !aid.startsWith('http') && !aid.startsWith('data:')
+    ? aid
+    : '';
 
   if (u.startsWith('data:')) return u;
 
   if (u.includes('/api/org/asset-proxy') || u.includes('/api/booth/asset-proxy')) {
     const qIdx = u.indexOf('?');
-    return qIdx !== -1 ? `${origin}/api/booth/asset-proxy${u.slice(qIdx)}` : `${origin}/api/booth/asset-proxy`;
+    return qIdx !== -1 ? `${origin}/api/org/asset-proxy${u.slice(qIdx)}` : `${origin}/api/org/asset-proxy`;
   }
 
   if ((u.includes('amazonaws.com') || u.includes('happypix-bucket')) && !u.includes('X-Amz-Signature')) {
-    const s3Key = aid || u.replace(/^https?:\/\/[^/]+\//, '').split('?')[0];
-    if (s3Key) return `${origin}/api/booth/asset-proxy?key=${encodeURIComponent(s3Key)}`;
+    const s3Key = validAid || u.replace(/^https?:\/\/[^/]+\//, '').split('?')[0];
+    if (s3Key) return `${origin}/api/org/asset-proxy?key=${encodeURIComponent(s3Key)}`;
   }
 
   if (u.startsWith('http://localhost:5000/') || u.startsWith('http://127.0.0.1:5000/')) {
     const rel = u.replace(/^https?:\/\/[^/]+/, '');
-    if (rel.startsWith('/uploads/')) {
-      const key = rel.replace(/^\/uploads\//, '');
-      return `${origin}/api/booth/asset-proxy?key=${encodeURIComponent(key)}`;
-    }
     return `${origin}${rel}`;
-  }
-
-  if (u.startsWith('/uploads/')) {
-    const key = u.replace(/^\/uploads\//, '');
-    return `${origin}/api/booth/asset-proxy?key=${encodeURIComponent(key)}`;
   }
 
   if (u.startsWith('/')) {
@@ -178,13 +172,13 @@ function resolveAssetUrl(rawUrl?: string | null, assetId?: string | null, baseUr
     if (aid.startsWith('data:') || aid.startsWith('http://') || aid.startsWith('https://') || aid.startsWith('/')) {
       return resolveAssetUrl(aid, null, origin);
     }
-    return `${origin}/api/booth/asset-proxy?key=${encodeURIComponent(aid.replace(/^(\/?uploads\/|\/)/, ''))}`;
+    return `${origin}/uploads/${aid.replace(/^(\/?uploads\/|\/)/, '')}`;
   }
 
   return null;
 }
 
-function normalizeSnapshot(raw: PartnerBoothSnapshot, baseUrl?: string | null): BoothSnapshot {
+export function normalizeSnapshot(raw: PartnerBoothSnapshot, baseUrl?: string | null): BoothSnapshot {
   const origin = (baseUrl || activeApiUrl || 'http://localhost:5000')
     .replace(/\/+$/, '')
     .replace(/\/api(\/booth)?$/, '');
@@ -211,6 +205,9 @@ function normalizeSnapshot(raw: PartnerBoothSnapshot, baseUrl?: string | null): 
           typeof rawBg === 'object' ? rawBg?.assetId : null,
           origin
         );
+        if (!bgUrl && (rawDesign as any).bg?.url) {
+          bgUrl = resolveAssetUrl((rawDesign as any).bg.url, (rawDesign as any).bg.assetId, origin);
+        }
         if (!bgUrl && assets.length > 0) {
           const bgAsset = assets.find((a: any) => a.role === 'background' || a.type === 'background');
           if (bgAsset?.url) bgUrl = bgAsset.url;
@@ -256,6 +253,7 @@ function normalizeSnapshot(raw: PartnerBoothSnapshot, baseUrl?: string | null): 
           design: {
             ...rawDesign,
             background,
+            ...(bgUrl ? { bg: background } : {}),
             decorations,
           },
         };

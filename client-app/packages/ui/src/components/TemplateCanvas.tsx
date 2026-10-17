@@ -398,15 +398,20 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
         return isOverlay === overlayFilter;
       })
       .map((d, i) => {
-        const isRelX = d.x === undefined || Math.abs(Number(d.x)) <= 4;
-        const isRelY = d.y === undefined || Math.abs(Number(d.y)) <= 4;
-        const isRelW = d.width === undefined || Number(d.width) <= 4;
-        const isRelH = d.height === undefined || Number(d.height) <= 4;
+        const hasX = d.x !== undefined && d.x !== null && !Number.isNaN(Number(d.x));
+        const hasY = d.y !== undefined && d.y !== null && !Number.isNaN(Number(d.y));
+        const hasW = d.width !== undefined && d.width !== null && Number(d.width) > 0;
+        const hasH = d.height !== undefined && d.height !== null && Number(d.height) > 0;
 
-        let left: any = d.x !== undefined ? (isRelX ? `${Number(d.x) * 100}%` : `${(Number(d.x) / (canvas.width || 1200)) * 100}%`) : 0;
-        let top: any = d.y !== undefined ? (isRelY ? `${Number(d.y) * 100}%` : `${(Number(d.y) / (canvas.height || 1800)) * 100}%`) : 0;
-        let width: any = d.width !== undefined ? (isRelW ? `${Number(d.width) * 100}%` : `${(Number(d.width) / (canvas.width || 1200)) * 100}%`) : '100%';
-        let height: any = d.height !== undefined ? (isRelH ? `${Number(d.height) * 100}%` : `${(Number(d.height) / (canvas.height || 1800)) * 100}%`) : '100%';
+        const isRelX = !hasX || Math.abs(Number(d.x)) <= 4;
+        const isRelY = !hasY || Math.abs(Number(d.y)) <= 4;
+        const isRelW = !hasW || Number(d.width) <= 4;
+        const isRelH = !hasH || Number(d.height) <= 4;
+
+        let left: any = hasX ? (isRelX ? `${Number(d.x) * 100}%` : `${(Number(d.x) / (canvas.width || 1200)) * 100}%`) : 0;
+        let top: any = hasY ? (isRelY ? `${Number(d.y) * 100}%` : `${(Number(d.y) / (canvas.height || 1800)) * 100}%`) : 0;
+        let width: any = hasW ? (isRelW ? `${Number(d.width) * 100}%` : `${(Number(d.width) / (canvas.width || 1200)) * 100}%`) : '100%';
+        let height: any = hasH ? (isRelH ? `${Number(d.height) * 100}%` : `${(Number(d.height) / (canvas.height || 1800)) * 100}%`) : '100%';
         let right: any = undefined;
         let bottom: any = undefined;
 
@@ -417,25 +422,29 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
         }
 
         const isFullFrame =
-          (d.width === undefined || (isRelW && Number(d.width) >= 0.95 && Number(d.width) <= 1.05)) &&
-          (d.height === undefined || (isRelH && Number(d.height) >= 0.95 && Number(d.height) <= 1.05)) &&
-          (d.x === undefined || Math.abs(Number(d.x)) <= 0.05) &&
-          (d.y === undefined || Math.abs(Number(d.y)) <= 0.05);
+          (!hasW || (isRelW && Number(d.width) >= 0.95 && Number(d.width) <= 1.05)) &&
+          (!hasH || (isRelH && Number(d.height) >= 0.95 && Number(d.height) <= 1.05)) &&
+          (!hasX || Math.abs(Number(d.x)) <= 0.05) &&
+          (!hasY || Math.abs(Number(d.y)) <= 0.05);
 
         return (
           <View
             key={`dec-${overlayFilter ? 'over' : 'under'}-${i}`}
             pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left,
-              top,
-              right,
-              bottom,
-              width,
-              height,
-              zIndex: overlayFilter ? 25 : 5,
-            }}
+            style={
+              isFullFrame
+                ? [StyleSheet.absoluteFillObject, { zIndex: overlayFilter ? 25 : 5 }]
+                : {
+                    position: 'absolute',
+                    left,
+                    top,
+                    right,
+                    bottom,
+                    width,
+                    height,
+                    zIndex: overlayFilter ? 25 : 5,
+                  }
+            }
           >
             <Image
               source={{ uri: d.url }}
@@ -529,20 +538,10 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
         const cw = canvas.width || 1200;
         const ch = canvas.height || 1800;
         const isRelative = Number(slot.width) <= 1.0 && Number(slot.height) <= 1.0 && Number(slot.x) <= 1.0 && Number(slot.y) <= 1.0;
-        let rx = isRelative ? Number(slot.x) : Number(slot.x) / cw;
-        let ry = isRelative ? Number(slot.y) : Number(slot.y) / ch;
-        let rw = isRelative ? Number(slot.width) : Number(slot.width) / cw;
-        let rh = isRelative ? Number(slot.height) : Number(slot.height) / ch;
-
-        // If an older cached snapshot produced an un-padded edge-to-edge autoSlot (x=0, y=0, w=100%), inset it slightly so background/border show
-        if ((template as any).source !== 'manual' && rx === 0 && ry === 0 && rw >= 0.98) {
-          const insetX = 0.04;
-          const insetTop = hasTitleBand ? 0.11 : 0.035;
-          rx = insetX;
-          ry = insetTop;
-          rw = Math.max(0.2, rw - insetX * 2);
-          rh = Math.max(0.2, rh - insetTop - 0.02);
-        }
+        const rx = isRelative ? Number(slot.x) : Number(slot.x) / cw;
+        const ry = isRelative ? Number(slot.y) : Number(slot.y) / ch;
+        const rw = isRelative ? Number(slot.width) : Number(slot.width) / cw;
+        const rh = isRelative ? Number(slot.height) : Number(slot.height) / ch;
 
         const leftPercent = `${rx * 100}%`;
         const topPercent = `${ry * 100}%`;
@@ -554,6 +553,8 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
           : photo?.dataUrl
           ? { uri: photo.dataUrl }
           : null;
+
+        const hasExplicitBorder = Boolean(design.photoTreatment?.border);
 
         const slotContent = (
           <View
@@ -569,11 +570,13 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
                       borderBottomRightRadius: 6,
                     }
                   : {}),
-                borderColor: design.photoTreatment?.border
+                borderColor: hasExplicitBorder
                   ? (palette.primary || accent)
                   : accent + '70',
-                borderWidth: design.photoTreatment?.border
-                  ? design.photoTreatment.borderWidth || 3
+                borderWidth: hasExplicitBorder
+                  ? design.photoTreatment.borderWidth || 2
+                  : photoSource
+                  ? 0
                   : 1.5,
                 overflow: 'hidden',
               },
@@ -605,11 +608,11 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
           </View>
         );
 
-        if (interactiveSlot && photoSource) {
+        if (interactiveSlot) {
           return (
             <TouchableOpacity
               key={slot.id || index}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
               onPress={() => interactiveSlot(index)}
               style={[
                 styles.slotPositioner,
@@ -735,12 +738,14 @@ const styles = StyleSheet.create({
   slot: {
     width: '100%',
     height: '100%',
+    position: 'relative',
     backgroundColor: 'rgba(0,0,0,0.12)',
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   slotImage: {
+    ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
   },

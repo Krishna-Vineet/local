@@ -13,6 +13,7 @@ import {
   PanResponder,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import type { Customization, FilterId, OrnamentId, PlacedSticker } from '@happypix/types';
 import {
   ScreenContainer,
@@ -178,6 +179,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isFocused = useIsFocused();
 
   const event = snapshot?.event;
   const template = session.template;
@@ -206,10 +208,10 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-    if (secondsLeft === 0 && !printing) {
+    if (secondsLeft === 0 && !printing && isFocused) {
       resetGuestSession(navigation);
     }
-  }, [secondsLeft, printing]);
+  }, [secondsLeft, printing, isFocused]);
 
   // Safe navigation redirect outside render phase
   useEffect(() => {
@@ -223,20 +225,16 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
   }
 
   const isPortraitTemplate = template.layout.orientation === 'portrait';
-  const canvasWidth = isLandscape
-    ? isPortraitTemplate
-      ? scale(220)
-      : scale(310)
-    : isPortraitTemplate
-    ? scale(200)
-    : scale(270);
-  const canvasHeight = isLandscape
-    ? isPortraitTemplate
-      ? verticalScale(310)
-      : verticalScale(210)
-    : isPortraitTemplate
-    ? verticalScale(270)
-    : verticalScale(185);
+  const rawCw = template.layout?.canvas?.width;
+  const rawCh = template.layout?.canvas?.height;
+  const aspect = rawCw && rawCh ? rawCw / rawCh : isPortraitTemplate ? 2 / 3 : 3 / 2;
+
+  const maxCanvasW = isLandscape ? scale(320) : Math.max(200, width - 84);
+  const maxCanvasH = isLandscape
+    ? Math.min(verticalScale(310), Math.max(180, height * 0.44))
+    : Math.max(175, Math.min(320, Math.round(height * 0.32)));
+  const canvasWidth = Math.min(maxCanvasW, Math.round(maxCanvasH * aspect));
+  const canvasHeight = Math.round(canvasWidth / aspect);
 
   const lastStickerAddRef = useRef(0);
 
@@ -288,6 +286,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
   const handlePrint = async () => {
     if (printing) return;
     setPrinting(true);
+    setIdleTimerEnabled(false);
     SoundManager.play('click');
 
     try {

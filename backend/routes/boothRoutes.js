@@ -1101,7 +1101,12 @@ async function persistSessionPhoto(value, { organizationId, eventId, sessionId }
           folder: `photos/${organizationId}/${eventId || 'no-event'}`,
           originalname: `${sessionId}-${Date.now()}.${ext}`,
         });
-        return { url: uploadResult.url, key: uploadResult.key };
+        const isLocalhostFallback =
+          typeof uploadResult.url === 'string' &&
+          (uploadResult.url.startsWith('http://localhost') || uploadResult.url.startsWith('http://127.0.0.1'));
+        if (!isLocalhostFallback && uploadResult.url) {
+          return { url: uploadResult.url, key: uploadResult.key };
+        }
       } catch (err) {
         console.error('⚠️ S3 upload failed for session photo data URL:', err.message);
       }

@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Camera, useCameraDevice, useCameraFormat, useCameraPermission } from 'react-native-vision-camera';
+import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import type { CapturedPhoto } from '@happypix/types';
@@ -49,10 +49,6 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
     physicalDevices: ['ultra-wide-angle-camera', 'wide-angle-camera'],
   });
   const device = frontDevice || backDevice;
-  const cameraFormat = useCameraFormat(device, [
-    { photoAspectRatio: 4 / 3 },
-    { videoAspectRatio: 4 / 3 },
-  ]);
   const initialZoom = device?.minZoom ?? 1;
 
   const [cameraReady, setCameraReady] = useState(false);
@@ -142,19 +138,23 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const currentShot = Math.min(photos.length + 1, totalShots);
 
   return (
-    <ScreenContainer style={{ backgroundColor: '#000000', padding: 0 }}>
+    <ScreenContainer
+      style={{ backgroundColor: '#000000', padding: 0 }}
+      contentStyle={{ paddingVertical: 0, paddingHorizontal: 0 }}
+    >
       <View style={styles.container}>
-        {/* Full-Screen Viewfinder — Uncropped 1x/minZoom Full Sensor View */}
+        {/* Full-Screen Viewfinder — Covers 100% of frame in both Portrait and Landscape */}
         <View style={styles.viewfinderContainer}>
           {hasPermission && device && isFocused ? (
             <Camera
+              key={isLandscape ? 'cam-landscape' : 'cam-portrait'}
               ref={cameraRef}
-              style={StyleSheet.absoluteFill}
+              style={styles.cameraFullFrame}
               device={device}
-              format={cameraFormat}
               zoom={initialZoom}
               enableZoomGesture={true}
-              resizeMode="contain"
+              resizeMode="cover"
+              androidPreviewViewType="texture-view"
               isActive={isFocused}
               photo={true}
               onInitialized={() => setCameraReady(true)}
@@ -247,7 +247,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
                       {String(i + 1).padStart(2, '0')}
                     </Text>
                     {photo ? (
-                      <Image source={{ uri: photo.uri }} style={styles.thumbImage} />
+                      <Image source={{ uri: photo.uri }} resizeMode="cover" style={styles.thumbImage} />
                     ) : (
                       <View style={styles.thumbEmpty} />
                     )}
@@ -316,11 +316,17 @@ const styles = StyleSheet.create({
   viewfinderContainer: {
     flex: 1,
     width: '100%',
+    height: '100%',
     position: 'relative',
     backgroundColor: '#09090f',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  cameraFullFrame: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   cameraPlaceholder: {
     alignItems: 'center',

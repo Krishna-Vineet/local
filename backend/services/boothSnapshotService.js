@@ -12,6 +12,8 @@
 // ============================================================
 
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { layoutMeta, resolveLayoutPrices, suggestedPriceMap, parseLayoutId } from '../config/layouts.js';
 import { getGallerySettings, photoVisibleInGallery } from './gallerySettingsService.js';
 import Photo from '../models/Photo.js';
@@ -150,25 +152,70 @@ export function mapTemplates(templates = []) {
     });
 }
 
+function tryReadLocalAssetAsDataUrl(rawKey) {
+  if (!rawKey || typeof rawKey !== 'string') return null;
+  const cleanKey = rawKey
+    .replace(/^https?:\/\/[^/]+\//, '')
+    .replace(/^(\/?uploads\/|\/)/, '')
+    .split('?')[0];
+  if (!cleanKey || cleanKey.includes('..') || cleanKey.startsWith('temp-')) return null;
+  try {
+    const localPath = path.join(process.cwd(), 'uploads', cleanKey);
+    if (fs.existsSync(localPath)) {
+      const ext = path.extname(localPath).toLowerCase();
+      const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+      const buf = fs.readFileSync(localPath);
+      return `data:${mime};base64,${buf.toString('base64')}`;
+    }
+  } catch {
+    // ignore fs read errors
+  }
+  return null;
+}
+
 function resolveAssetUrlForBooth(rawUrl, assetId = null) {
   const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
   const cleanAssetId = typeof assetId === 'string' ? assetId.trim() : '';
+  const validAssetKey = cleanAssetId && !cleanAssetId.startsWith('temp-') && !cleanAssetId.startsWith('http') && !cleanAssetId.startsWith('data:')
+    ? cleanAssetId
+    : null;
 
   if (url.startsWith('data:')) return url;
 
+  if (validAssetKey) {
+    const inlineFromId = tryReadLocalAssetAsDataUrl(validAssetKey);
+    if (inlineFromId) return inlineFromId;
+  }
+
   if (url.includes('/api/org/asset-proxy') || url.includes('/api/booth/asset-proxy')) {
+    const qMatch = url.match(/[?&]key=([^&]+)/);
+    if (qMatch) {
+      const decodedKey = decodeURIComponent(qMatch[1]);
+      const inline = tryReadLocalAssetAsDataUrl(decodedKey);
+      if (inline) return inline;
+      return `/api/org/asset-proxy?key=${encodeURIComponent(decodedKey)}`;
+    }
     const qIdx = url.indexOf('?');
-    return qIdx !== -1 ? `/api/booth/asset-proxy${url.slice(qIdx)}` : url;
+    return qIdx !== -1 ? `/api/org/asset-proxy${url.slice(qIdx)}` : url;
   }
 
   if (url.includes('amazonaws.com') || url.includes('happypix-bucket')) {
-    const key = cleanAssetId || url.replace(/^https?:\/\/[^/]+\//, '').split('?')[0];
-    if (key) return `/api/booth/asset-proxy?key=${encodeURIComponent(key)}`;
+    if (url.includes('X-Amz-Signature')) return url;
+    const key = validAssetKey || url.replace(/^https?:\/\/[^/]+\//, '').split('?')[0];
+    if (key) {
+      const inline = tryReadLocalAssetAsDataUrl(key);
+      if (inline) return inline;
+      return `/api/org/asset-proxy?key=${encodeURIComponent(key)}`;
+    }
   }
 
   if (url.startsWith('http://localhost:5000/uploads/') || url.startsWith('http://127.0.0.1:5000/uploads/') || url.startsWith('/uploads/')) {
     const key = url.replace(/^https?:\/\/[^/]+/, '').replace(/^\/?uploads\//, '');
-    if (key) return `/api/booth/asset-proxy?key=${encodeURIComponent(key)}`;
+    if (key) {
+      const inline = tryReadLocalAssetAsDataUrl(key);
+      if (inline) return inline;
+      return `/uploads/${key}`;
+    }
   }
 
   if (url) return url;
@@ -178,7 +225,9 @@ function resolveAssetUrlForBooth(rawUrl, assetId = null) {
       return resolveAssetUrlForBooth(cleanAssetId, null);
     }
     const key = cleanAssetId.replace(/^(\/?uploads\/|\/)/, '');
-    return `/api/booth/asset-proxy?key=${encodeURIComponent(key)}`;
+    const inline = tryReadLocalAssetAsDataUrl(key);
+    if (inline) return inline;
+    return `/api/org/asset-proxy?key=${encodeURIComponent(key)}`;
   }
 
   return null;
@@ -417,6 +466,7 @@ function normalizeDesign(rawDesign, template) {
     ...fallback,
     ...design,
     background,
+    bg: background,
     accent: design.accent || design.palette?.accent || design.palette?.primary || fallback.accent,
     textColor: design.textColor || design.palette?.text || fallback.textColor,
     ornament: design.ornament || fallback.ornament || 'none',
@@ -600,7 +650,7 @@ export function computeRevision(payload) {
     if (value instanceof Map) return Object.fromEntries(value);
     return value;
   });
-  return crypto.createHash('sha1').update(stable).digest('hex').slice(0, 20);
+  return crypto.createHash('sha1').update(`v3:${stable}`).digest('hex').slice(0, 20);
 }
 
 async function loadDefaults(organizationId) {

@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import {
   ScreenContainer,
   LayoutContainer,
@@ -41,6 +42,7 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isFocused = useIsFocused();
 
   const event = snapshot?.event;
   const maxPrints = snapshot?.settings?.maximumPrints ?? 10;
@@ -53,10 +55,10 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-    if (secondsLeft === 0) {
+    if (secondsLeft === 0 && isFocused) {
       resetGuestSession(navigation);
     }
-  }, [secondsLeft]);
+  }, [secondsLeft, isFocused]);
 
   // Safe navigation redirect outside render phase
   useEffect(() => {
@@ -73,8 +75,13 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
   const total = session.prints * unitPrice;
   const choices = [1, 2, 4, 6, 8, 10].filter((item) => item <= maxPrints);
   const isPortrait = template.layout.orientation === 'portrait';
-  const previewWidth = isPortrait ? scale(190) : scale(260);
-  const previewHeight = isPortrait ? verticalScale(270) : verticalScale(185);
+  const rawCw = template.layout?.canvas?.width;
+  const rawCh = template.layout?.canvas?.height;
+  const aspect = rawCw && rawCh ? rawCw / rawCh : isPortrait ? 2 / 3 : 3 / 2;
+  const maxPreviewW = isLandscape ? scale(260) : Math.max(180, width - 96);
+  const maxPreviewH = isLandscape ? verticalScale(270) : Math.min(260, Math.round(height * 0.28));
+  const previewWidth = Math.min(maxPreviewW, Math.round(maxPreviewH * aspect));
+  const previewHeight = Math.round(previewWidth / aspect);
 
   const handleSelectCount = (count: number) => {
     SoundManager.play('click');

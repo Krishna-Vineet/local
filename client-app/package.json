@@ -9,7 +9,10 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "android": "turbo run android --filter=com.happypix.booth",
+    "android": "pnpm --filter com.happypix.booth android",
+    "build:apk": "pnpm --filter com.happypix.booth build:apk",
+    "build:apk:release": "pnpm --filter com.happypix.booth build:apk:release",
+    "clean:android": "pnpm --filter com.happypix.booth clean:android",
     "clean": "turbo run clean"
   },
   "devDependencies": {

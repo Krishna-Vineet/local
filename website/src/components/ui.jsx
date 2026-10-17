@@ -6,6 +6,7 @@ import FlowField from '../fx/FlowField.jsx';
 import PaperCut from '../fx/PaperCut.jsx';
 import TopoLines from '../fx/TopoLines.jsx';
 import { Kinetic } from '../fx/Kinetic.jsx';
+import { ScrollFade } from '../fx/ScrollFx.jsx';
 
 /* ---------- icons (stroke set, matches booth-app icon names) ---------- */
 const PATHS = {
@@ -114,12 +115,12 @@ export function PageHero({ kicker, title, sub, lede, children }) {
   return (
     <section className="page-hero">
       <FlowField />
-      <div className="wrap">
+      <ScrollFade className="wrap">
         <span className="kicker">{kicker}</span>
         <Kinetic as="h1" mode="mount">{title}</Kinetic>
         {(sub || lede) && <p>{sub || lede}</p>}
         {children}
-      </div>
+      </ScrollFade>
       <PaperCut floor color="var(--paper)" />
     </section>
   );

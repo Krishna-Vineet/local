@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { fetchDownload, downloadFileUrl } from '../lib/api.js'
+import { buildDemoStrip, demoDownload } from '../lib/demo.js'
 import { Icon, Logo } from '../components/ui.jsx'
 
-// ─── Hidden guest page: /download/:id ────────────────────────
-// Not linked anywhere on the site; the booth shows its QR on the
-// success screen. Valid for 24 hours after the session, then this
-// page becomes a polite goodbye. There is no sample/demo mode: an
-// unknown or expired id shows the honest state below.
+// ─── Guest page: /download/:id ───────────────────────────────
+// Reached by scanning the booth's QR on the success screen. Valid for
+// 24 hours after the session, then this page becomes a polite goodbye.
+// /download/demo is the public sample: the same page built from sample
+// photos, so clients can see what their guests will get. Any other unknown
+// or expired id shows the honest state below.
 
 function useCountdown(expiresAt) {
   const [now, setNow] = useState(Date.now())
@@ -27,6 +29,7 @@ function useCountdown(expiresAt) {
 
 export default function Download() {
   const { id } = useParams()
+  const isDemo = id === 'demo'
   const [state, setState] = useState({ kind: 'loading' })
 
   useEffect(() => {
@@ -40,6 +43,12 @@ export default function Download() {
 
   useEffect(() => {
     let live = true
+    if (isDemo) {
+      buildDemoStrip()
+        .catch(() => null)
+        .then((strip) => live && setState({ kind: 'ready', data: demoDownload(strip) }))
+      return () => { live = false }
+    }
     fetchDownload(id)
       .then((data) => live && setState({ kind: 'ready', data }))
       .catch((error) => {
@@ -49,7 +58,7 @@ export default function Download() {
         else setState({ kind: 'error', message: error.message })
       })
     return () => { live = false }
-  }, [id])
+  }, [id, isDemo])
 
   const data = state.kind === 'ready' ? state.data : null
   const expiresAt = data?.expiresAt
@@ -72,6 +81,13 @@ export default function Download() {
       </header>
 
       <main className="wrap" style={{ flex: 1, width: '100%', paddingBottom: 90 }}>
+        {isDemo && (
+          <div style={{ margin: '4px auto 0', maxWidth: 640, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'center', background: 'var(--ink)', color: 'var(--paper)', borderRadius: 14, padding: '12px 18px', fontSize: '.9rem' }}>
+            <span>This is a <b>sample</b> page — the view your guests get after scanning the booth QR.</span>
+            <a href="/pricing" style={{ color: 'var(--pink)', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>Get this for your booth →</a>
+          </div>
+        )}
+
         {state.kind === 'loading' && (
           <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--muted)' }}>
             <div style={{ fontSize: '2rem' }}>📸</div>

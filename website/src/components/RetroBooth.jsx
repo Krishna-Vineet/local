@@ -1,51 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Icon } from './ui.jsx'
+import BoothQr from './BoothQr.jsx'
+import { DEMO_FRAMES, DEMO_PATH } from '../lib/demo.js'
 
 // ─── Interactive retro booth demo ────────────────────────────
 // idle → countdown 3·2·1 → flash ×3 → the strip "prints" → QR card.
-// The QR is drawn on canvas (decorative demo pattern) and points at
-// the website's sample download page, exactly like a real booth:
-// guests scan → /download/:id → digital copy for 24 hours.
-
-const FRAMES = ['/images/hero-booth.jpg', '/images/wedding-booth.jpg', '/images/guests-party.jpg']
-
-function drawDemoQr(canvas, url) {
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')
-  const size = 21
-  const cell = canvas.width / size
-  // deterministic pseudo-random pattern derived from the url string
-  let seed = 7
-  for (const ch of url) seed = (seed * 31 + ch.charCodeAt(0)) % 9973
-  const rand = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.width)
-  ctx.fillStyle = '#141020'
-  const finder = (x, y) => {
-    ctx.fillRect(x * cell, y * cell, cell * 7, cell * 7)
-    ctx.fillStyle = '#fff'; ctx.fillRect((x + 1) * cell, (y + 1) * cell, cell * 5, cell * 5)
-    ctx.fillStyle = '#141020'; ctx.fillRect((x + 2) * cell, (y + 2) * cell, cell * 3, cell * 3)
-  }
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (rand() > 0.52) ctx.fillRect(x * cell, y * cell, cell, cell)
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(0, 0, cell * 8, cell * 8); ctx.fillRect(canvas.width - cell * 8, 0, cell * 8, cell * 8); ctx.fillRect(0, canvas.width - cell * 8, cell * 8, cell * 8)
-  ctx.fillStyle = '#141020'
-  finder(0, 0); finder(size - 7, 0); finder(0, size - 7)
-}
+// The QR is a real code pointing at the sample download page, exactly like
+// a booth: guests scan → /download/:id → digital copy for 24 hours.
 
 export default function RetroBooth({ compact = false }) {
   const [phase, setPhase] = useState('idle') // idle | counting | flash | strip | done
   const [count, setCount] = useState(3)
   const [shots, setShots] = useState(0)
-  const qrRef = useRef(null)
   const timers = useRef([])
+  const [demoUrl] = useState(() => `${window.location.origin}${DEMO_PATH}`)
 
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms))
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
-
-  useEffect(() => {
-    if (phase === 'done') drawDemoQr(qrRef.current, `${window.location.origin}/download/demo`)
-  }, [phase])
 
   const start = () => {
     timers.current.forEach(clearTimeout); timers.current = []
@@ -82,7 +54,7 @@ export default function RetroBooth({ compact = false }) {
             )}
             {(phase === 'counting' || phase === 'flash') && (
               <>
-                <img src={FRAMES[Math.min(shots, 2)]} alt="Live booth preview" />
+                <img src={DEMO_FRAMES[Math.min(shots, 2)]} alt="Live booth preview" />
                 <AnimatePresence mode="popLayout">
                   {phase === 'counting' ? (
                     <motion.div key={count} className="countdown-num" style={{ position: 'absolute' }} initial={{ scale: 1.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: .6, opacity: 0 }} transition={{ duration: .34 }}>
@@ -101,7 +73,7 @@ export default function RetroBooth({ compact = false }) {
             {(phase === 'strip' || phase === 'done') && (
               <motion.div initial={{ y: -190, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 1.15, ease: [0.22, 1, 0.36, 1] }} style={{ padding: 18 }}>
                 <div className="filmstrip" style={{ transform: 'rotate(-2deg)', width: 168 }}>
-                  {FRAMES.map((src, i) => (
+                  {DEMO_FRAMES.map((src, i) => (
                     <figure key={i} style={{ aspectRatio: '4/3' }}><img src={src} alt="" /></figure>
                   ))}
                   <div style={{ textAlign: 'center', color: 'var(--paper)', fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: '.82rem', padding: '2px 0 4px' }}>HappyPix ✦ est. tonight</div>
@@ -128,17 +100,17 @@ export default function RetroBooth({ compact = false }) {
           {phase === 'done' ? (
             <motion.div
               key="qr"
-              initial={{ opacity: 0, x: 44, rotate: 3 }}
+              initial={{ opacity: 0, x: 140, rotate: 8 }}
               animate={{ opacity: 1, x: 0, rotate: -1.5 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: .55, ease: [0.22, 1, 0.36, 1] }}
+              exit={{ opacity: 0, x: 60 }}
+              transition={{ type: 'spring', stiffness: 120, damping: 18 }}
               style={{ background: 'var(--paper)', color: 'var(--ink)', borderRadius: 24, padding: 28, textAlign: 'center', boxShadow: '0 24px 48px rgba(15,10,28,.28)', maxWidth: 330, marginInline: 'auto', width: '100%' }}
             >
               <span className="chip bg-pink">Your digital copy</span>
               <h3 style={{ margin: '14px 0 6px' }}>Scan. Save. Share.</h3>
               <p style={{ fontSize: '.93rem', color: 'var(--ink-soft)' }}>Point your phone camera at the code. Your strip opens on a private page — no app, no sign-up.</p>
-              <canvas ref={qrRef} width={168} height={168} style={{ width: 168, height: 168, margin: '16px auto 6px', display: 'block', borderRadius: 10 }} />
-              <a href="/download/demo" style={{ fontWeight: 700, color: 'var(--pink-deep)', fontSize: '.9rem' }}>Preview the download page →</a>
+              <BoothQr url={demoUrl} />
+              <a href={DEMO_PATH} style={{ fontWeight: 700, color: 'var(--pink-deep)', fontSize: '.9rem' }}>Preview the download page →</a>
               <div style={{ marginTop: 12, fontSize: '.8rem', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <Icon name="clock" size={14} /> Link lives for 24 hours only
               </div>

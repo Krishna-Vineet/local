@@ -72,3 +72,30 @@ export function ScrollProgress() {
   const scaleX = useSpring(scrollYProgress, { stiffness: 140, damping: 32, restDelta: 0.001 })
   return <motion.div className="scroll-progress" style={{ scaleX }} aria-hidden="true" />
 }
+
+// Card that straightens (or tilts) as it scrolls into view: rotate from→to.
+export function ScrollTilt({ children, from = -4, to = 0, className = '', style }) {
+  const ref = useRef(null)
+  const reduce = useReducedMotion()
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'center center'] })
+  const rotate = useTransform(scrollYProgress, [0, 1], [from, to])
+  return (
+    <motion.div ref={ref} className={className} style={{ ...style, rotate: reduce ? to : rotate }}>
+      {children}
+    </motion.div>
+  )
+}
+
+// Block that drifts up and fades as you scroll away from it (page heroes).
+export function ScrollFade({ children, className = '', style }) {
+  const ref = useRef(null)
+  const reduce = useReducedMotion()
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
+  const y = useTransform(scrollYProgress, [0, 1], [0, 90])
+  const opacity = useTransform(scrollYProgress, [0, 0.8], [1, 0.15])
+  return (
+    <motion.div ref={ref} className={className} style={{ ...style, y: reduce ? 0 : y, opacity: reduce ? 1 : opacity }}>
+      {children}
+    </motion.div>
+  )
+}

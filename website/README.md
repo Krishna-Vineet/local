@@ -40,6 +40,8 @@ and canvases pause when off screen.
 | Glass morphism | Hero "live print" card, nav on scroll | `.glass` in `fx.css` |
 | Paper cut & origami | Section edges, card corners | `PaperCut.jsx`, `.origami` |
 | Flow fields | Every inner-page header | `FlowField.jsx` |
+| Liquid cursor | Pointer devices, all non-download pages (shows only while moving, recedes behind links and images) | `LiquidCursor.jsx`, `.lc-root` in `fx.css` |
+| Scroll animation | Home lead paragraphs (word-by-word reading), venue photos (parallax), CRM showcase (scale-in), hero (fade out), top progress line | `ScrollFx.jsx` (Framer Motion), `ScrollProgress` in `App.jsx` |
 
 Tune intensity in `src/fx/fx.css`; remove an effect by dropping its component.
 

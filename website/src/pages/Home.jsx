@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useScroll, useTransform } from 'framer-motion';
 import { Reveal, CtaBand } from '../components/ui.jsx';
 import PricingCards from '../components/PricingCards.jsx';
 import CrmShowcase from '../components/CrmShowcase.jsx';
@@ -9,6 +9,7 @@ import LiquidOrbs from '../fx/LiquidOrbs.jsx';
 import TopoLines from '../fx/TopoLines.jsx';
 import PaperCut from '../fx/PaperCut.jsx';
 import { Kinetic, CountUp } from '../fx/Kinetic.jsx';
+import { ScrollText, ParallaxMedia, ScrollScale } from '../fx/ScrollFx.jsx';
 import { fetchPlans } from '../lib/api.js';
 import { VENUES, STORIES, WHY_POINTS, FAQS } from '../data/content.js';
 
@@ -22,6 +23,10 @@ const STATS = [
 const HERO_SLIDES = ['/images/hero-pro-1.jpg', '/images/hero-pro-2.jpg', '/images/hero-pro-3.jpg'];
 
 export default function Home() {
+  const heroRef = useRef(null)
+  const { scrollYProgress: heroP } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
+  const heroY = useTransform(heroP, [0, 1], [0, 140])
+  const heroFade = useTransform(heroP, [0, 0.75], [1, 0])
   const [plans, setPlans] = useState([]);
   const [openFaq, setOpenFaq] = useState(0)
   const [heroSlide, setHeroSlide] = useState(0)
@@ -37,7 +42,7 @@ export default function Home() {
   return (
     <>
       {/* ---------- professional hero (living photo backdrop) ---------- */}
-      <section className="hero">
+      <section className="hero" ref={heroRef}>
         <div className="hero-media" aria-hidden="true">
           {HERO_SLIDES.map((src, i) => (
             <img key={src} src={src} alt="" className={`hero-slide${i === heroSlide ? ' on' : ''}`} />
@@ -46,7 +51,7 @@ export default function Home() {
         <div className="hero-shade" />
         <LiquidOrbs />
         <ParticleSwarm count={64} />
-        <div className="hero-content">
+        <motion.div className="hero-content" style={{ y: heroY, opacity: heroFade }}>
           <div className="wrap">
             <motion.div initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .7 }}>
               <div className="hero-eyebrow">Photo booths · Software · Hardware · CRM</div>
@@ -63,7 +68,7 @@ export default function Home() {
               </div>
             </motion.div>
           </div>
-        </div>
+        </motion.div>
         <div className="glass hero-glass" aria-hidden="true">
           <div className="hg-head"><span className="hg-dot" />Sample session · printing</div>
           <div className="hg-frames"><i /><i /><i /><i /></div>
@@ -98,13 +103,13 @@ export default function Home() {
           <Reveal className="section-head">
             <span className="kicker c-blue">Where it works</span>
             <Kinetic as="h2" className="h-lg">Anywhere people gather, <span className="accent-it" style={{ color: 'var(--blue)' }}>a queue forms</span></Kinetic>
-            <p className="lead">If there's a celebration, a crowd or a checkout line nearby, there's a booth business in it.</p>
+            <ScrollText as="p" className="lead" text="If there's a celebration, a crowd or a checkout line nearby, there's a booth business in it." />
           </Reveal>
           <Reveal>
             <div className="venue-grid">
               {VENUES.map((v) => (
                 <div className={`photo-card ${v.cls}`} key={v.name}>
-                  <img src={v.img} alt={v.name} loading="lazy" />
+                  <ParallaxMedia src={v.img} alt={v.name} />
                   <div className="cap"><b>{v.name}</b><span>{v.note}</span></div>
                 </div>
               ))}
@@ -119,9 +124,9 @@ export default function Home() {
           <Reveal className="section-head">
             <span className="kicker c-purple">The control room</span>
             <Kinetic as="h2" className="h-lg">Software that runs the <span className="accent-it" style={{ color: 'var(--purple)' }}>boring parts</span></Kinetic>
-            <p className="lead">Events, booths, galleries, designs, payments and leads — every part of the business in one dashboard, updating live while you're at the event (or not at it).</p>
+            <ScrollText as="p" className="lead" text="Events, booths, galleries, designs, payments and leads — every part of the business in one dashboard, updating live while you're at the event (or not at it)." />
           </Reveal>
-          <Reveal><CrmShowcase /></Reveal>
+          <Reveal><ScrollScale><CrmShowcase /></ScrollScale></Reveal>
           <Reveal delay={0.08}>
             <div className="crm-caption">
               <div><span className="dot bg-pink" /><div><b>Live event tracking</b><span>See every booth's prints and queue from your phone.</span></div></div>
@@ -154,7 +159,7 @@ export default function Home() {
           <Reveal className="section-head">
             <span className="kicker" style={{ color: '#ffb3d9' }}>Operator stories</span>
             <Kinetic as="h2" className="h-lg">Real people. Real weekends. <span className="accent-it">Real money.</span></Kinetic>
-            <p className="lead">A teacher selling bookmarks at book fairs. A Goan with two booths in resorts. This is who's actually running HappyPix.</p>
+            <ScrollText as="p" className="lead" text="A teacher selling bookmarks at book fairs. A Goan with two booths in resorts. This is who's actually running HappyPix." />
           </Reveal>
         </div>
         <div className="wrap">
@@ -207,7 +212,7 @@ export default function Home() {
           <Reveal className="section-head center">
             <span className="kicker c-green">Straightforward pricing</span>
             <Kinetic as="h2" className="h-lg">One event can cover <span className="accent-it" style={{ color: '#5f9420' }}>months of plan</span></Kinetic>
-            <p className="lead">Plans are billed monthly, cancel anytime. The software is the small cost — the booth is the earner.</p>
+            <ScrollText as="p" className="lead" text="Plans are billed monthly, cancel anytime. The software is the small cost — the booth is the earner." />
           </Reveal>
           {plans.length
             ? <PricingCards plans={plans.slice(0, 6)} linkToCheckout />

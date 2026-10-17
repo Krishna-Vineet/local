@@ -11,6 +11,7 @@ import Business from './pages/Business.jsx'
 import Download from './pages/Download.jsx'
 import { useGlobalFx } from './fx/useGlobalFx.js'
 import LiquidCursor from './fx/LiquidCursor.jsx'
+import { ScrollProgress } from './fx/ScrollFx.jsx'
 
 function ScrollTop() {
   const { pathname, hash } = useLocation()
@@ -55,6 +56,7 @@ export default function App() {
     <>
       <ScrollTop />
       <LiquidCursor />
+      <ScrollProgress />
       <Nav />
       <Routes>
         <Route path="/" element={<Home />} />

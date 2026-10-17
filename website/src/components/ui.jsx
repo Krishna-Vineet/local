@@ -100,9 +100,9 @@ export function Nav() {
           {NAV.map(([label, to]) => (
             <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => (isActive ? 'active' : '')}>{label}</NavLink>
           ))}
-          <span style={{ display: 'flex', gap: 10, marginTop: 6 }} className="nav-mobile-cta">
-            <a className="btn btn-outline-light btn-sm" href={CRM_URL} target="_blank" rel="noreferrer">CRM sign in</a>
-            <Link className="btn btn-pink btn-sm" to="/pricing#checkout" onClick={() => setOpen(false)}>Buy HappyPix</Link>
+          <span style={{ display: 'flex', gap: 10, marginLeft: 6 }} className="nav-mobile-cta">
+            <a className="nav-btn btn-outline-light" href={CRM_URL} target="_blank" rel="noreferrer">CRM sign in</a>
+            <Link className="nav-btn btn-pink" to="/pricing#checkout" onClick={() => setOpen(false)}>Buy HappyPix</Link>
           </span>
         </nav>
       </div>

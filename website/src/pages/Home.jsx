@@ -4,6 +4,11 @@ import { motion } from 'framer-motion';
 import { Reveal, CtaBand } from '../components/ui.jsx';
 import PricingCards from '../components/PricingCards.jsx';
 import CrmShowcase from '../components/CrmShowcase.jsx';
+import ParticleSwarm from '../fx/ParticleSwarm.jsx';
+import LiquidOrbs from '../fx/LiquidOrbs.jsx';
+import TopoLines from '../fx/TopoLines.jsx';
+import PaperCut from '../fx/PaperCut.jsx';
+import { Kinetic, CountUp } from '../fx/Kinetic.jsx';
 import { fetchPlans } from '../lib/api.js';
 import { VENUES, STORIES, WHY_POINTS, FAQS } from '../data/content.js';
 
@@ -39,14 +44,16 @@ export default function Home() {
           ))}
         </div>
         <div className="hero-shade" />
+        <LiquidOrbs />
+        <ParticleSwarm count={64} />
         <div className="hero-content">
           <div className="wrap">
             <motion.div initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .7 }}>
               <div className="hero-eyebrow">Photo booths · Software · Hardware · CRM</div>
-              <h1>Every Pixel is a <em>Happy Moment.</em></h1>
+              <Kinetic as="h1" mode="mount">Every Pixel is a <em className="neon">Happy Moment.</em></Kinetic>
               <p className="hero-sub">HappyPix is the photobooth guests queue for — and the business operators build weekends, side incomes and studios on.</p>
               <div className="hero-actions">
-                <Link className="btn btn-pink btn-arrow" to="/pricing">Start your booth</Link>
+                <Link className="btn btn-pink btn-arrow btn-neon" to="/pricing">Start your booth</Link>
                 <Link className="btn btn-outline-light" to="/business">See the business case</Link>
               </div>
               <div className="hero-proof">
@@ -57,6 +64,12 @@ export default function Home() {
             </motion.div>
           </div>
         </div>
+        <div className="glass hero-glass" aria-hidden="true">
+          <div className="hg-head"><span className="hg-dot" />Sample session · printing</div>
+          <div className="hg-frames"><i /><i /><i /><i /></div>
+          <div className="hg-bar"><span /></div>
+          <div className="hg-foot"><b>Strip #0426</b><span>Ready in ~12 s</span></div>
+        </div>
         <span className="hero-scroll">Scroll</span>
       </section>
 
@@ -64,7 +77,7 @@ export default function Home() {
       <section className="stat-strip">
         <div className="wrap">
           {STATS.map(([n, l, c]) => (
-            <div className="stat-cell" key={l}><b style={{ color: c }}>{n}</b><span>{l}</span></div>
+            <div className="stat-cell" key={l}><b style={{ color: c }}><CountUp value={n} /></b><span>{l}</span></div>
           ))}
         </div>
       </section>
@@ -79,11 +92,12 @@ export default function Home() {
 
 
       {/* ---------- where booths work ---------- */}
+      <PaperCut color="var(--cream)" seed={2} depth={16} />
       <section className="section section-cream">
         <div className="wrap">
           <Reveal className="section-head">
             <span className="kicker c-blue">Where it works</span>
-            <h2 className="h-lg">Anywhere people gather, <span className="accent-it" style={{ color: 'var(--blue)' }}>a queue forms</span></h2>
+            <Kinetic as="h2" className="h-lg">Anywhere people gather, <span className="accent-it" style={{ color: 'var(--blue)' }}>a queue forms</span></Kinetic>
             <p className="lead">If there's a celebration, a crowd or a checkout line nearby, there's a booth business in it.</p>
           </Reveal>
           <Reveal>
@@ -104,7 +118,7 @@ export default function Home() {
         <div className="wrap">
           <Reveal className="section-head">
             <span className="kicker c-purple">The control room</span>
-            <h2 className="h-lg">Software that runs the <span className="accent-it" style={{ color: 'var(--purple)' }}>boring parts</span></h2>
+            <Kinetic as="h2" className="h-lg">Software that runs the <span className="accent-it" style={{ color: 'var(--purple)' }}>boring parts</span></Kinetic>
             <p className="lead">Events, booths, galleries, designs, payments and leads — every part of the business in one dashboard, updating live while you're at the event (or not at it).</p>
           </Reveal>
           <Reveal><CrmShowcase /></Reveal>
@@ -121,7 +135,7 @@ export default function Home() {
           <div className="grid-4" style={{ marginTop: 56 }}>
             {WHY_POINTS.map((w, i) => (
               <Reveal key={w.title} delay={i * 0.06}>
-                <div className="card" style={{ height: '100%' }}>
+                <div className="card origami" style={{ height: '100%' }}>
                   <div className="ic" style={{ background: w.color }}>{w.ic}</div>
                   <h3 style={{ fontSize: 19 }}>{w.title}</h3>
                   <p style={{ fontSize: 14.5 }}>{w.desc}</p>
@@ -133,11 +147,13 @@ export default function Home() {
       </section>
 
       {/* ---------- stories ---------- */}
-      <section className="section section-ink" style={{ overflow: 'hidden' }}>
+      <PaperCut color="var(--ink)" seed={5} />
+      <section className="section section-ink topo-host" style={{ overflow: 'hidden' }}>
+        <TopoLines seed={7} color="255,190,225" alpha={0.12} />
         <div className="wrap">
           <Reveal className="section-head">
             <span className="kicker" style={{ color: '#ffb3d9' }}>Operator stories</span>
-            <h2 className="h-lg">Real people. Real weekends. <span className="accent-it">Real money.</span></h2>
+            <Kinetic as="h2" className="h-lg">Real people. Real weekends. <span className="accent-it">Real money.</span></Kinetic>
             <p className="lead">A teacher selling bookmarks at book fairs. A Goan with two booths in resorts. This is who's actually running HappyPix.</p>
           </Reveal>
         </div>
@@ -170,7 +186,7 @@ export default function Home() {
         <div className="wrap" style={{ maxWidth: 860 }}>
           <Reveal className="section-head">
             <span className="kicker c-purple">Questions</span>
-            <h2 className="h-lg">Before you <span className="accent-it" style={{ color: 'var(--purple)' }}>ask</span></h2>
+            <Kinetic as="h2" className="h-lg">Before you <span className="accent-it" style={{ color: 'var(--purple)' }}>ask</span></Kinetic>
           </Reveal>
           <Reveal>
             <div>
@@ -190,7 +206,7 @@ export default function Home() {
         <div className="wrap">
           <Reveal className="section-head center">
             <span className="kicker c-green">Straightforward pricing</span>
-            <h2 className="h-lg">One event can cover <span className="accent-it" style={{ color: '#5f9420' }}>months of plan</span></h2>
+            <Kinetic as="h2" className="h-lg">One event can cover <span className="accent-it" style={{ color: '#5f9420' }}>months of plan</span></Kinetic>
             <p className="lead">Plans are billed monthly, cancel anytime. The software is the small cost — the booth is the earner.</p>
           </Reveal>
           {plans.length

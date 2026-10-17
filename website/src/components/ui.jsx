@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CRM_URL } from '../lib/api.js';
+import FlowField from '../fx/FlowField.jsx';
+import PaperCut from '../fx/PaperCut.jsx';
+import TopoLines from '../fx/TopoLines.jsx';
+import { Kinetic } from '../fx/Kinetic.jsx';
 
 /* ---------- icons (stroke set, matches booth-app icon names) ---------- */
 const PATHS = {
@@ -109,12 +113,14 @@ export function Nav() {
 export function PageHero({ kicker, title, sub, lede, children }) {
   return (
     <section className="page-hero">
+      <FlowField />
       <div className="wrap">
         <span className="kicker">{kicker}</span>
-        <h1>{title}</h1>
+        <Kinetic as="h1" mode="mount">{title}</Kinetic>
         {(sub || lede) && <p>{sub || lede}</p>}
         {children}
       </div>
+      <PaperCut floor color="var(--paper)" />
     </section>
   );
 }
@@ -188,11 +194,12 @@ export function CtaBand({ title = 'Put a booth where the people are.', sub = 'St
   return (
     <section className="section" style={{ paddingTop: 8 }}>
       <div className="wrap">
-        <div className="center-cta">
+        <div className="center-cta foil foil-dark">
+          <TopoLines seed={11} color="255,255,255" alpha={0.085} />
           <h2>{title}</h2>
           <p>{sub}</p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link className="btn btn-pink btn-arrow" to={to}>{cta}</Link>
+            <Link className="btn btn-pink btn-arrow btn-neon" to={to}>{cta}</Link>
             <Link className="btn btn-outline-light" to="/contact">Talk to us first</Link>
           </div>
         </div>

@@ -126,7 +126,11 @@ export class RenderEngine {
   async compose(input: RenderInput): Promise<RenderOutput> {
     const { template, photos, filter = 'none', tagline, backgroundColor, photoShape = 'rectangle', framePatternUrl, framePatternId, stickers = [], logoUrl, logo } = input;
     const activeLogoUrl = logoUrl || logo;
-    const dims = (PAPER_DIMENSIONS as Record<string, { width: number; height: number }>)[template.paperSize] || PAPER_DIMENSIONS['4x6'];
+    const rawDims = (PAPER_DIMENSIONS as Record<string, { width: number; height: number }>)[template.paperSize] || PAPER_DIMENSIONS['4x6'];
+    const dims = (template.orientation === 'portrait' && rawDims.height < rawDims.width)
+      || (template.orientation === 'landscape' && rawDims.width < rawDims.height)
+      ? { width: rawDims.height, height: rawDims.width }
+      : rawDims;
 
     // In a React Native context, canvas is provided by react-native-skia.
     // This base implementation works in web/test environments.

@@ -43,7 +43,7 @@ import Payment from '../../models/Payment.js';
 import TemplateLayout from '../../models/TemplateLayout.js';
 import OrgAiTemplate from '../../models/OrgAiTemplate.js';
 import TemplateGenerationService from '../../services/ai/TemplateGenerationService.js';
-import { s3, uploadToS3 } from '../../utils/s3.js';
+import { s3, uploadToS3, s3KeyFromUrl } from '../../utils/s3.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 
 import Template from '../../models/Template.js';
@@ -753,8 +753,6 @@ router.put('/devices/:id', requirePerm(PERMS.EVENTS_DEVICES_MANAGE), requireWrit
     if (req.body.status !== device.status) {
       changes.push(`status → ${req.body.status}`);
       device.status = req.body.status;
-      // Issue #57: a blocked device loses its credentials immediately.
-      if (req.body.status !== 'active') device.deviceToken = Device.generateToken();
     }
   }
   await device.save();
@@ -766,28 +764,34 @@ router.put('/devices/:id', requirePerm(PERMS.EVENTS_DEVICES_MANAGE), requireWrit
 
 router.post('/devices/:id/assign', requirePerm(PERMS.EVENTS_DEVICES_MANAGE), requireWritableOrg, asyncRoute(async (req, res) => {
   const organizationId = orgId(req);
-  const device = await Device.findOne({ _id: req.params.id, organizationId });
-  if (!device) throw notFound('Device not found.', 'DEVICE_NOT_FOUND');
+  const existing = await Device.findOne({ _id: req.params.id, organizationId });
+  if (!existing) throw notFound('Device not found.', 'DEVICE_NOT_FOUND');
   const event = await Event.findOne({ _id: req.body.eventId, organizationId });
   if (!event) throw notFound('Event not found.', 'EVENT_NOT_FOUND');
   const status = computeEventStatus(event);
   if (status === 'finished') throw conflict('Cannot assign a finished event to a device.', 'EVENT_FINISHED');
 
-  device.assignedEventId = event._id;
-  await device.save();
+  const device = await Device.findOneAndUpdate(
+    { _id: existing._id, organizationId },
+    { $set: { assignedEventId: event._id } },
+    { new: true },
+  );
   await orgAudit(req, 'event.assigned_to_device', 'event', `Event “${event.name}” assigned to ${device.deviceName}`);
   res.json({ ok: true, device: deviceView(device, await eventsFor(organizationId)) });
 }));
 
 router.post('/devices/:id/unassign', requirePerm(PERMS.EVENTS_DEVICES_MANAGE), requireWritableOrg, asyncRoute(async (req, res) => {
   const organizationId = orgId(req);
-  const device = await Device.findOne({ _id: req.params.id, organizationId });
-  if (!device) throw notFound('Device not found.', 'DEVICE_NOT_FOUND');
-  const previousEvent = device.assignedEventId
-    ? await Event.findById(device.assignedEventId).select('name')
+  const existing = await Device.findOne({ _id: req.params.id, organizationId });
+  if (!existing) throw notFound('Device not found.', 'DEVICE_NOT_FOUND');
+  const previousEvent = existing.assignedEventId
+    ? await Event.findById(existing.assignedEventId).select('name')
     : null;
-  device.assignedEventId = null;
-  await device.save();
+  const device = await Device.findOneAndUpdate(
+    { _id: existing._id, organizationId },
+    { $set: { assignedEventId: null } },
+    { new: true },
+  );
   await orgAudit(req, 'event.unassigned_from_device', 'event', `Event ${previousEvent ? `“${previousEvent.name}”` : 'assignment'} removed from ${device.deviceName}`);
   res.json({ ok: true, device: deviceView(device, await eventsFor(organizationId)) });
 }));
@@ -963,6 +967,15 @@ const SUPPORT_CATEGORIES = ['technical', 'billing', 'account', 'feature', 'other
 const SUPPORT_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 const SUPPORT_STATUSES = ['new', 'denied', 'open', 'in_progress', 'resolved'];
 
+function sanitizeSupportImages(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item) => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim())
+    .filter((item) => item.startsWith('data:image/') || item.startsWith('http://') || item.startsWith('https://') || item.startsWith('/uploads/') || item.startsWith('/api/'))
+    .slice(0, 6);
+}
+
 router.get('/platform-support', requirePerm(PERMS.ORG_PLATFORM_SUPPORT), asyncRoute(async (req, res) => {
   const organizationId = orgId(req);
   const query = { organizationId };
@@ -988,6 +1001,7 @@ router.get('/platform-support', requirePerm(PERMS.ORG_PLATFORM_SUPPORT), asyncRo
 router.post('/platform-support', requirePerm(PERMS.ORG_PLATFORM_SUPPORT), requireWritableOrg, asyncRoute(async (req, res) => {
   const subject = String(req.body.subject || '').trim().slice(0, 160);
   const message = String(req.body.message || req.body.text || '').trim().slice(0, 2000);
+  const images = sanitizeSupportImages(req.body.images);
   if (!subject) throw badRequest('A subject is required.', 'SUBJECT_REQUIRED');
 
   const request = await PlatformSupportRequest.create({
@@ -998,13 +1012,14 @@ router.post('/platform-support', requirePerm(PERMS.ORG_PLATFORM_SUPPORT), requir
     priority: SUPPORT_PRIORITIES.includes(req.body.priority) ? req.body.priority : 'medium',
     status: 'new',
     ticketNo: null,
-    messages: message
+    messages: (message || images.length > 0)
       ? [{
           authorId: req.user._id,
           authorName: req.user.name,
           authorRole: req.user.role,
           side: 'org',
           text: message,
+          images,
           at: new Date(),
         }]
       : [],
@@ -1029,13 +1044,15 @@ router.post('/platform-support/:id/reply', requirePerm(PERMS.ORG_PLATFORM_SUPPOR
     throw conflict('Messages can only be sent on an accepted, active ticket.', 'TICKET_NOT_OPEN');
   }
   const text = String(req.body.message || req.body.text || '').trim();
-  if (!text) throw badRequest('A message is required.', 'EMPTY_MESSAGE');
+  const images = sanitizeSupportImages(req.body.images);
+  if (!text && images.length === 0) throw badRequest('A message or image attachment is required.', 'EMPTY_MESSAGE');
   request.messages.push({
     authorId: req.user._id,
     authorName: req.user.name,
     authorRole: req.user.role,
     side: 'org',
     text,
+    images,
     at: new Date(),
   });
   request.status = 'in_progress';
@@ -1049,7 +1066,8 @@ router.post('/platform-support/:id/reapply', requirePerm(PERMS.ORG_PLATFORM_SUPP
   if (!request) throw notFound('Support request not found.', 'SUPPORT_REQUEST_NOT_FOUND');
   if (request.status !== 'denied') throw conflict('Only a denied request can be re-applied.', 'TICKET_NOT_DENIED');
   const text = String(req.body.message || req.body.text || '').trim();
-  if (!text) throw badRequest('Explain what changed since the last decision.', 'EMPTY_MESSAGE');
+  const images = sanitizeSupportImages(req.body.images);
+  if (!text && images.length === 0) throw badRequest('Explain what changed since the last decision.', 'EMPTY_MESSAGE');
 
   const message = {
     authorId: req.user._id,
@@ -1057,6 +1075,7 @@ router.post('/platform-support/:id/reapply', requirePerm(PERMS.ORG_PLATFORM_SUPP
     authorRole: req.user.role,
     side: 'org',
     text,
+    images,
     at: new Date(),
   };
   request.messages.push(message);
@@ -1066,7 +1085,7 @@ router.post('/platform-support/:id/reapply', requirePerm(PERMS.ORG_PLATFORM_SUPP
   request.status = 'new';
   request.ticketNo = null;
   request.reapplyCount = (Number(request.reapplyCount) || 0) + 1;
-  request.lastReapplication = { text, images: [], authorId: req.user._id, at: new Date() };
+  request.lastReapplication = { text, images, authorId: req.user._id, at: new Date() };
   request.resolution = null;
   await request.save();
   await orgAudit(req, 'organization.platform_support.reapplied', 'support_request', `Re-applied platform support request “${request.subject}”`);
@@ -1465,7 +1484,7 @@ router.post('/team/:id/activate', requirePerm(PERMS.ORG_TEAM_MANAGE), requireWri
 
 router.get('/gallery', requirePerm(PERMS.ORG_GALLERY_VIEW), asyncRoute(async (req, res) => {
   const organizationId = orgId(req);
-  const settings = await getGallerySettings();
+  const settings = await getGallerySettings({ fresh: true });
   const [events, devices] = await Promise.all([eventsFor(organizationId), devicesFor(organizationId)]);
   const eventOptions = events.map((event) => ({ id: String(event._id), name: event.name }));
   const boothOptions = devices.map((device) => ({ id: String(device._id), name: device.deviceName }));
@@ -1500,24 +1519,50 @@ router.get('/gallery', requirePerm(PERMS.ORG_GALLERY_VIEW), asyncRoute(async (re
     }
   }
 
-  if (settings.requireGuestConsent) photos = photos.filter((photo) => photoVisibleInGallery(photo, settings));
+  photos = photos.filter((photo) => photoVisibleInGallery(photo, settings));
+
+  // Deduplicate by session so each booth session shows its single final
+  // composited print image (compositeUrl preferred over raw frame url).
+  const bySession = new Map();
+  const standalone = [];
+  for (const photo of photos) {
+    const sid = photo.sessionId ? String(photo.sessionId).trim() : '';
+    if (!sid) {
+      standalone.push(photo);
+      continue;
+    }
+    const existing = bySession.get(sid);
+    if (!existing) {
+      bySession.set(sid, photo);
+    } else if (!existing.compositeUrl && photo.compositeUrl) {
+      bySession.set(sid, { ...existing, compositeUrl: photo.compositeUrl, finalised: true });
+    } else if (!existing.finalised && photo.finalised) {
+      bySession.set(sid, photo);
+    }
+  }
+  const finalRecords = [...bySession.values(), ...standalone].sort((a, b) => {
+    const ta = new Date(a.generatedAt || a.createdAt || 0).getTime();
+    const tb = new Date(b.generatedAt || b.createdAt || 0).getTime();
+    return tb - ta;
+  });
 
   // The bucket is private: raw S3 URLs 403 in a browser. Hand the CRM
   // short-lived signed URLs (see services/photoUrlService.js). Signing is
   // local crypto, so doing it per-photo here is cheap.
-  const signedPhotos = await Promise.all(photos.map(async (photo) => {
-    const finalImageUrl = await signedPhotoUrl(photo);
+  const signedPhotos = await Promise.all(finalRecords.map(async (photo) => {
+    const finalTarget = photo.compositeUrl || photo.url;
+    const finalImageUrl = await signedPhotoUrl({ ...photo, compositeUrl: finalTarget, url: finalTarget });
     const rawImageUrl = await signedPhotoUrl({ ...photo, compositeUrl: null });
     const eventObj = eventOptions.find((event) => event.id === String(photo.eventId));
     const eventName = eventObj ? eventObj.name : (photo.eventId ? 'Archived event' : 'General / Booth capture');
     return {
       id: String(photo._id),
-      url: rawImageUrl,
+      url: rawImageUrl || finalImageUrl,
       imageUrl: finalImageUrl,
       finalImageUrl,
       compositeUrl: finalImageUrl,
       proxyUrl: `/api/org/gallery/photo/${photo._id}/view`,
-      hasComposite: Boolean(photo.compositeUrl),
+      hasComposite: Boolean(photo.compositeUrl || photo.finalised),
       eventId: photo.eventId ? String(photo.eventId) : null,
       eventName,
       boothId: photo.deviceId ? String(photo.deviceId) : null,
@@ -1542,11 +1587,16 @@ router.get('/gallery', requirePerm(PERMS.ORG_GALLERY_VIEW), asyncRoute(async (re
 // Direct streaming endpoint for gallery images (handles data: URLs and private S3 buckets securely)
 router.get('/gallery/photo/:id/view', requirePerm(PERMS.ORG_GALLERY_VIEW), asyncRoute(async (req, res) => {
   const organizationId = orgId(req);
+  const settings = await getGallerySettings();
+  if (!settings.galleryEnabled) throw forbidden('Gallery is currently disabled by platform policy.', 'GALLERY_DISABLED');
   const photo = await Photo.findOne({ _id: req.params.id, organizationId }).lean();
   if (!photo) throw notFound('Photo not found.', 'PHOTO_NOT_FOUND');
+  if (!photoVisibleInGallery(photo, settings)) {
+    throw forbidden('This photo requires guest publishing consent.', 'CONSENT_REQUIRED');
+  }
 
   const kind = req.query.kind || 'composite';
-  const targetUrl = (kind === 'composite' && photo.compositeUrl) ? photo.compositeUrl : photo.url;
+  const targetUrl = (kind === 'composite' && photo.compositeUrl) ? photo.compositeUrl : (photo.compositeUrl || photo.url);
   if (!targetUrl) throw notFound('Image content not available.', 'IMAGE_NOT_FOUND');
 
   // Case 1: Data URL stored directly in MongoDB
@@ -1564,8 +1614,7 @@ router.get('/gallery/photo/:id/view', requirePerm(PERMS.ORG_GALLERY_VIEW), async
   }
 
   // Case 2: S3 object stream
-  const key = (targetUrl && (targetUrl.includes('amazonaws.com') ? targetUrl.split('.amazonaws.com/')[1] : null))
-    || (kind !== 'composite' ? photo.s3Key : null);
+  const key = s3KeyFromUrl(targetUrl) || (kind !== 'composite' ? photo.s3Key : null) || photo.s3Key;
   if (key && process.env.S3_BUCKET_NAME) {
     try {
       const command = new GetObjectCommand({
@@ -1575,7 +1624,11 @@ router.get('/gallery/photo/:id/view', requirePerm(PERMS.ORG_GALLERY_VIEW), async
       const s3Response = await s3.send(command);
       res.setHeader('Content-Type', s3Response.ContentType || 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=3600');
-      return s3Response.Body.pipe(res);
+      const chunks = [];
+      for await (const chunk of s3Response.Body) {
+        chunks.push(chunk);
+      }
+      return res.send(Buffer.concat(chunks));
     } catch (err) {
       console.warn('⚠️ Direct S3 stream failed for photo:', err.message);
     }
@@ -1598,6 +1651,7 @@ router.get('/templates', requirePerm(PERMS.GLOBAL_TEMPLATES_USE), asyncRoute(asy
       name: template.name,
       category: template.category,
       description: template.description,
+      price: Number(template.price) || 0,
       layoutId: template.layoutId,
       layout: layoutMeta(template.layoutId),
       design: template.design || {},
@@ -1654,15 +1708,79 @@ router.get('/template-layouts', async (req, res) => {
   }
 });
 
+async function processTempTemplateAssets(body) {
+  if (!body.assets || !Array.isArray(body.assets)) return;
+  for (const asset of body.assets) {
+    if (asset.isTemp && asset.url && asset.url.startsWith('data:')) {
+      try {
+        const matches = asset.url.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches) {
+          const mimetype = matches[1];
+          const buffer = Buffer.from(matches[2], 'base64');
+          const ext = mimetype === 'image/png' ? 'png' : 'jpg';
+
+          const uploaded = await uploadToS3({
+            buffer,
+            mimetype,
+            folder: `templates/assets`,
+            originalname: `ai-asset-${Date.now()}.${ext}`
+          });
+
+          const oldId = asset.assetId;
+          asset.assetId = uploaded.key;
+          asset.url = uploaded.url;
+          delete asset.isTemp;
+
+          if (body.design?.background?.assetId === oldId) {
+            body.design.background.assetId = uploaded.key;
+            body.design.background.url = uploaded.url;
+          }
+          if (body.design?.bg?.assetId === oldId) {
+            body.design.bg.assetId = uploaded.key;
+            body.design.bg.url = uploaded.url;
+          }
+          if (body.design?.decorations) {
+            body.design.decorations.forEach(d => {
+              if (d.assetId === oldId) {
+                d.assetId = uploaded.key;
+                d.url = uploaded.url;
+              }
+            });
+          }
+        }
+      } catch (assetErr) {
+        console.warn('⚠️ Asset upload processing error (keeping inline URL):', assetErr.message);
+        delete asset.isTemp;
+      }
+    }
+  }
+}
+
 router.get('/ai-templates', async (req, res) => {
   try {
     const filter = getOrgFilter(req.user);
-    console.log('[ai-templates GET] searching with filter:', JSON.stringify(filter));
-    const templates = await OrgAiTemplate.find(filter)
-      .sort({ createdAt: -1 })
-      .lean();
-    console.log('[ai-templates GET] found count:', templates.length);
-    res.json({ templates: templates.map(t => ({ id: t._id.toString(), ...t })) });
+    const [templates, defaults] = await Promise.all([
+      OrgAiTemplate.find(filter).sort({ createdAt: -1 }).lean(),
+      req.user.organizationId ? OrganizationDefaults.findOne({ organizationId: req.user.organizationId }).lean() : null,
+    ]);
+    const orgTplPrices = defaults?.templatePrices instanceof Map
+      ? Object.fromEntries(defaults.templatePrices)
+      : (defaults?.templatePrices || {});
+    res.json({
+      templates: templates.map((t) => {
+        const id = t._id.toString();
+        const storedPrice = orgTplPrices[id] != null && !isNaN(Number(orgTplPrices[id]))
+          ? Number(orgTplPrices[id])
+          : (t.price != null && !isNaN(Number(t.price)) ? Number(t.price) : 0);
+        return {
+          id,
+          ...t,
+          category: t.category || 'Custom',
+          description: t.description || '',
+          price: storedPrice,
+        };
+      }),
+    });
   } catch (error) {
     console.error('GET /ai-templates error:', error);
     res.status(500).json({ error: error.message || 'Failed to fetch templates' });
@@ -1718,11 +1836,13 @@ router.post('/ai-generate', requireWritableOrg, aiLimiter, async (req, res) => {
 
 router.post('/ai-templates', async (req, res) => {
   try {
-    const body = req.body;
+    const body = { ...(req.body || {}) };
 
     // Ensure name is never empty (required field)
     if (!body.name || body.name.trim() === '') {
       body.name = 'AI Generated Template';
+    } else {
+      body.name = body.name.trim();
     }
 
     // Ensure layout.code exists (required field)
@@ -1730,73 +1850,119 @@ router.post('/ai-templates', async (req, res) => {
       return res.status(400).json({ error: 'layout.code is required to save template' });
     }
 
-    // Process temporary base64 assets and upload to S3
-    if (body.assets && Array.isArray(body.assets)) {
-      for (const asset of body.assets) {
-        if (asset.isTemp && asset.url && asset.url.startsWith('data:')) {
-          try {
-            const matches = asset.url.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-            if (matches) {
-              const mimetype = matches[1];
-              const buffer = Buffer.from(matches[2], 'base64');
-              const ext = mimetype === 'image/png' ? 'png' : 'jpg';
+    await processTempTemplateAssets(body);
 
-              const uploaded = await uploadToS3({
-                buffer,
-                mimetype,
-                folder: `templates/assets`,
-                originalname: `ai-asset-${Date.now()}.${ext}`
-              });
-
-              const oldId = asset.assetId;
-              asset.assetId = uploaded.key;
-              asset.url = uploaded.url;
-              delete asset.isTemp;
-
-              // Update references in design
-              if (body.design?.background?.assetId === oldId) {
-                body.design.background.assetId = uploaded.key;
-                body.design.background.url = uploaded.url;
-              }
-              if (body.design?.bg?.assetId === oldId) {
-                body.design.bg.assetId = uploaded.key;
-                body.design.bg.url = uploaded.url;
-              }
-              if (body.design?.decorations) {
-                body.design.decorations.forEach(d => {
-                  if (d.assetId === oldId) {
-                    d.assetId = uploaded.key;
-                    d.url = uploaded.url;
-                  }
-                });
-              }
-            }
-          } catch (assetErr) {
-            console.warn('⚠️ Asset upload processing error (keeping inline URL):', assetErr.message);
-            delete asset.isTemp;
-          }
-        }
-      }
-    }
+    const hasPriceInput = body.price !== undefined && body.price !== null && body.price !== '';
+    const parsedPrice = hasPriceInput ? Math.max(0, Math.round(Number(body.price) || 0)) : 0;
 
     const template = await OrgAiTemplate.create({
       ...body,
+      category: body.category ? String(body.category).trim() : 'Custom',
+      description: body.description ? String(body.description).trim() : '',
+      price: parsedPrice,
       organizationId: req.user.organizationId,
       createdBy: req.user._id
     });
-    await writeAudit({ req, action: 'organization.template.created', entity: 'OrgAiTemplate', summary: `Created AI template ${template.name}` });
-    res.json({ template: { id: template._id.toString(), ...template.toObject() } });
+
+    if (req.user.organizationId && hasPriceInput) {
+      await OrganizationDefaults.findOneAndUpdate(
+        { organizationId: req.user.organizationId },
+        {
+          $set: { [`templatePrices.${template._id.toString()}`]: parsedPrice },
+          $setOnInsert: { organizationId: req.user.organizationId },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      ).catch((err) => console.warn('⚠️ Failed to sync template price to OrganizationDefaults:', err.message));
+    }
+
+    await writeAudit({ req, action: 'organization.template.created', entity: 'OrgAiTemplate', summary: `Created template ${template.name}` });
+    res.json({ template: { id: template._id.toString(), ...template.toObject(), price: parsedPrice } });
   } catch (error) {
     console.error('Save AI Template Error:', error);
     res.status(500).json({ error: error.message || 'Failed to save template' });
   }
 });
 
+const updateOrgAiTemplateHandler = async (req, res) => {
+  try {
+    const template = await OrgAiTemplate.findOne({ _id: req.params.id, organizationId: req.user.organizationId });
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    const body = { ...(req.body || {}) };
+    await processTempTemplateAssets(body);
+
+    if (body.name !== undefined && String(body.name).trim()) {
+      template.name = String(body.name).trim();
+    }
+    if (body.category !== undefined) {
+      template.category = String(body.category || 'Custom').trim();
+    }
+    if (body.description !== undefined) {
+      template.description = String(body.description || '').trim();
+    }
+    if (body.layout && body.layout.code) {
+      template.layout = body.layout;
+    }
+    if (body.slots !== undefined && Array.isArray(body.slots)) {
+      template.slots = body.slots;
+    }
+    if (body.design !== undefined) {
+      template.design = body.design;
+    }
+    if (body.assets !== undefined && Array.isArray(body.assets)) {
+      template.assets = body.assets;
+    }
+    if (body.versions !== undefined && Array.isArray(body.versions)) {
+      template.versions = body.versions;
+    }
+    if (body.prompt !== undefined) {
+      template.prompt = body.prompt;
+    }
+    if (body.source !== undefined) {
+      template.source = body.source;
+    }
+
+    const hasPriceInput = body.price !== undefined && body.price !== null && body.price !== '';
+    if (hasPriceInput) {
+      const parsedPrice = Math.max(0, Math.round(Number(body.price) || 0));
+      template.price = parsedPrice;
+      if (req.user.organizationId) {
+        await OrganizationDefaults.findOneAndUpdate(
+          { organizationId: req.user.organizationId },
+          {
+            $set: { [`templatePrices.${template._id.toString()}`]: parsedPrice },
+            $setOnInsert: { organizationId: req.user.organizationId },
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true },
+        ).catch((err) => console.warn('⚠️ Failed to sync updated template price to OrganizationDefaults:', err.message));
+      }
+    }
+
+    await template.save();
+    await writeAudit({ req, action: 'organization.template.updated', entity: 'OrgAiTemplate', summary: `Updated template ${template.name}` });
+    res.json({ template: { id: template._id.toString(), ...template.toObject(), price: Number(template.price) || 0 } });
+  } catch (error) {
+    console.error('Update AI Template Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to update template' });
+  }
+};
+
+router.put('/ai-templates/:id', updateOrgAiTemplateHandler);
+router.patch('/ai-templates/:id', updateOrgAiTemplateHandler);
+
 router.delete('/ai-templates/:id', async (req, res) => {
   try {
     const template = await OrgAiTemplate.findOneAndDelete({ _id: req.params.id, organizationId: req.user.organizationId });
     if (!template) {
       return res.status(404).json({ error: 'Template not found' });
+    }
+    if (req.user.organizationId) {
+      await OrganizationDefaults.updateOne(
+        { organizationId: req.user.organizationId },
+        { $unset: { [`templatePrices.${req.params.id}`]: 1 } },
+      ).catch(() => {});
     }
     await writeAudit({ req, action: 'organization.template.deleted', entity: 'OrgAiTemplate', summary: `Deleted AI template ${template.name}` });
     res.json({ ok: true });

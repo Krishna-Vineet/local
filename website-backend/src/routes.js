@@ -403,6 +403,21 @@ function downloadState(download, now = new Date()) {
 
 router.get('/downloads/:id', downloadLimiter, async (req, res) => {
   try {
+    if (req.params.id === 'demo') {
+      const now = Date.now();
+      const expiresAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+      return ok(res, {
+        downloadId: 'demo',
+        compositeUrl: '/images/hero-booth.jpg',
+        photoUrls: ['/images/hero-booth.jpg', '/images/wedding-booth.jpg', '/images/guests-party.jpg'],
+        eventName: 'Kapur–Verma Sangeet Night',
+        organizationName: 'HappyPix Studio Demo',
+        createdAt: new Date(now).toISOString(),
+        expiresAt,
+        remainingMs: 24 * 60 * 60 * 1000,
+        downloadCount: 0,
+      });
+    }
     const download = await GuestDownload.findOne({ downloadId: req.params.id });
     const state = downloadState(download);
     if (state) return fail(res, state.status, state.error, state.expired ? 'DOWNLOAD_EXPIRED' : 'DOWNLOAD_NOT_FOUND');

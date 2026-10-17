@@ -10,6 +10,85 @@ import { Icon, Logo } from '../components/ui.jsx'
 // page becomes a polite goodbye. There is no sample/demo mode: an
 // unknown or expired id shows the honest state below.
 
+const DEMO_FRAMES = ['/images/hero-booth.jpg', '/images/wedding-booth.jpg', '/images/guests-party.jpg']
+
+async function buildDemoCompositeDataUrl(frames = DEMO_FRAMES) {
+  try {
+    const loaded = await Promise.all(
+      frames.map(
+        (src) =>
+          new Promise((resolve) => {
+            const img = new Image()
+            img.crossOrigin = 'anonymous'
+            img.onload = () => resolve(img)
+            img.onerror = () => resolve(null)
+            img.src = src
+          })
+      )
+    )
+    const valid = loaded.filter(Boolean)
+    if (!valid.length) return frames[0]
+
+    const width = 640
+    const pad = 28
+    const gap = 20
+    const footerH = 110
+    const slotW = width - pad * 2
+    const slotH = Math.round(slotW * 0.68)
+    const height = pad * 2 + valid.length * slotH + (valid.length - 1) * gap + footerH
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return frames[0]
+
+    // Filmstrip dark background
+    ctx.fillStyle = '#181124'
+    ctx.fillRect(0, 0, width, height)
+
+    // Subtle decorative border
+    ctx.strokeStyle = 'rgba(255, 79, 154, 0.45)'
+    ctx.lineWidth = 3
+    ctx.strokeRect(10, 10, width - 20, height - 20)
+
+    valid.forEach((img, idx) => {
+      const x = pad
+      const y = pad + idx * (slotH + gap)
+      // Cover-crop each frame into slot
+      const imgAspect = img.width / img.height
+      const slotAspect = slotW / slotH
+      let sx = 0, sy = 0, sw = img.width, sh = img.height
+      if (imgAspect > slotAspect) {
+        sw = img.height * slotAspect
+        sx = (img.width - sw) / 2
+      } else {
+        sh = img.width / slotAspect
+        sy = (img.height - sh) / 2
+      }
+      ctx.save()
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(x - 3, y - 3, slotW + 6, slotH + 6)
+      ctx.drawImage(img, sx, sy, sw, sh, x, y, slotW, slotH)
+      ctx.restore()
+    })
+
+    // Footer branding
+    const fy = height - footerH
+    ctx.fillStyle = '#fff7ea'
+    ctx.font = 'italic 600 30px Georgia, serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('HappyPix ✦ Studio Strip', width / 2, fy + 48)
+    ctx.fillStyle = '#ff6fae'
+    ctx.font = '600 16px system-ui, sans-serif'
+    ctx.fillText('KAPUR – VERMA WEDDING · MUMBAI', width / 2, fy + 78)
+
+    return canvas.toDataURL('image/jpeg', 0.9)
+  } catch {
+    return frames[0]
+  }
+}
+
 function useCountdown(expiresAt) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -27,6 +106,7 @@ function useCountdown(expiresAt) {
 
 export default function Download() {
   const { id } = useParams()
+  const isDemo = id === 'demo'
   const [state, setState] = useState({ kind: 'loading' })
 
   useEffect(() => {
@@ -40,6 +120,25 @@ export default function Download() {
 
   useEffect(() => {
     let live = true
+    if (isDemo) {
+      const demoExpiresAt = new Date(Date.now() + 23 * 3600 * 1000 + 58 * 60 * 1000).toISOString()
+      const baseDemo = {
+        downloadId: 'demo',
+        compositeUrl: DEMO_FRAMES[0],
+        photoUrls: DEMO_FRAMES,
+        eventName: 'Kapur–Verma Sangeet Night',
+        organizationName: 'HappyPix Studio Demo',
+        expiresAt: demoExpiresAt,
+      }
+      setState({ kind: 'ready', data: baseDemo })
+      buildDemoCompositeDataUrl(DEMO_FRAMES).then((compositeUrl) => {
+        if (live && compositeUrl) {
+          setState({ kind: 'ready', data: { ...baseDemo, compositeUrl } })
+        }
+      })
+      return () => { live = false }
+    }
+
     fetchDownload(id)
       .then((data) => live && setState({ kind: 'ready', data }))
       .catch((error) => {
@@ -49,7 +148,7 @@ export default function Download() {
         else setState({ kind: 'error', message: error.message })
       })
     return () => { live = false }
-  }, [id])
+  }, [id, isDemo])
 
   const data = state.kind === 'ready' ? state.data : null
   const expiresAt = data?.expiresAt
@@ -131,12 +230,24 @@ export default function Download() {
                   initial={{ rotate: -5, y: 26, opacity: 0 }} animate={{ rotate: -2.5, y: 0, opacity: 1 }} transition={{ duration: .8, delay: .15 }}
                   style={{ background: 'var(--ink)', padding: '16px 12px 20px', borderRadius: 12, boxShadow: '0 24px 48px rgba(15,10,28,.28)', display: 'inline-block', maxWidth: 360, width: '100%' }}
                 >
-                  <img src={data.compositeUrl || data.photoUrls?.[0]} alt="Your final HappyPix print" style={{ width: '100%', borderRadius: 6, display: 'block', aspectRatio: '4/3.4', objectFit: 'cover', background: '#241a3d' }} />
+                  <img
+                    src={data.compositeUrl || data.photoUrls?.[0]}
+                    alt="Your final HappyPix print"
+                    style={{
+                      width: '100%',
+                      borderRadius: 6,
+                      display: 'block',
+                      aspectRatio: isDemo ? 'auto' : '4/3.4',
+                      maxHeight: isDemo ? 520 : undefined,
+                      objectFit: isDemo ? 'contain' : 'cover',
+                      background: '#241a3d',
+                    }}
+                  />
                   <div style={{ color: 'var(--paper)', fontFamily: 'var(--serif)', fontStyle: 'italic', marginTop: 12 }}>HappyPix ✦ made tonight</div>
                 </motion.div>
                 <div style={{ marginTop: 20, display: 'flex', gap: 11, justifyContent: 'center', flexWrap: 'wrap' }}>
                   {isDemo ? (
-                    <a className="btn btn-pink" href={data.compositeUrl} download><Icon name="download" size={17} /> Download final print</a>
+                    <a className="btn btn-pink" href={data.compositeUrl} download="happypix-demo-print.jpg"><Icon name="download" size={17} /> Download final print</a>
                   ) : (
                     <a className="btn btn-pink" href={downloadFileUrl(id, 'composite')}><Icon name="download" size={17} /> Download final print</a>
                   )}

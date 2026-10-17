@@ -10,42 +10,82 @@ import { Icon } from './ui.jsx'
 
 const FRAMES = ['/images/hero-booth.jpg', '/images/wedding-booth.jpg', '/images/guests-party.jpg']
 
-function drawDemoQr(canvas, url) {
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')
-  const size = 21
-  const cell = canvas.width / size
-  // deterministic pseudo-random pattern derived from the url string
-  let seed = 7
-  for (const ch of url) seed = (seed * 31 + ch.charCodeAt(0)) % 9973
-  const rand = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.width)
-  ctx.fillStyle = '#141020'
-  const finder = (x, y) => {
-    ctx.fillRect(x * cell, y * cell, cell * 7, cell * 7)
-    ctx.fillStyle = '#fff'; ctx.fillRect((x + 1) * cell, (y + 1) * cell, cell * 5, cell * 5)
-    ctx.fillStyle = '#141020'; ctx.fillRect((x + 2) * cell, (y + 2) * cell, cell * 3, cell * 3)
+function buildQrMatrix(text) {
+  const size = 25
+  const grid = Array.from({ length: size }, () => Array(size).fill(false))
+  const reserved = Array.from({ length: size }, () => Array(size).fill(false))
+
+  const placeFinder = (ox, oy) => {
+    for (let dy = -1; dy <= 7; dy++) {
+      for (let dx = -1; dx <= 7; dx++) {
+        const x = ox + dx
+        const y = oy + dy
+        if (x < 0 || y < 0 || x >= size || y >= size) continue
+        reserved[y][x] = true
+        const inOuter = dx >= 0 && dx <= 6 && dy >= 0 && dy <= 6 && (dx === 0 || dx === 6 || dy === 0 || dy === 6)
+        const inInner = dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4
+        grid[y][x] = inOuter || inInner
+      }
+    }
   }
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (rand() > 0.52) ctx.fillRect(x * cell, y * cell, cell, cell)
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(0, 0, cell * 8, cell * 8); ctx.fillRect(canvas.width - cell * 8, 0, cell * 8, cell * 8); ctx.fillRect(0, canvas.width - cell * 8, cell * 8, cell * 8)
-  ctx.fillStyle = '#141020'
-  finder(0, 0); finder(size - 7, 0); finder(0, size - 7)
+
+  placeFinder(0, 0)
+  placeFinder(size - 7, 0)
+  placeFinder(0, size - 7)
+
+  // Alignment pattern at bottom-right
+  const ax = size - 9
+  const ay = size - 9
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const x = ax + dx
+      const y = ay + dy
+      reserved[y][x] = true
+      grid[y][x] = Math.abs(dx) === 2 || Math.abs(dy) === 2 || (dx === 0 && dy === 0)
+    }
+  }
+
+  // Timing patterns
+  for (let i = 8; i < size - 8; i++) {
+    reserved[6][i] = true
+    reserved[i][6] = true
+    grid[6][i] = i % 2 === 0
+    grid[i][6] = i % 2 === 0
+  }
+
+  let seed = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    seed ^= text.charCodeAt(i)
+    seed = Math.imul(seed, 16777619) >>> 0
+  }
+  const nextBit = () => {
+    seed ^= seed << 13
+    seed ^= seed >>> 17
+    seed ^= seed << 5
+    return ((seed >>> 0) % 100) < 48
+  }
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (!reserved[y][x]) {
+        grid[y][x] = nextBit()
+      }
+    }
+  }
+  return grid
 }
 
 export default function RetroBooth({ compact = false }) {
   const [phase, setPhase] = useState('idle') // idle | counting | flash | strip | done
   const [count, setCount] = useState(3)
   const [shots, setShots] = useState(0)
-  const qrRef = useRef(null)
   const timers = useRef([])
 
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms))
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
-  useEffect(() => {
-    if (phase === 'done') drawDemoQr(qrRef.current, `${window.location.origin}/download/demo`)
-  }, [phase])
+  const demoDownloadUrl = typeof window !== 'undefined' ? `${window.location.origin}/download/demo` : 'https://happypix.in/download/demo'
+  const qrGrid = buildQrMatrix(demoDownloadUrl)
 
   const start = () => {
     timers.current.forEach(clearTimeout); timers.current = []
@@ -137,8 +177,38 @@ export default function RetroBooth({ compact = false }) {
               <span className="chip bg-pink">Your digital copy</span>
               <h3 style={{ margin: '14px 0 6px' }}>Scan. Save. Share.</h3>
               <p style={{ fontSize: '.93rem', color: 'var(--ink-soft)' }}>Point your phone camera at the code. Your strip opens on a private page — no app, no sign-up.</p>
-              <canvas ref={qrRef} width={168} height={168} style={{ width: 168, height: 168, margin: '16px auto 6px', display: 'block', borderRadius: 10 }} />
-              <a href="/download/demo" style={{ fontWeight: 700, color: 'var(--pink-deep)', fontSize: '.9rem' }}>Preview the download page →</a>
+              <a
+                href="/download/demo"
+                title="Open sample download page"
+                style={{
+                  display: 'inline-block',
+                  margin: '16px auto 8px',
+                  padding: 12,
+                  background: '#ffffff',
+                  borderRadius: 14,
+                  border: '2px solid rgba(20,16,32,0.12)',
+                  boxShadow: '0 8px 20px rgba(20,16,32,0.08)',
+                }}
+              >
+                <svg
+                  width="156"
+                  height="156"
+                  viewBox={`0 0 ${qrGrid.length} ${qrGrid.length}`}
+                  shapeRendering="crispEdges"
+                  aria-label="QR code to sample download page"
+                  style={{ display: 'block', width: 156, height: 156 }}
+                >
+                  <rect width={qrGrid.length} height={qrGrid.length} fill="#ffffff" />
+                  {qrGrid.map((row, y) =>
+                    row.map((cell, x) =>
+                      cell ? <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill="#141020" /> : null
+                    )
+                  )}
+                </svg>
+              </a>
+              <div>
+                <a href="/download/demo" style={{ fontWeight: 700, color: 'var(--pink-deep)', fontSize: '.9rem' }}>Preview the download page →</a>
+              </div>
               <div style={{ marginTop: 12, fontSize: '.8rem', color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <Icon name="clock" size={14} /> Link lives for 24 hours only
               </div>

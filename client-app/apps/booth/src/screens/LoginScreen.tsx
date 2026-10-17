@@ -131,128 +131,149 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
       <View pointerEvents="none" style={[styles.glow, styles.glowCenter]} />
       <View pointerEvents="none" style={[styles.glow, styles.glowBottom]} />
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={[styles.card, { width: isLandscape ? Math.min(width * 0.52, 540) : Math.min(width * 0.92, 540) }]}>
-          {/* Top System Tag */}
-          <View style={styles.topBadgeRow}>
-            <View style={styles.topBadge}>
-              <View style={styles.topBadgeDot} />
-              <Text style={styles.topBadgeText}>KIOSK TERMINAL PAIRING</Text>
-            </View>
-          </View>
-
-          <View style={styles.brandRow}>
-            <AppLogo width={168} height={52} forceDark />
-          </View>
-
-          <Text style={styles.title}>Pair This Booth</Text>
-          <Text style={styles.subtitle}>
-            Authenticate with your organisation administrator credentials. Once linked, this kiosk retains
-            its identity until manually removed from the CRM.
-          </Text>
-
-          {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorIcon}>⚠️</Text>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.fieldLabel}>ADMINISTRATOR EMAIL</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="admin@organisation.com"
-                placeholderTextColor="#52525b"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.fieldLabel}>PASSWORD</Text>
-            <View style={[styles.inputWrapper, styles.passwordWrapper]}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••••••"
-                placeholderTextColor="#52525b"
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <TouchableOpacity
-                style={styles.showToggle}
-                onPress={() => setShowPassword((value) => !value)}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-              >
-                <Text style={styles.showToggleText}>{showPassword ? 'HIDE' : 'SHOW'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.fieldLabel}>BOOTH LOCATION / NAME</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                value={locationLabel}
-                onChangeText={setLocationLabel}
-                placeholder="e.g. Main Lobby, Ballroom Hall A"
-                placeholderTextColor="#52525b"
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.submitBtn, loading && styles.submitBtnBusy]}
-            onPress={handleLogin}
-            disabled={loading}
-            activeOpacity={0.88}
+      <ScrollView
+        contentContainerStyle={[styles.scroll, isLandscape && styles.scrollLandscape]}
+        keyboardShouldPersistTaps="handled"
+        scrollEnabled={!isLandscape}
+      >
+        <View style={[styles.contentLayout, isLandscape && styles.contentLayoutLandscape]}>
+          <View
+            style={[
+              styles.card,
+              isLandscape ? styles.cardLandscape : { width: Math.min(width * 0.92, 540) },
+            ]}
           >
-            {loading ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color="#ffffff" size="small" />
-                <Text style={styles.submitBtnText}>INITIALIZING HARDWARE LINK…</Text>
+            {/* Top System Tag */}
+            <View style={[styles.topBadgeRow, isLandscape && { marginBottom: verticalScale(8) }]}>
+              <View style={styles.topBadge}>
+                <View style={styles.topBadgeDot} />
+                <Text style={styles.topBadgeText}>KIOSK TERMINAL PAIRING</Text>
               </View>
-            ) : (
-              <View style={styles.btnRow}>
-                <Text style={styles.submitBtnText}>PAIR & CONNECT BOOTH</Text>
-                <Text style={styles.btnArrow}>→</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
+            </View>
 
-        {/* System Diagnostics Dock */}
-        <View style={styles.diagnosticsDock}>
-          <Text style={styles.dockTitle}>HARDWARE READINESS</Text>
-          <View style={styles.chipRow}>
-            {statusChips.map((chip) => (
-              <View key={chip.label} style={[styles.chip, chip.ok ? styles.chipOk : styles.chipWarn]}>
-                <View style={[styles.chipBeacon, chip.ok ? styles.beaconOk : styles.beaconWarn]}>
-                  <View style={[styles.chipDot, chip.ok ? styles.dotOk : styles.dotWarn]} />
-                </View>
-                <View style={styles.chipTextCol}>
-                  <Text style={styles.chipLabel}>{chip.label}</Text>
-                  <Text style={styles.chipValue} numberOfLines={1}>{chip.value}</Text>
+            <View style={[styles.brandRow, isLandscape && { marginBottom: verticalScale(8) }]}>
+              <AppLogo width={isLandscape ? 144 : 168} height={isLandscape ? 42 : 52} forceDark />
+            </View>
+
+            <Text style={[styles.title, isLandscape && { fontSize: fontSize(21) }]}>Pair This Booth</Text>
+            <Text style={[styles.subtitle, isLandscape && styles.subtitleLandscape]}>
+              Authenticate with your organisation administrator credentials. Once linked, this kiosk retains
+              its identity until manually removed from the CRM.
+            </Text>
+
+            {error ? (
+              <View style={[styles.errorBox, isLandscape && { padding: scale(9), marginBottom: verticalScale(10) }]}>
+                <Text style={styles.errorIcon}>⚠️</Text>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
+
+            <View style={isLandscape ? styles.inputsGridLandscape : undefined}>
+              <View style={[styles.inputGroup, isLandscape && styles.inputGroupHalfLandscape]}>
+                <Text style={styles.fieldLabel}>ADMINISTRATOR EMAIL</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={[styles.input, isLandscape && styles.inputLandscape]}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="admin@organisation.com"
+                    placeholderTextColor="#52525b"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
                 </View>
               </View>
-            ))}
+
+              <View style={[styles.inputGroup, isLandscape && styles.inputGroupHalfLandscape]}>
+                <Text style={styles.fieldLabel}>PASSWORD</Text>
+                <View style={[styles.inputWrapper, styles.passwordWrapper]}>
+                  <TextInput
+                    style={[styles.input, styles.passwordInput, isLandscape && styles.inputLandscape]}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="••••••••••••"
+                    placeholderTextColor="#52525b"
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity
+                    style={styles.showToggle}
+                    onPress={() => setShowPassword((value) => !value)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    <Text style={styles.showToggleText}>{showPassword ? 'HIDE' : 'SHOW'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            <View style={[styles.inputGroup, isLandscape && { marginBottom: verticalScale(10) }]}>
+              <Text style={styles.fieldLabel}>BOOTH LOCATION / NAME</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={[styles.input, isLandscape && styles.inputLandscape]}
+                  value={locationLabel}
+                  onChangeText={setLocationLabel}
+                  placeholder="e.g. Main Lobby, Ballroom Hall A"
+                  placeholderTextColor="#52525b"
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.submitBtn, isLandscape && styles.submitBtnLandscape, loading && styles.submitBtnBusy]}
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.88}
+            >
+              {loading ? (
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator color="#ffffff" size="small" />
+                  <Text style={styles.submitBtnText}>INITIALIZING HARDWARE LINK…</Text>
+                </View>
+              ) : (
+                <View style={styles.btnRow}>
+                  <Text style={styles.submitBtnText}>PAIR & CONNECT BOOTH</Text>
+                  <Text style={styles.btnArrow}>→</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* System Diagnostics Dock (side panel in landscape, bottom dock in portrait) */}
+          <View style={[styles.diagnosticsDock, isLandscape && styles.diagnosticsDockLandscape]}>
+            <Text style={[styles.dockTitle, isLandscape && styles.dockTitleLandscape]}>HARDWARE READINESS</Text>
+            <View style={[styles.chipRow, isLandscape && styles.chipColumnLandscape]}>
+              {statusChips.map((chip) => (
+                <View
+                  key={chip.label}
+                  style={[
+                    styles.chip,
+                    isLandscape && styles.chipLandscape,
+                    chip.ok ? styles.chipOk : styles.chipWarn,
+                  ]}
+                >
+                  <View style={[styles.chipBeacon, chip.ok ? styles.beaconOk : styles.beaconWarn]}>
+                    <View style={[styles.chipDot, chip.ok ? styles.dotOk : styles.dotWarn]} />
+                  </View>
+                  <View style={styles.chipTextCol}>
+                    <Text style={styles.chipLabel}>{chip.label}</Text>
+                    <Text style={styles.chipValue} numberOfLines={1}>{chip.value}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+            <Text style={[styles.footer, isLandscape && styles.footerLandscape]}>
+              HappyPix Engine · Device {Math.round(width)}×{Math.round(height)} · Kiosk Protected
+            </Text>
           </View>
         </View>
-
-        <Text style={styles.footer}>HappyPix Engine · Device {Math.round(width)}×{Math.round(height)} · Kiosk Protected</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -271,6 +292,22 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(28),
     paddingHorizontal: scale(16),
   },
+  scrollLandscape: {
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(24),
+  },
+  contentLayout: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contentLayoutLandscape: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    gap: scale(20),
+    maxWidth: 980,
+  },
   card: {
     padding: scale(30),
     borderRadius: 28,
@@ -282,6 +319,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 28,
     elevation: 16,
+  },
+  cardLandscape: {
+    flex: 1.35,
+    maxWidth: 560,
+    paddingVertical: verticalScale(16),
+    paddingHorizontal: scale(22),
+    justifyContent: 'center',
   },
   topBadgeRow: { alignItems: 'center', marginBottom: verticalScale(12) },
   topBadge: {
@@ -306,6 +350,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: verticalScale(6),
     marginBottom: verticalScale(20),
+  },
+  subtitleLandscape: {
+    fontSize: fontSize(11.5),
+    lineHeight: fontSize(16),
+    marginTop: verticalScale(4),
+    marginBottom: verticalScale(12),
+  },
+  inputsGridLandscape: {
+    flexDirection: 'row',
+    gap: scale(12),
+  },
+  inputGroupHalfLandscape: {
+    flex: 1,
+    marginBottom: verticalScale(10),
   },
   errorBox: {
     flexDirection: 'row',
@@ -334,6 +392,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(14),
     paddingVertical: verticalScale(12),
   },
+  inputLandscape: {
+    fontSize: fontSize(13.5),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(9),
+  },
   passwordWrapper: { flexDirection: 'row', alignItems: 'center' },
   passwordInput: { flex: 1, paddingRight: scale(68) },
   showToggle: { position: 'absolute', right: scale(8), paddingHorizontal: scale(10), paddingVertical: verticalScale(6) },
@@ -350,6 +413,10 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
+  submitBtnLandscape: {
+    marginTop: verticalScale(6),
+    paddingVertical: verticalScale(11),
+  },
   submitBtnBusy: { opacity: 0.75 },
   btnRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   submitBtnText: { color: '#ffffff', fontSize: fontSize(14.5), fontWeight: '800', letterSpacing: 0.8 },
@@ -364,6 +431,18 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
+  diagnosticsDockLandscape: {
+    marginTop: 0,
+    flex: 0.85,
+    maxWidth: 340,
+    padding: scale(20),
+    borderRadius: 28,
+    backgroundColor: 'rgba(18, 16, 28, 0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+  },
   dockTitle: {
     color: '#64748b',
     fontSize: fontSize(10.5),
@@ -371,7 +450,19 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: verticalScale(10),
   },
+  dockTitleLandscape: {
+    textAlign: 'left',
+    color: '#94a3b8',
+    marginBottom: verticalScale(12),
+  },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: scale(10) },
+  chipColumnLandscape: {
+    flexDirection: 'column',
+    flexWrap: 'nowrap',
+    justifyContent: 'center',
+    gap: verticalScale(10),
+    flex: 1,
+  },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -382,6 +473,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
     minWidth: scale(150),
+  },
+  chipLandscape: {
+    width: '100%',
+    paddingVertical: verticalScale(11),
   },
   chipOk: { borderColor: 'rgba(34, 197, 94, 0.30)', backgroundColor: 'rgba(34, 197, 94, 0.06)' },
   chipWarn: { borderColor: 'rgba(245, 158, 11, 0.30)', backgroundColor: 'rgba(245, 158, 11, 0.06)' },
@@ -400,5 +495,6 @@ const styles = StyleSheet.create({
   chipTextCol: { flexShrink: 1 },
   chipLabel: { color: '#f1f5f9', fontSize: fontSize(11), fontWeight: '700' },
   chipValue: { color: '#94a3b8', fontSize: fontSize(11), flexShrink: 1 },
-  footer: { color: '#475569', fontSize: fontSize(11), marginTop: verticalScale(22) },
+  footer: { color: '#475569', fontSize: fontSize(11), marginTop: verticalScale(22), textAlign: 'center' },
+  footerLandscape: { marginTop: verticalScale(12), textAlign: 'left', fontSize: fontSize(10) },
 });

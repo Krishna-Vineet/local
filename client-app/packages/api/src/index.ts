@@ -129,6 +129,7 @@ interface PartnerBoothSnapshot {
   organization: { id: string; name: string }
   branding?: { organization?: { logos?: string[]; tagline?: string | null } | null } | null
   settings: BoothSettings & { organizationLogo?: string | null; tagline?: string | null }
+  gallery?: { galleryEnabled?: boolean; requireGuestConsent?: boolean } | null
   event: BoothEvent | null
   revision: string
   serverTime: string
@@ -142,7 +143,12 @@ function normalizeSnapshot(raw: PartnerBoothSnapshot): BoothSnapshot {
     ...raw,
     device: { id: raw.device?.id, name: raw.device?.name, uuid: raw.device?.uuid ?? '' },
     organization: { id: raw.organization?.id, name: raw.organization?.name, branding },
-    settings: { ...raw.settings, branding },
+    settings: {
+      ...raw.settings,
+      branding,
+      galleryEnabled: raw.settings?.galleryEnabled ?? raw.gallery?.galleryEnabled ?? true,
+      requireGuestConsent: raw.settings?.requireGuestConsent ?? raw.gallery?.requireGuestConsent ?? false,
+    },
   };
 }
 

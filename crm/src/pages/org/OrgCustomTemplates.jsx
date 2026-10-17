@@ -17,6 +17,7 @@ export default function OrgCustomTemplates() {
   const [globalLayouts, setGlobalLayouts] = useState([])
   const [search, setSearch] = useState('')
   const [playground, setPlayground] = useState(null)
+  const [previewing, setPreviewing] = useState(null)
   const [deleting, setDeleting] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -80,6 +81,7 @@ export default function OrgCustomTemplates() {
     return (
       <ManualBuilder
         globalLayouts={globalLayouts}
+        initial={playground.mode === 'edit' ? playground.template : null}
         onClose={() => setPlayground(null)}
         onSaved={() => { setPlayground(null); load() }}
       />
@@ -144,8 +146,18 @@ export default function OrgCustomTemplates() {
                   </div>
                   <div className="row wrap gap-6">
                     <Chip tone="info">{lId}</Chip>
+                    {t.category ? <Chip tone="neutral">{t.category}</Chip> : null}
+                    <Chip tone="pink">₹{Number(t.price) || 0}</Chip>
                   </div>
-                  <div className="row between" style={{ marginTop: 'auto', borderTop: '1px solid var(--line-soft)', paddingTop: 10 }}>
+                  <div className="row between gap-8" style={{ marginTop: 'auto', borderTop: '1px solid var(--line-soft)', paddingTop: 10 }}>
+                    <div className="row gap-6">
+                      <Button size="sm" variant="ghost" icon="eye" title="Preview template" onClick={() => setPreviewing(t)}>
+                        Preview
+                      </Button>
+                      <Button size="sm" variant="outline" icon="edit" title="Edit template" onClick={() => setPlayground({ mode: 'edit', template: t })}>
+                        Edit
+                      </Button>
+                    </div>
                     <Button size="sm" variant="ghost" icon="trash" style={{ color: 'var(--danger)' }} title="Delete template" onClick={() => setDeleting(t)} />
                   </div>
                   <div className="t10 faint">added {dateShort(t.createdAt)}</div>
@@ -155,6 +167,80 @@ export default function OrgCustomTemplates() {
           </div>
         )}
       </Card>
+
+      {previewing && (() => {
+        const lId = previewing.layout?.code || previewing.layoutId || 'custom'
+        const aspect = previewing.layout?.width && previewing.layout?.height
+          ? previewing.layout.width / previewing.layout.height
+          : (parseLayoutCodeword(lId)?.aspect || 2 / 3)
+        const isLandscape = aspect > 1
+        const previewSlots = (previewing.slots && previewing.slots.length > 0)
+          ? previewing.slots
+          : (lId ? parseLayoutCodeword(lId)?.slots || [] : [])
+        const previewAssets = (previewing.assets || []).reduce((acc, a) => {
+          if (a.assetId && a.url) acc[a.assetId] = a.url
+          return acc
+        }, {})
+        return (
+          <Modal
+            open={!!previewing}
+            onClose={() => setPreviewing(null)}
+            title={previewing.name}
+            sub={`Layout: ${lId} · ${previewSlots.length} photo slot${previewSlots.length === 1 ? '' : 's'} · ₹${Number(previewing.price) || 0}`}
+            width="wide"
+            footer={
+              <>
+                <Button variant="ghost" onClick={() => setPreviewing(null)}>Close</Button>
+                <Button
+                  variant="primary"
+                  icon="edit"
+                  onClick={() => {
+                    const tpl = previewing
+                    setPreviewing(null)
+                    setPlayground({ mode: 'edit', template: tpl })
+                  }}
+                >
+                  Edit Template
+                </Button>
+              </>
+            }
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+              <div
+                style={{
+                  width: '100%',
+                  background: '#0d0d11',
+                  borderRadius: 12,
+                  padding: '28px 20px',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  border: '1px solid var(--line-soft)',
+                }}
+              >
+                <div style={{ width: isLandscape ? 520 : 320, maxWidth: '100%', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+                  <TemplateRenderer
+                    layout={{ aspect, slots: previewSlots }}
+                    design={previewing.design}
+                    cachedAssets={previewAssets}
+                  />
+                </div>
+              </div>
+              <div className="row wrap gap-8" style={{ width: '100%', justifyContent: 'space-between' }}>
+                <div className="row wrap gap-8">
+                  <Chip tone="info">Layout: {lId}</Chip>
+                  <Chip tone="neutral">Category: {previewing.category || 'Custom'}</Chip>
+                  <Chip tone="pink">Price: ₹{Number(previewing.price) || 0}</Chip>
+                  <Chip tone="purple">{previewSlots.length} Photo Slot{previewSlots.length === 1 ? '' : 's'}</Chip>
+                </div>
+                {previewing.description ? (
+                  <div className="t12 muted">{previewing.description}</div>
+                ) : null}
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
 
       <ConfirmDialog
         open={!!deleting}
@@ -191,11 +277,42 @@ function defaultDesign() {
   }
 }
 
-function ManualBuilder({ globalLayouts, onClose, onSaved }) {
+function ManualBuilder({ globalLayouts, initial = null, onClose, onSaved }) {
   const { toast } = useApp()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const initialLayoutSyncSkipped = useRef(Boolean(initial))
   const [f, setF] = useState(() => {
+    if (initial) {
+      const code = initial.layout?.code || initial.layoutId || ''
+      const matched = globalLayouts.find(gl => gl.codeword === code || gl.id === initial.layoutId) || globalLayouts[0]
+      const parsed = code ? parseLayoutCodeword(code) : null
+      const width = initial.layout?.width || matched?.width || parsed?.width || 1200
+      const height = initial.layout?.height || matched?.height || parsed?.height || 1800
+      const aspect = width && height ? width / height : (matched?.aspect || parsed?.aspect || 2 / 3)
+      const initialSlots = Array.isArray(initial.slots) && initial.slots.length > 0
+        ? initial.slots.map(s => ({ ...s }))
+        : (Array.isArray(matched?.slots) ? matched.slots.map(s => ({ ...s })) : (parsed?.slots || []))
+      return {
+        name: initial.name || 'My Custom Template',
+        description: initial.description || '',
+        category: initial.category || 'Custom',
+        price: initial.price != null ? Number(initial.price) : 0,
+        layoutId: matched?.id || code || '',
+        layoutObj: {
+          ...(matched || {}),
+          codeword: code || matched?.codeword || '46-v1',
+          slots: initialSlots,
+          aspect,
+          width,
+          height,
+          orientation: initial.layout?.orientation || (aspect > 1 ? 'landscape' : 'portrait'),
+          slotCount: initialSlots.length || initial.layout?.slotCount || matched?.slotCount || 1,
+        },
+        design: initial.design ? JSON.parse(JSON.stringify(initial.design)) : defaultDesign(),
+        assets: Array.isArray(initial.assets) ? initial.assets.map(a => ({ ...a })) : [],
+      }
+    }
     const first = globalLayouts[0];
     const initialSlots = (first?.slots && Array.isArray(first.slots)) ? first.slots.map(s => ({ ...s })) : [];
     return {
@@ -287,6 +404,15 @@ function ManualBuilder({ globalLayouts, onClose, onSaved }) {
   // Synchronize slots and aspect ratio whenever the user selects a global layout variant
   useEffect(() => {
     if (!f.layoutId) return;
+    if (initialLayoutSyncSkipped.current) {
+      initialLayoutSyncSkipped.current = false;
+      const matched = globalLayouts.find(gl => gl.id === f.layoutId || gl.codeword === (initial?.layout?.code || initial?.layoutId));
+      if (matched && f.layoutId !== matched.id) {
+        initialLayoutSyncSkipped.current = true;
+        setF(x => ({ ...x, layoutId: matched.id }));
+      }
+      return;
+    }
     const l = globalLayouts.find(gl => gl.id === f.layoutId);
     if (l) {
       let initialSlots = [];
@@ -364,7 +490,7 @@ function ManualBuilder({ globalLayouts, onClose, onSaved }) {
 
   const save = async () => {
     if (!f.name.trim()) return setError('Template name is required.')
-    if (!f.layoutId) return setError('Please select a layout.')
+    if (!f.layoutId && !f.layoutObj?.codeword) return setError('Please select a layout.')
     setBusy(true)
     setError('')
     try {
@@ -379,14 +505,20 @@ function ManualBuilder({ globalLayouts, onClose, onSaved }) {
           width: f.layoutObj.width,
           height: f.layoutObj.height,
           orientation: f.layoutObj.aspect > 1 ? 'landscape' : 'portrait',
-          slotCount: f.layoutObj.slotCount
+          slotCount: f.layoutObj.slots?.length || f.layoutObj.slotCount || 1
         },
         slots: f.layoutObj.slots, // the custom dragged/resized slots!
         design: f.design,
         assets: f.assets
       }
-      await api.org.saveAiTemplate(body)
-      toast(`Template “${body.name}” created!`)
+      const existingId = initial?.id || initial?._id
+      if (existingId) {
+        await api.org.updateAiTemplate(existingId, body)
+        toast(`Template “${body.name}” updated!`)
+      } else {
+        await api.org.saveAiTemplate(body)
+        toast(`Template “${body.name}” created!`)
+      }
       onSaved()
     } catch (e) {
       setError(e.message)
@@ -723,7 +855,9 @@ function ManualBuilder({ globalLayouts, onClose, onSaved }) {
     <div className="page" style={{ padding: '24px', maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', height: '100vh', boxSizing: 'border-box' }}>
       <div className="page-head" style={{ marginBottom: 24, flexShrink: 0 }}>
         <div>
-          <div className="page-title" style={{ fontSize: 24, fontWeight: 600 }}>Custom Template Builder</div>
+          <div className="page-title" style={{ fontSize: 24, fontWeight: 600 }}>
+            {initial ? `Edit Custom Template — “${initial.name}”` : 'Custom Template Builder'}
+          </div>
           <div className="page-sub" style={{ marginTop: 8, color: 'var(--muted)' }}>
             Manually design your template layout. Move/resize slots, upload backgrounds, and draw overlays!
           </div>
@@ -731,7 +865,9 @@ function ManualBuilder({ globalLayouts, onClose, onSaved }) {
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           {error ? <span className="input-error">{error}</span> : null}
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" icon="check" onClick={save} disabled={busy || drawMode}>{busy ? 'Saving…' : 'Save Template'}</Button>
+          <Button variant="primary" icon="check" onClick={save} disabled={busy || drawMode}>
+            {busy ? 'Saving…' : initial ? 'Update Template' : 'Save Template'}
+          </Button>
         </div>
       </div>
       

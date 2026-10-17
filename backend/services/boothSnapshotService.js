@@ -124,6 +124,7 @@ export function mapTemplates(templates = []) {
         name: template.name,
         category: template.category || 'Custom',
         description: template.description || '',
+        price: template.price != null && !isNaN(Number(template.price)) ? Number(template.price) : null,
         source: template.source || 'playground',
         componentId: template.componentId || null,
         active: template.active !== false,
@@ -261,7 +262,7 @@ function autoSlots(meta, template) {
  * defaults — never from hard-coded platform fallbacks when the org has
  * configured something (issues #69–#71, #105, #106).
  */
-export function buildSettings({ organization = {}, defaults = null, event = null }) {
+export function buildSettings({ organization = {}, defaults = null, event = null, gallery = null }) {
   const orgName = organization.name || 'HappyPix';
   const payoutMode = defaults && defaults.payoutMode === 'upi' ? 'upi' : 'wallet';
   const upiId = (defaults && defaults.upiId) || organization.upiId || null;
@@ -304,6 +305,8 @@ export function buildSettings({ organization = {}, defaults = null, event = null
       ? Object.fromEntries(defaults.templatePrices)
       : (defaults?.templatePrices || {}),
     suggestedPrices: suggestedPriceMap(),
+    galleryEnabled: gallery ? gallery.galleryEnabled !== false : true,
+    requireGuestConsent: gallery ? gallery.requireGuestConsent === true : false,
   };
 }
 
@@ -355,7 +358,7 @@ export async function buildBoothSnapshot({ device, organization, event = null })
   const samplePhotos = event ? await recentSamplePhotos(event, organization, gallery) : [];
 
   const branding = buildBranding(organization, event);
-  const settings = buildSettings({ organization, defaults, event });
+  const settings = buildSettings({ organization, defaults, event, gallery });
 
   const orgTemplatePrices = defaults?.templatePrices instanceof Map
     ? Object.fromEntries(defaults.templatePrices)
@@ -377,6 +380,8 @@ export async function buildBoothSnapshot({ device, organization, event = null })
       price = Number(eventTemplatePrices[t.id]);
     } else if (orgTemplatePrices[t.id] != null && !isNaN(Number(orgTemplatePrices[t.id]))) {
       price = Number(orgTemplatePrices[t.id]);
+    } else if (t.price != null && !isNaN(Number(t.price)) && Number(t.price) > 0) {
+      price = Number(t.price);
     } else if (t.layout?.familyId && t.layout?.slots) {
       const key = `${t.layout.familyId}:${t.layout.slots}`;
       price = settings.layoutPrices[key] ?? null;

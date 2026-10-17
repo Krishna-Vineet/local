@@ -5,7 +5,7 @@
 // on logout or event reset — it is only purged when the device is manually
 // removed from the CRM.
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setStorageAdapter, type StorageAdapter } from '../../../../packages/api/src/index';
+import { setStorageAdapter, type StorageAdapter } from '@happypix/api';
 
 export const deviceStorage: StorageAdapter = {
   getItem: async (key: string): Promise<string | null> => {

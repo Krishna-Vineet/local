@@ -165,6 +165,8 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const installationRef = useRef<Installation | null>(null);
   const snapshotRef = useRef<BoothSnapshot | null>(null);
+  const sessionRef = useRef<BoothSession>(session);
+  sessionRef.current = session;
 
   const applySnapshot = useCallback((val: BoothSnapshot) => {
     snapshotRef.current = val;
@@ -359,12 +361,18 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [snapshot?.settings?.boothTimeoutSec]);
 
   const updateSession = useCallback((patch: Partial<BoothSession>) => {
-    setSession((prev) => ({ ...prev, ...patch }));
+    setSession((prev) => {
+      const next = { ...prev, ...patch };
+      sessionRef.current = next;
+      return next;
+    });
     resetIdleTimer();
   }, [resetIdleTimer]);
 
   const resetGuestSession = useCallback((navigation?: any) => {
-    setSession(freshSession());
+    const fresh = freshSession();
+    sessionRef.current = fresh;
+    setSession(fresh);
     setOutcome(null);
     resetIdleTimer();
     if (navigation) {
@@ -426,6 +434,7 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await saveInstallation(result.installation);
     installationRef.current = result.installation;
     setInstallation(result.installation);
+    setBootError(null);
     setOnline(true);
     applySnapshot(result.snapshot);
 
@@ -439,19 +448,25 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setInstallation(null);
     setSnapshot(null);
     snapshotRef.current = null;
-    setSession(freshSession());
+    const fresh = freshSession();
+    sessionRef.current = fresh;
+    setSession(fresh);
   };
 
-  const refreshEvent = async () => {
+  const refreshEvent = useCallback(async () => {
     if (!installationRef.current) return;
     try {
       const value = await boothApi.bootstrap(installationRef.current);
       setOnline(true);
       applySnapshot(value);
-    } catch {
-      setOnline(false);
+    } catch (err: unknown) {
+      if (isBoothApiError(err) && [401, 403, 410].includes(err.status)) {
+        await applyRevocation(err.code, err.status, err.message);
+      } else {
+        setOnline(false);
+      }
     }
-  };
+  }, [applySnapshot, applyRevocation]);
 
   // ── 5. Payment & Session Flow Helpers ────────────────────────────
   const requestQuote = useCallback(async (coupon?: string): Promise<CheckoutQuote> => {
@@ -497,7 +512,8 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const finishAndPrint = useCallback(async (): Promise<PrintOutcome> => {
     const inst = installationRef.current;
-    if (!inst || !session.template) {
+    const currentSession = sessionRef.current;
+    if (!inst || !currentSession.template) {
       return { success: false, jobId: null, error: 'Session not ready', shareUrl: null };
     }
 
@@ -511,7 +527,7 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // silently "printing" nothing.
     let compositeUrl: string | undefined;
     try {
-      compositeUrl = await renderSessionComposite(session);
+      compositeUrl = await renderSessionComposite(currentSession);
     } catch (e: any) {
       printSuccess = false;
       printError = e.message || 'The final print could not be prepared';
@@ -521,10 +537,10 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const result = await printerManager.print({
           bitmap: compositeUrl,
-          copies: session.prints,
-          layoutId: session.template.layout.id,
-          templateName: session.template.name,
-          paperSize: boothTemplateToPrintTemplate(session.template).paperSize,
+          copies: currentSession.prints,
+          layoutId: currentSession.template.layout.id,
+          templateName: currentSession.template.name,
+          paperSize: boothTemplateToPrintTemplate(currentSession.template).paperSize,
         });
         printSuccess = result.success;
         if (result.jobId) jobId = result.jobId;
@@ -539,10 +555,10 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const eventId = snapshotRef.current?.event?.id || undefined;
       const completed = await boothApi.completeSession(inst, {
-        sessionId: session.id,
-        digitalCopy: session.digitalCopy,
-        guestConsent: session.customization?.guestConsent ?? true,
-        photos: await photosAsDataUrls((session.selectedPhotos || []).map((p) => p.uri)),
+        sessionId: currentSession.id,
+        digitalCopy: currentSession.digitalCopy,
+        guestConsent: currentSession.customization?.guestConsent ?? true,
+        photos: await photosAsDataUrls((currentSession.selectedPhotos || []).map((p) => p.uri)),
         compositeUrl,
         eventId,
       });
@@ -560,22 +576,23 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setOutcome(finalOutcome);
     return finalOutcome;
-  }, [session.template, session.prints, session.digitalCopy, session.id]);
+  }, []);
 
   // Retry actions shown on OrderSuccess when the print or the digital share failed.
   // They update the existing outcome in place, so the screen re-renders with the result.
   const [retrying, setRetrying] = useState<'print' | 'share' | null>(null);
 
   const retryPrint = useCallback(async (): Promise<void> => {
-    if (!session.template) return;
+    const currentSession = sessionRef.current;
+    if (!currentSession.template) return;
     setRetrying('print');
     try {
       const result = await printerManager.print({
-        bitmap: await renderSessionComposite(session),
-        copies: session.prints,
-        layoutId: session.template.layout.id,
-        templateName: session.template.name,
-        paperSize: boothTemplateToPrintTemplate(session.template).paperSize,
+        bitmap: await renderSessionComposite(currentSession),
+        copies: currentSession.prints,
+        layoutId: currentSession.template.layout.id,
+        templateName: currentSession.template.name,
+        paperSize: boothTemplateToPrintTemplate(currentSession.template).paperSize,
       });
       setOutcome((prev) => prev && {
         ...prev,
@@ -588,20 +605,21 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       setRetrying(null);
     }
-  }, [session.template, session.prints]);
+  }, []);
 
   const retryShare = useCallback(async (): Promise<void> => {
     const inst = installationRef.current;
+    const currentSession = sessionRef.current;
     if (!inst) return;
     setRetrying('share');
     try {
       const eventId = snapshotRef.current?.event?.id || undefined;
       const completed = await boothApi.completeSession(inst, {
-        sessionId: session.id,
-        digitalCopy: session.digitalCopy,
-        guestConsent: session.customization?.guestConsent ?? true,
-        photos: await photosAsDataUrls((session.selectedPhotos || []).map((p) => p.uri)),
-        compositeUrl: await renderSessionComposite(session).catch(() => undefined),
+        sessionId: currentSession.id,
+        digitalCopy: currentSession.digitalCopy,
+        guestConsent: currentSession.customization?.guestConsent ?? true,
+        photos: await photosAsDataUrls((currentSession.selectedPhotos || []).map((p) => p.uri)),
+        compositeUrl: await renderSessionComposite(currentSession).catch(() => undefined),
         eventId,
       });
       setOutcome((prev) => prev && { ...prev, shareUrl: completed.shareUrl });
@@ -610,7 +628,7 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       setRetrying(null);
     }
-  }, [session.id, session.digitalCopy, session.customization]);
+  }, []);
 
   return (
     <BoothContext.Provider

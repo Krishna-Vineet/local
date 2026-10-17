@@ -424,26 +424,28 @@ router.post('/heartbeat', softDeviceAuth, asyncRoute(async (req, res) => {
   // Issues #76/#77: only the fields the booth actually marked as changed.
   const hardwarePatch = req.body && req.body.hardwarePatch ? req.body.hardwarePatch : (req.body && req.body.hardware) || {};
   const { telemetry, connections, changed: hardwareChanged } = mergeHardware(device, hardwarePatch);
+  const heartbeatUpdate = {
+    lastSeenAt: new Date(),
+    ipAddress: req.ip || null,
+    userAgent: req.headers['user-agent'] || null,
+  };
   if (hardwareChanged.telemetry || hardwareChanged.connections) {
-    device.telemetry = telemetry;
-    device.connections = connections;
+    heartbeatUpdate.telemetry = telemetry;
+    heartbeatUpdate.connections = connections;
   }
-  device.lastSeenAt = new Date();
-  device.ipAddress = req.ip || null;
-  device.userAgent = req.headers['user-agent'] || null;
-  if (req.body && req.body.appVersion) device.appVersion = String(req.body.appVersion).slice(0, 40);
-  if (req.body && req.body.platform) device.platform = String(req.body.platform).slice(0, 40);
-  await device.save();
+  if (req.body && req.body.appVersion) heartbeatUpdate.appVersion = String(req.body.appVersion).slice(0, 40);
+  if (req.body && req.body.platform) heartbeatUpdate.platform = String(req.body.platform).slice(0, 40);
+  const freshDevice = (await Device.findByIdAndUpdate(device._id, { $set: heartbeatUpdate }, { new: true })) || device;
 
   // Issues #79/#72: compare revisions, return a snapshot only when it differs.
   const knownRevision = req.body && req.body.knownRevision ? String(req.body.knownRevision) : null;
-  const snapshot = await snapshotFor(device, organization);
+  const snapshot = await snapshotFor(freshDevice, organization);
   const changed = snapshot.revision !== knownRevision;
 
   await writeAudit({
     organizationId: organization._id, actorId: null, actorName: 'Booth',
     action: 'booth.heartbeat', entity: 'device',
-    summary: `${device.deviceName} heartbeat${changed ? ' (configuration changed)' : ''}`,
+    summary: `${freshDevice.deviceName} heartbeat${changed ? ' (configuration changed)' : ''}`,
   });
 
   res.json(stateEnvelope(BOOTH_STATES.ACTIVE, {
@@ -504,6 +506,8 @@ router.post('/checkout/quote', authenticateDevice, asyncRoute(async (req, res) =
     unitPrice = Number(evTplPrices[tplId]);
   } else if (orgTplPrices[tplId] != null && !isNaN(Number(orgTplPrices[tplId]))) {
     unitPrice = Number(orgTplPrices[tplId]);
+  } else if (template.price != null && !isNaN(Number(template.price)) && Number(template.price) > 0) {
+    unitPrice = Number(template.price);
   } else {
     unitPrice = layoutPrice;
   }

@@ -198,3 +198,15 @@
   .marquee { transform: none !important; }
   .foil::after { transition: none; }
 }
+
+/* ───── Liquid cursor (desktop, mouse only — see LiquidCursor.jsx) ───── */
+.lc-root {
+  position: fixed; left: 0; top: 0; width: 240px; height: 240px;
+  pointer-events: none; z-index: 9998; opacity: 0;
+  filter: url(#fx-goo-cursor); transition: opacity .3s ease; will-change: transform;
+}
+.lc-drop { position: absolute; left: 0; top: 0; display: block; will-change: transform, border-radius; }
+.lc-a { background: radial-gradient(circle at 35% 30%, #ff9fd0, #ea097f 55%, #8c0a5a); opacity: .8; }
+.lc-b { background: radial-gradient(circle at 35% 30%, #c4adff, #5f4caa 55%, #3871c1); opacity: .75; }
+.lc-c { background: radial-gradient(circle at 35% 30%, #ffe49a, #f7b731 60%, #85c536); opacity: .8; }
+@media (prefers-reduced-motion: reduce) { .lc-root { display: none; } }

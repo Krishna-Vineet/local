@@ -208,14 +208,14 @@ export const PLAN_MATRIX = [
 
 // Fallback copy for the add-on section if the catalogue API has no
 // add-on rows yet — live add-ons (kind: 'addon') replace this list and
-// its prices. Every add-on is A$5/mo (₹299); the props pack is one-time.
+// its prices. Prices are never hard-coded here: they come from the catalogue.
 export const ADDONS = [
-  { key: 'addon-headshot', name: 'Professional Headshot Mode', price: 'A$5/mo · ₹299/mo', desc: 'Studio-style AI headshots for corporate events and campuses.' },
-  { key: 'addon-video', name: 'Video Booth Mode', price: 'A$5/mo · ₹299/mo', desc: 'Video, GIF & boomerang capture with slow-motion for social-first crowds.' },
-  { key: 'addon-branding', name: 'Custom Start Screen Branding', price: 'A$5/mo · ₹299/mo', desc: 'Your own start screen, colours and sponsor logos.' },
-  { key: 'addon-survey', name: 'Survey & Lead Capture', price: 'A$5/mo · ₹299/mo', desc: 'Ask three questions before the photo — turn footfall into a mailing list.' },
-  { key: 'addon-music', name: 'Custom Music & Sound Effects', price: 'A$5/mo · ₹299/mo', desc: 'Event soundtracks and branded audio cues.' },
-  { key: 'addon-props', name: 'Fun Event Props & Frames Pack', price: 'A$50 · ₹2,999 one-time', desc: '30 props and 2 premium frames, unlocked forever.' },
+  { key: 'addon-headshot', name: 'Professional Headshot Mode', desc: 'Studio-style AI headshots for corporate events and campuses.' },
+  { key: 'addon-video', name: 'Video Booth Mode', desc: 'Video, GIF & boomerang capture with slow-motion for social-first crowds.' },
+  { key: 'addon-branding', name: 'Custom Start Screen Branding', desc: 'Your own start screen, colours and sponsor logos.' },
+  { key: 'addon-survey', name: 'Survey & Lead Capture', desc: 'Ask three questions before the photo — turn footfall into a mailing list.' },
+  { key: 'addon-music', name: 'Custom Music & Sound Effects', desc: 'Event soundtracks and branded audio cues.' },
+  { key: 'addon-props', name: 'Fun Event Props & Frames Pack', desc: '30 props and 2 premium frames, unlocked forever.' },
 ];
 
 export const FAQS = [

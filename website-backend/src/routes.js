@@ -62,7 +62,7 @@ async function findSellablePlan(planKey) {
 // backend/services/planService.js (DEFAULT_PLAN_CATALOG + ADDON_CATALOG).
 // Used only when the shared DB has no plan rows yet, so the pricing page
 // never renders empty. Plans: Basic / Pro / Premium / Custom, 2 devices,
-// dual-currency monthly/annual; add-ons A$5/mo (₹299).
+// dual-currency monthly/annual; add-ons priced individually.
 const FALLBACK_PLANS = [
   { key: 'trial', name: 'Trial', description: '14-day evaluation — full product, single booth, instant printing & QR downloads.', price: 0, durationMonths: 0, durationLabel: '14 days', devices: 1, events: 1, discountType: 'none', discountValue: 0, kind: 'plan', priceMonthly: 0, priceAnnual: 0, aiCredits: 10 },
   { key: 'basic', name: 'Starter (Basic)', description: 'For event planners & freelancers: unlimited sessions, live preview, instant printing, QR downloads and the operator dashboard.', price: 799, durationMonths: 1, durationLabel: 'per month', devices: 2, events: 2, discountType: 'none', discountValue: 0, kind: 'plan', priceMonthly: 799, priceAnnual: 5988, aiCredits: 25 },

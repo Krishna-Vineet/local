@@ -160,10 +160,7 @@ export default function Software() {
             {ADDONS.map((a, i) => (
               <Reveal key={a.name} delay={(i % 3) * 0.06}>
                 <article className="card" style={{ height: '100%' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
-                    <h3 style={{ fontSize: 19 }}>{a.name}</h3>
-                    <b className="c-pink" style={{ whiteSpace: 'nowrap', fontSize: 14 }}>{a.price}</b>
-                  </div>
+                  <h3 style={{ fontSize: 19 }}>{a.name}</h3>
                   <p style={{ fontSize: 14.5, marginTop: 8 }}>{a.desc}</p>
                 </article>
               </Reveal>

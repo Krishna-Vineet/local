@@ -1,0 +1,24 @@
+{
+  "name": "happypix-website-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "description": "Public backend for the HappyPix display website (happypix.in). Separate service, SAME MongoDB as backend/ — plans, organizations, users, subscriptions and guest downloads are shared collections.",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1030.0",
+    "@aws-sdk/s3-request-presigner": "^3.1030.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "mongoose": "^9.4.1",
+    "razorpay": "^2.9.6"
+  }
+}

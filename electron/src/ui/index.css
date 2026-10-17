@@ -1,0 +1,37 @@
+:root {
+  font-family: 'Nunito Variable', ui-rounded, 'Arial Rounded MT Bold', system-ui, sans-serif;
+  color: #281637;
+  background: #f8f5fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --ink: #281637;
+  --muted: #776982;
+  --faint: #a498aa;
+  --surface: #ffffff;
+  --surface-soft: #fbf8fd;
+  --line: #e9e0ef;
+  --pink: #ee4c96;
+  --pink-deep: #d52d7b;
+  --pink-soft: #ffedf6;
+  --violet: #6f4bc5;
+  --violet-soft: #f0eafd;
+  --green: #21956d;
+  --green-soft: #e7f7f1;
+  --red: #d84b64;
+  --red-soft: #fff0f2;
+  --amber: #d58b22;
+  --shadow: 0 20px 60px rgba(60, 32, 75, .13);
+  --shadow-soft: 0 10px 32px rgba(62, 34, 79, .08);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; min-width: 320px; min-height: 100%; margin: 0; }
+body { min-height: 100vh; overflow: hidden; user-select: none; background: #f8f5fb; }
+button, input { font: inherit; }
+button { color: inherit; }
+button, [role='button'] { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, input:focus-visible { outline: 3px solid rgba(238, 76, 150, .35); outline-offset: 2px; }
+img { max-width: 100%; }
+
+::selection { background: #ffd4e8; color: #47213b; }

@@ -1,0 +1,16 @@
+{
+  "name": "HappyPix CRM",
+  "short_name": "HappyPix",
+  "description": "HappyPix CRM & Custom Template Studio",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#141020",
+  "theme_color": "#141020",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

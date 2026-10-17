@@ -189,11 +189,14 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
 
   const orgName = snapshot?.settings?.organizationName || snapshot?.organization?.name || 'HappyPix';
   const galleryEnabled = snapshot?.settings?.galleryEnabled !== false;
+  const requireGuestConsent = snapshot?.settings?.requireGuestConsent === true;
 
   const [activeTab, setActiveTab] = useState<TabId>('patterns');
   const [printing, setPrinting] = useState(false);
   const [guestConsent, setGuestConsent] = useState(
-    customization.guestConsent !== undefined ? customization.guestConsent : true
+    requireGuestConsent
+      ? (customization.guestConsent !== undefined ? customization.guestConsent : true)
+      : true
   );
 
   useEffect(() => {
@@ -289,7 +292,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       updateSession({
-        customization: { ...customization, guestConsent },
+        customization: { ...customization, guestConsent: requireGuestConsent ? guestConsent : true },
       });
       await finishAndPrint();
       navigation.navigate('OrderSuccess');
@@ -536,8 +539,8 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
               )}
 
-              {/* Online Gallery Guest Consent Toggle (Respecting platform gallery settings) */}
-              {galleryEnabled && (
+              {/* Online Gallery Guest Consent Toggle (only shown when both galleryEnabled and requireGuestConsent are enabled) */}
+              {galleryEnabled && requireGuestConsent && (
                 <View style={styles.consentCard}>
                   <View style={styles.consentInfo}>
                     <Text style={styles.consentTitle}>

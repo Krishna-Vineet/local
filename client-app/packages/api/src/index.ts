@@ -135,12 +135,137 @@ interface PartnerBoothSnapshot {
   serverTime: string
 }
 
-function normalizeSnapshot(raw: PartnerBoothSnapshot): BoothSnapshot {
+function resolveAssetUrl(rawUrl?: string | null, assetId?: string | null, baseUrl?: string | null): string | null {
+  const origin = (baseUrl || activeApiUrl || 'http://localhost:5000')
+    .replace(/\/+$/, '')
+    .replace(/\/api(\/booth)?$/, '');
+  const u = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  const aid = typeof assetId === 'string' ? assetId.trim() : '';
+
+  if (u.startsWith('data:')) return u;
+
+  if (u.includes('/api/org/asset-proxy') || u.includes('/api/booth/asset-proxy')) {
+    const qIdx = u.indexOf('?');
+    return qIdx !== -1 ? `${origin}/api/booth/asset-proxy${u.slice(qIdx)}` : `${origin}/api/booth/asset-proxy`;
+  }
+
+  if ((u.includes('amazonaws.com') || u.includes('happypix-bucket')) && !u.includes('X-Amz-Signature')) {
+    const s3Key = aid || u.replace(/^https?:\/\/[^/]+\//, '').split('?')[0];
+    if (s3Key) return `${origin}/api/booth/asset-proxy?key=${encodeURIComponent(s3Key)}`;
+  }
+
+  if (u.startsWith('http://localhost:5000/') || u.startsWith('http://127.0.0.1:5000/')) {
+    const rel = u.replace(/^https?:\/\/[^/]+/, '');
+    if (rel.startsWith('/uploads/')) {
+      const key = rel.replace(/^\/uploads\//, '');
+      return `${origin}/api/booth/asset-proxy?key=${encodeURIComponent(key)}`;
+    }
+    return `${origin}${rel}`;
+  }
+
+  if (u.startsWith('/uploads/')) {
+    const key = u.replace(/^\/uploads\//, '');
+    return `${origin}/api/booth/asset-proxy?key=${encodeURIComponent(key)}`;
+  }
+
+  if (u.startsWith('/')) {
+    return `${origin}${u}`;
+  }
+
+  if (u) return u;
+
+  if (aid && !aid.startsWith('temp-')) {
+    if (aid.startsWith('data:') || aid.startsWith('http://') || aid.startsWith('https://') || aid.startsWith('/')) {
+      return resolveAssetUrl(aid, null, origin);
+    }
+    return `${origin}/api/booth/asset-proxy?key=${encodeURIComponent(aid.replace(/^(\/?uploads\/|\/)/, ''))}`;
+  }
+
+  return null;
+}
+
+function normalizeSnapshot(raw: PartnerBoothSnapshot, baseUrl?: string | null): BoothSnapshot {
+  const origin = (baseUrl || activeApiUrl || 'http://localhost:5000')
+    .replace(/\/+$/, '')
+    .replace(/\/api(\/booth)?$/, '');
   const orgBrand = raw.branding?.organization ?? null;
-  const logoUrl: string | null = orgBrand?.logos?.[0] ?? raw.settings?.organizationLogo ?? null
+  const rawLogoUrl: string | null = orgBrand?.logos?.[0] ?? raw.settings?.organizationLogo ?? null;
+  const logoUrl = resolveAssetUrl(rawLogoUrl, null, origin);
   const branding = { logoUrl, tagline: raw.settings?.tagline || orgBrand?.tagline || '' };
+
+  let normalizedEvent = raw.event || null;
+  if (normalizedEvent && Array.isArray(normalizedEvent.templates)) {
+    normalizedEvent = {
+      ...normalizedEvent,
+      templates: normalizedEvent.templates.map((tpl: any) => {
+        const rawDesign = tpl?.design || {};
+        const assets = Array.isArray(tpl?.assets)
+          ? tpl.assets.map((a: any) => ({
+              ...a,
+              url: resolveAssetUrl(a?.url, a?.assetId, origin) || a?.url,
+            }))
+          : [];
+        const rawBg = rawDesign.background || (rawDesign as any).bg || {};
+        let bgUrl = resolveAssetUrl(
+          typeof rawBg === 'string' ? rawBg : rawBg?.url,
+          typeof rawBg === 'object' ? rawBg?.assetId : null,
+          origin
+        );
+        if (!bgUrl && assets.length > 0) {
+          const bgAsset = assets.find((a: any) => a.role === 'background' || a.type === 'background');
+          if (bgAsset?.url) bgUrl = bgAsset.url;
+        }
+        const background = bgUrl
+          ? { ...(typeof rawBg === 'object' ? rawBg : {}), type: 'image' as const, url: bgUrl }
+          : rawDesign.background;
+
+        const rawDecs = Array.isArray(rawDesign.decorations) ? [...rawDesign.decorations] : [];
+        for (const asset of assets) {
+          if (!asset || asset.role === 'background' || asset.type === 'background') continue;
+          if (asset.role === 'overlay' || asset.role === 'frame' || asset.type === 'overlay') {
+            const exists = rawDecs.some((d: any) => (d.assetId && d.assetId === asset.assetId) || (d.url && d.url === asset.url));
+            if (!exists && asset.url) {
+              rawDecs.push({
+                assetId: asset.assetId,
+                url: asset.url,
+                type: 'decoration',
+                x: 0,
+                y: 0,
+                width: 1,
+                height: 1,
+                overlay: true,
+              });
+            }
+          }
+        }
+        const decorations = rawDecs.map((dec: any) => {
+          let decUrl = resolveAssetUrl(dec?.url, dec?.assetId, origin);
+          if (!decUrl && dec?.assetId && assets.length > 0) {
+            const matched = assets.find((a: any) => a.assetId === dec.assetId);
+            if (matched?.url) decUrl = matched.url;
+          }
+          return {
+            ...dec,
+            ...(decUrl ? { url: decUrl } : {}),
+          };
+        });
+
+        return {
+          ...tpl,
+          assets,
+          design: {
+            ...rawDesign,
+            background,
+            decorations,
+          },
+        };
+      }),
+    };
+  }
+
   return {
     ...raw,
+    event: normalizedEvent,
     device: { id: raw.device?.id, name: raw.device?.name, uuid: raw.device?.uuid ?? '' },
     organization: { id: raw.organization?.id, name: raw.organization?.name, branding },
     settings: {
@@ -189,11 +314,13 @@ export class HttpBoothApi implements BoothApi {
     return this.request<{ installation: Installation; snapshot: PartnerBoothSnapshot }>('/api/booth/login', {
       method: 'POST',
       body: JSON.stringify(input),
-    }).then((r) => ({ ...r, snapshot: normalizeSnapshot(r.snapshot) }));
+    }).then((r) => ({ ...r, snapshot: normalizeSnapshot(r.snapshot, this.baseUrl) }));
   }
 
   bootstrap(installation: Installation) {
-    return this.request<PartnerBoothSnapshot>('/api/booth/bootstrap', { method: 'GET' }, installation).then(normalizeSnapshot);
+    return this.request<PartnerBoothSnapshot>('/api/booth/bootstrap', { method: 'GET' }, installation).then((raw) =>
+      normalizeSnapshot(raw, this.baseUrl)
+    );
   }
 
   heartbeat(installation: Installation, input: HeartbeatInput) {
@@ -210,7 +337,7 @@ export class HttpBoothApi implements BoothApi {
       installation
     ).then((r) => ({
       changed: r.changed,
-      snapshot: r.snapshot ? normalizeSnapshot(r.snapshot) : undefined,
+      snapshot: r.snapshot ? normalizeSnapshot(r.snapshot, this.baseUrl) : undefined,
       state: r.state,
       invalidateCache: r.invalidateCache,
       message: r.message,
@@ -435,7 +562,7 @@ export async function saveCachedSnapshot(snapshot: BoothSnapshot): Promise<void>
 export async function getCachedSnapshot(): Promise<BoothSnapshot | null> {
   try {
     const raw = await currentStorage.getItem(SNAPSHOT_KEY);
-    return raw ? JSON.parse(raw) : null;
+    return raw ? normalizeSnapshot(JSON.parse(raw), activeApiUrl) : null;
   } catch {
     return null;
   }

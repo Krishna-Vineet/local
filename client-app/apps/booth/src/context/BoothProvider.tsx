@@ -56,8 +56,13 @@ export function boothTemplateToPrintTemplate(template: NonNullable<BoothSession[
   let dims = PAPER[paperSize] || PAPER['4x6'];
   if (layout.orientation === 'portrait' && dims.height < dims.width) dims = { width: dims.height, height: dims.width };
   if (layout.orientation === 'landscape' && dims.width < dims.height) dims = { width: dims.height, height: dims.width };
-  const sx = dims.width / (layout.canvas.width || dims.width);
-  const sy = dims.height / (layout.canvas.height || dims.height);
+  const cw = layout.canvas?.width || dims.width;
+  const ch = layout.canvas?.height || dims.height;
+  const sx = dims.width / cw;
+  const sy = dims.height / ch;
+  const rawSlots = (layout.photoSlots && layout.photoSlots.length > 0)
+    ? layout.photoSlots
+    : ((template as any).slots || []);
   return {
     id: template.id,
     name: template.name,
@@ -65,10 +70,39 @@ export function boothTemplateToPrintTemplate(template: NonNullable<BoothSession[
     orientation: layout.orientation,
     frames: layout.slots,
     dpi: 300,
-    slots: (layout.photoSlots || []).map((slot: any) => ({
-      x: slot.x * sx, y: slot.y * sy, width: slot.width * sx, height: slot.height * sy,
-    })),
+    slots: rawSlots.map((slot: any) => {
+      const isRel = Number(slot.width) <= 1.0 && Number(slot.height) <= 1.0 && Number(slot.x) <= 1.0 && Number(slot.y) <= 1.0;
+      return {
+        x: isRel ? Number(slot.x) * dims.width : Number(slot.x) * sx,
+        y: isRel ? Number(slot.y) * dims.height : Number(slot.y) * sy,
+        width: isRel ? Number(slot.width) * dims.width : Number(slot.width) * sx,
+        height: isRel ? Number(slot.height) * dims.height : Number(slot.height) * sy,
+      };
+    }),
   };
+}
+
+function formatFriendlyPrintError(rawError?: string | null): string {
+  const msg = String(rawError || '').trim();
+  if (!msg) {
+    return 'The printer is currently unavailable. Please ask the booth attendant to check the printer and tap Retry Print.';
+  }
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes('no printer connected') ||
+    lower.includes('printermanager') ||
+    lower.includes('connect()') ||
+    lower.includes('not connected')
+  ) {
+    return 'No printer is connected right now. Your digital photos are safe — please ask the booth attendant to connect the printer and tap Retry Print.';
+  }
+  if (lower.includes('out of paper') || lower.includes('paper')) {
+    return 'The printer is out of paper. Please ask the booth attendant to reload paper and tap Retry Print.';
+  }
+  if (lower.includes('offline') || lower.includes('timeout') || lower.includes('unreachable')) {
+    return 'Could not reach the printer. Please check that the printer is switched on and connected, then tap Retry Print.';
+  }
+  return msg;
 }
 
 async function renderSessionComposite(session: BoothSession): Promise<string | undefined> {
@@ -77,16 +111,54 @@ async function renderSessionComposite(session: BoothSession): Promise<string | u
     renderEngine.setAdapter(new SkiaRenderAdapter());
     renderAdapterReady = true;
   }
+  const printTemplate = boothTemplateToPrintTemplate(session.template);
+  const PAPER: Record<string, { width: number; height: number }> = {
+    '4x6': { width: 1800, height: 1200 }, '5x7': { width: 2100, height: 1500 },
+    '6x8': { width: 2400, height: 1800 }, '2x6_strip': { width: 1800, height: 600 },
+  };
+  let dims = PAPER[printTemplate.paperSize] || PAPER['4x6'];
+  if (printTemplate.orientation === 'portrait' && dims.height < dims.width) dims = { width: dims.height, height: dims.width };
+  if (printTemplate.orientation === 'landscape' && dims.width < dims.height) dims = { width: dims.height, height: dims.width };
+
+  const design: any = session.template.design || {};
+  const templateAssets: any[] = Array.isArray((session.template as any).assets) ? (session.template as any).assets : [];
+  const bgUrl =
+    design.background?.url ||
+    (typeof design.background === 'string' && (design.background.startsWith('http') || design.background.startsWith('data:') || design.background.startsWith('/'))
+      ? design.background
+      : undefined) ||
+    design.bg?.url ||
+    templateAssets.find((a: any) => a.role === 'background' || a.type === 'background')?.url ||
+    undefined;
+  const bgColors = design.background?.colors || design.bg?.colors || (design.palette?.background ? [design.palette.background] : ['#ffffff']);
+  const gradientColors = (design.background?.type === 'gradient' || design.bg?.type === 'gradient') && bgColors.length >= 2
+    ? bgColors
+    : undefined;
+
   const output = await renderEngine.compose({
-    template: boothTemplateToPrintTemplate(session.template),
+    template: printTemplate,
     photos: (session.selectedPhotos || []) as any,
     filter: (session.customization?.filter || 'original') as any,
-    backgroundColor: session.template.design?.background?.colors?.[0],
-    tagline: session.customization?.subtitle || session.template.design?.subtitle,
+    backgroundColor: bgColors[0] || '#ffffff',
+    backgroundImageUrl: bgUrl,
+    gradientColors,
+    decorations: Array.isArray(design.decorations) ? design.decorations : [],
+    tagline: session.customization?.subtitle || design.subtitle || design.tagline,
     logo: session.customization?.logo || undefined,
-    stickers: (session.customization?.stickers || []).map((s: any) => ({
-      id: s.id, emoji: s.emoji, x: s.x, y: s.y, width: 90 * (s.scale ?? 1), height: 90 * (s.scale ?? 1),
-    })),
+    stickers: (session.customization?.stickers || []).map((s: any) => {
+      const xPx = s.x <= 100 ? (Number(s.x) / 100) * dims.width : Number(s.x);
+      const yPx = s.y <= 100 ? (Number(s.y) / 100) * dims.height : Number(s.y);
+      const sizePx = 90 * (s.scale ?? 1);
+      return {
+        id: s.id,
+        emoji: s.emoji,
+        x: xPx,
+        y: yPx,
+        width: sizePx,
+        height: sizePx,
+        rotation: s.rotation ?? 0,
+      };
+    }),
   });
   return output.bitmap;
 }
@@ -544,28 +616,32 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
         printSuccess = result.success;
         if (result.jobId) jobId = result.jobId;
-        if (result.error) printError = result.error;
+        if (result.error) printError = formatFriendlyPrintError(result.error);
       } catch (e: any) {
         printSuccess = false;
-        printError = e.message || 'Printer did not accept the job';
+        printError = formatFriendlyPrintError(e?.message || 'Printer did not accept the job');
       }
     }
 
     let shareUrl: string | null = null;
     try {
       const eventId = snapshotRef.current?.event?.id || undefined;
+      const requireConsent = snapshotRef.current?.settings?.requireGuestConsent === true;
+      const effectiveConsent = requireConsent
+        ? (currentSession.customization?.guestConsent ?? true)
+        : true;
+      const encodedPhotos = await photosAsDataUrls((currentSession.selectedPhotos || []).map((p) => p.uri));
       const completed = await boothApi.completeSession(inst, {
         sessionId: currentSession.id,
-        digitalCopy: currentSession.digitalCopy,
-        guestConsent: currentSession.customization?.guestConsent ?? true,
-        photos: await photosAsDataUrls((currentSession.selectedPhotos || []).map((p) => p.uri)),
+        digitalCopy: currentSession.digitalCopy !== false,
+        guestConsent: effectiveConsent,
+        photos: encodedPhotos.length > 0 ? encodedPhotos : (compositeUrl ? [compositeUrl] : []),
         compositeUrl,
         eventId,
       });
       shareUrl = completed.shareUrl;
     } catch (e: any) {
       if (!printError) printError = e.message || 'Could not prepare digital share';
-
     }
 
     const finalOutcome: PrintOutcome = {
@@ -598,10 +674,10 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...prev,
         success: result.success,
         jobId: result.jobId || prev.jobId,
-        error: result.success ? null : result.error || 'Printer did not accept the job',
+        error: result.success ? null : formatFriendlyPrintError(result.error || 'Printer did not accept the job'),
       });
     } catch (e: any) {
-      setOutcome((prev) => prev && { ...prev, success: false, error: e?.message || 'Printer did not accept the job' });
+      setOutcome((prev) => prev && { ...prev, success: false, error: formatFriendlyPrintError(e?.message || 'Printer did not accept the job') });
     } finally {
       setRetrying(null);
     }
@@ -614,12 +690,18 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setRetrying('share');
     try {
       const eventId = snapshotRef.current?.event?.id || undefined;
+      const requireConsent = snapshotRef.current?.settings?.requireGuestConsent === true;
+      const effectiveConsent = requireConsent
+        ? (currentSession.customization?.guestConsent ?? true)
+        : true;
+      const compositeUrl = await renderSessionComposite(currentSession).catch(() => undefined);
+      const encodedPhotos = await photosAsDataUrls((currentSession.selectedPhotos || []).map((p) => p.uri));
       const completed = await boothApi.completeSession(inst, {
         sessionId: currentSession.id,
-        digitalCopy: currentSession.digitalCopy,
-        guestConsent: currentSession.customization?.guestConsent ?? true,
-        photos: await photosAsDataUrls((currentSession.selectedPhotos || []).map((p) => p.uri)),
-        compositeUrl: await renderSessionComposite(currentSession).catch(() => undefined),
+        digitalCopy: currentSession.digitalCopy !== false,
+        guestConsent: effectiveConsent,
+        photos: encodedPhotos.length > 0 ? encodedPhotos : (compositeUrl ? [compositeUrl] : []),
+        compositeUrl,
         eventId,
       });
       setOutcome((prev) => prev && { ...prev, shareUrl: completed.shareUrl });

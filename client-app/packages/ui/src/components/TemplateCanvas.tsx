@@ -50,6 +50,128 @@ const getFilterOverlay = (filter: FilterId): ViewStyle | null => {
   }
 };
 
+const DESIGNER_PRESETS: Record<string, any> = {
+  ClassicPostcard: {
+    background: { type: 'solid', colors: ['#FFFFFF'] },
+    accent: '#2A2338',
+    textColor: '#191424',
+    ornament: 'frame',
+    slotShape: 'rect',
+    title: 'HAPPYPIX',
+  },
+  MinimalMono: {
+    background: { type: 'solid', colors: ['#FAFAF8'] },
+    accent: '#191424',
+    textColor: '#403952',
+    ornament: 'none',
+    slotShape: 'rect',
+    title: 'UNTITLED',
+  },
+  PanoramaStory: {
+    background: { type: 'gradient', colors: ['#241E33', '#14101F'] },
+    accent: '#A99BE8',
+    textColor: '#FFFFFF',
+    ornament: 'none',
+    slotShape: 'round',
+    title: 'PANORAMA',
+  },
+  RoyalWedding: {
+    background: { type: 'gradient', colors: ['#5F4CAA', '#3A3170'] },
+    accent: '#D9B44A',
+    textColor: '#F3D9A4',
+    ornament: 'flourish',
+    slotShape: 'arch',
+    titleBand: true,
+    title: 'Royal Wedding',
+  },
+  VintageBookmark: {
+    background: { type: 'solid', colors: ['#F5EEDC'] },
+    accent: '#6B5B3E',
+    textColor: '#4C3F26',
+    ornament: 'dots',
+    slotShape: 'rect',
+    title: 'A Keepsake',
+  },
+  GalaGold: {
+    background: { type: 'solid', colors: ['#191420'] },
+    accent: '#D9B44A',
+    textColor: '#F3D9A4',
+    ornament: 'frame',
+    slotShape: 'rect',
+    title: 'Gala Night',
+    subtitle: 'Presented with joy',
+  },
+  FestiveMaroon: {
+    background: { type: 'solid', colors: ['#6E1F2A'] },
+    accent: '#D9B44A',
+    textColor: '#FFE9D6',
+    ornament: 'stripes',
+    slotShape: 'round',
+    titleBand: true,
+    title: 'Festive Wishes',
+  },
+  LegacyGuestbook: {
+    background: { type: 'gradient', colors: ['#1E3E70', '#12264A'] },
+    accent: '#D9B44A',
+    textColor: '#F3D9A4',
+    ornament: 'frame',
+    slotShape: 'round',
+    titleBand: true,
+    title: 'The Guest Book',
+  },
+  NeonParty: {
+    background: { type: 'gradient', colors: ['#EA097F', '#5F4CAA'] },
+    accent: '#FF7AC1',
+    textColor: '#FFFFFF',
+    ornament: 'glow',
+    slotShape: 'round',
+    title: 'NEON NIGHT',
+  },
+  SunsetStrip: {
+    background: { type: 'gradient', colors: ['#F7B733', '#EA097F'] },
+    accent: '#FFFFFF',
+    textColor: '#FFFFFF',
+    ornament: 'dots',
+    slotShape: 'round',
+    title: 'SUNSET',
+  },
+  FilmStrip: {
+    background: { type: 'solid', colors: ['#141414'] },
+    accent: '#FFB000',
+    textColor: '#FFB000',
+    ornament: 'sprockets',
+    slotShape: 'rect',
+    title: 'HAPPYPIX FILM',
+    subtitle: 'FRAME 04 · 2026',
+  },
+  CollectorReel: {
+    background: { type: 'gradient', colors: ['#DFF2F2', '#B7DFDF'] },
+    accent: '#0E7490',
+    textColor: '#0B5D73',
+    ornament: 'frame',
+    slotShape: 'round',
+    title: 'COLLECTOR 2026',
+  },
+  KidsSplash: {
+    background: { type: 'gradient', colors: ['#DDEBFF', '#FFE9F2'] },
+    accent: '#2A6FBE',
+    textColor: '#2A6FBE',
+    ornament: 'dots',
+    slotShape: 'round',
+    title: 'Splash Time!',
+  },
+  CorporateGrid: {
+    background: { type: 'solid', colors: ['#FFFFFF'] },
+    accent: '#3871C1',
+    textColor: '#403952',
+    ornament: 'headerBand',
+    slotShape: 'round',
+    titleBand: true,
+    title: 'Team Offsite 2026',
+    subtitle: 'HappyPix · captured & printed on site',
+  },
+};
+
 export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   template,
   photos = [],
@@ -59,76 +181,121 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   containerWidth,
   renderStickers = true,
 }) => {
-  const { layout, design } = template;
+  const { layout } = template;
+  const preset = (template.componentId && DESIGNER_PRESETS[template.componentId]) || null;
+  const rawDesign: any = template.design || {};
+  const isUnstyledWhiteFallback =
+    preset &&
+    rawDesign.background?.type === 'solid' &&
+    rawDesign.background?.colors?.[0]?.toLowerCase() === '#ffffff' &&
+    rawDesign.accent === '#ff4f9a' &&
+    template.componentId !== 'ClassicPostcard';
+
+  const design: any = isUnstyledWhiteFallback
+    ? { ...rawDesign, ...preset }
+    : { ...preset, ...rawDesign };
+
   const canvas = layout?.canvas || { width: 1000, height: 1500 };
   const aspect = canvas.width && canvas.height
     ? canvas.width / canvas.height
     : (layout?.orientation === 'landscape' ? 3 / 2 : 2 / 3);
 
   const title = customization.title || design.title;
-  const subtitle = customization.subtitle || design.subtitle;
-  const ornament: OrnamentId = customization.ornament === 'none' ? design.ornament : customization.ornament;
+  const subtitle = customization.subtitle || design.subtitle || design.tagline;
+  const ornament: OrnamentId = (customization.ornament === 'none' || !customization.ornament)
+    ? (design.ornament || 'none')
+    : customization.ornament;
   const activeFilter: FilterId = customization.filter || 'original';
 
   // Background and theme resolution (supports AI templates, designer, and custom)
+  const templateAssets = Array.isArray((template as any).assets) ? (template as any).assets : [];
+  const bgAssetId = design.background?.assetId || design.bg?.assetId;
+  const matchedBgAsset =
+    (bgAssetId && templateAssets.find((a: any) => a.assetId === bgAssetId)) ||
+    templateAssets.find((a: any) => a.role === 'background' || a.type === 'background');
+
   const bgUrl =
     design.background?.url ||
-    (typeof design.background === 'string' ? design.background : null) ||
-    (design as any).bg?.url ||
-    ((template as any).assets?.find((a: any) => a.role === 'background' || a.type === 'background')?.url) ||
+    (typeof design.background === 'string' && (design.background.startsWith('http') || design.background.startsWith('data:') || design.background.startsWith('/'))
+      ? design.background
+      : null) ||
+    design.bg?.url ||
+    matchedBgAsset?.url ||
     null;
   const isImageBg = !!bgUrl;
-  const palette = (design as any).palette || {};
-  const paletteBg = palette.background;
-  const bgType = isImageBg ? 'image' : design.background?.type || (paletteBg ? 'solid' : 'solid');
-  const bgColors = design.background?.colors || (paletteBg ? [paletteBg] : ['#ffffff']);
-  const primaryBg = isImageBg ? 'transparent' : (bgColors[0] || paletteBg || '#ffffff');
-  const secondaryBg = bgColors[1] || primaryBg;
+  const palette = design.palette || {};
+  const paletteBg = palette.background || design.theme?.background;
+  const bgObj = design.background?.colors ? design.background : (design.bg?.colors ? design.bg : null);
+  const bgType = isImageBg ? 'image' : (bgObj?.type || (paletteBg ? 'solid' : 'solid'));
+  const bgColors = bgObj?.colors || (paletteBg ? [paletteBg] : (preset?.background?.colors || ['#1e1b2e']));
+  const fallbackBgColor = bgColors[0] || paletteBg || '#1e1b2e';
+  const secondaryBg = bgColors[1] || fallbackBgColor;
 
-  const accent = design.accent || palette.accent || palette.primary || '#8b5cf6';
-  const textColor = design.textColor || palette.text || '#ffffff';
+  const accent = design.accent || palette.accent || palette.primary || preset?.accent || '#8b5cf6';
+  const textColor = design.textColor || palette.text || preset?.textColor || '#ffffff';
+  const hasTitleBand = Boolean(design.titleBand || preset?.titleBand);
 
+  const shapeKey = String(design.slotShape || preset?.slotShape || 'square').toLowerCase();
+  const isArchSlot = shapeKey === 'arch';
   const slotBorderRadius =
-    design.slotShape === 'rounded' ? 12 : design.slotShape === 'pill' ? 999 : 4;
+    shapeKey === 'rounded' || shapeKey === 'round' ? 10 : shapeKey === 'pill' ? 999 : 4;
 
   const renderDesignerFlourish = () => {
-    switch (template.componentId) {
-      case 'RoyalWedding':
-        return (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <Text style={[styles.cornerFlourish, styles.flourishTL, { color: design.accent }]}>❦</Text>
-            <Text style={[styles.cornerFlourish, styles.flourishTR, { color: design.accent }]}>❦</Text>
-            <View style={[styles.flourishBorder, { borderColor: design.accent + '40' }]} />
-          </View>
-        );
-      case 'ClassicWhite':
-        return (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <View style={[styles.flourishBorder, { borderColor: design.accent || '#e4e4e7' }]} />
-          </View>
-        );
-      case 'BlushBloom':
-        return (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <Text style={[styles.cornerFlourish, styles.flourishTL, { color: design.accent }]}>✿</Text>
-            <Text style={[styles.cornerFlourish, styles.flourishBR, { color: design.accent }]}>✿</Text>
-          </View>
-        );
-      case 'MidnightReel':
-        return (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <Text style={[styles.starField, { color: design.accent }]}>✦ · ✧ · ✦ · ✧</Text>
-          </View>
-        );
-      case 'PartyPop':
-        return (
-          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <Text style={[styles.partyRibbon, { color: design.accent }]}>● ▲ ◆ ● ▲ ◆</Text>
-          </View>
-        );
-      default:
-        return null;
+    const cid = template.componentId;
+    if (cid === 'RoyalWedding' || (ornament as string) === 'flourish') {
+      return (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 8 }]}>
+          <View style={[styles.flourishBorder, { borderColor: accent + '99', borderWidth: 1.5 }]} />
+          <Text style={[styles.cornerFlourish, styles.flourishTL, { color: accent }]}>❦</Text>
+          <Text style={[styles.cornerFlourish, styles.flourishTR, { color: accent }]}>❦</Text>
+        </View>
+      );
     }
+    if (cid === 'FilmStrip' || (ornament as string) === 'sprockets') {
+      return (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 8 }]}>
+          <View style={{ position: 'absolute', left: 3, top: 8, bottom: 8, width: 5, justifyContent: 'space-around' }}>
+            {Array.from({ length: 12 }).map((_, idx) => (
+              <View key={`sp-l-${idx}`} style={{ width: 4, height: 6, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.65)' }} />
+            ))}
+          </View>
+          <View style={{ position: 'absolute', right: 3, top: 8, bottom: 8, width: 5, justifyContent: 'space-around' }}>
+            {Array.from({ length: 12 }).map((_, idx) => (
+              <View key={`sp-r-${idx}`} style={{ width: 4, height: 6, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.65)' }} />
+            ))}
+          </View>
+        </View>
+      );
+    }
+    if (cid === 'CorporateGrid' || (ornament as string) === 'headerBand') {
+      return (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 8 }]}>
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '11%', backgroundColor: accent, justifyContent: 'center', paddingHorizontal: 10 }}>
+            <Text numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 0.6 }}>
+              {title || template.name}
+            </Text>
+          </View>
+          <View style={{ position: 'absolute', top: '11%', left: 0, right: 0, height: 2, backgroundColor: '#EA097F' }} />
+        </View>
+      );
+    }
+    if (
+      cid === 'ClassicPostcard' ||
+      cid === 'ClassicWhite' ||
+      cid === 'GalaGold' ||
+      cid === 'LegacyGuestbook' ||
+      cid === 'FestiveMaroon' ||
+      cid === 'VintageBookmark' ||
+      cid === 'CollectorReel' ||
+      (ornament as string) === 'frame'
+    ) {
+      return (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: 8 }]}>
+          <View style={[styles.flourishBorder, { borderColor: accent + 'AA', borderWidth: 1.5 }]} />
+        </View>
+      );
+    }
+    return null;
   };
 
   const renderOrnament = () => {
@@ -195,14 +362,51 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   };
 
   const renderDecorations = (overlayFilter: boolean) => {
-    const decs = ((design as any).decorations || []) as Array<any>;
-    return decs
-      .filter((d) => !!d.url && (d.overlay === true) === overlayFilter)
+    const rawDecs = Array.isArray(design.decorations) ? [...design.decorations] : [];
+    for (const asset of templateAssets) {
+      if (!asset || asset.role === 'background' || asset.type === 'background') continue;
+      if (asset.role === 'overlay' || asset.role === 'frame' || asset.type === 'overlay') {
+        const exists = rawDecs.some((d: any) => (d.assetId && d.assetId === asset.assetId) || (d.url && d.url === asset.url));
+        if (!exists && asset.url) {
+          rawDecs.push({
+            assetId: asset.assetId,
+            url: asset.url,
+            type: 'decoration',
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            overlay: true,
+          });
+        }
+      }
+    }
+
+    return rawDecs
+      .map((d) => {
+        if (!d) return null;
+        let url = d.url;
+        if (!url && d.assetId && templateAssets.length > 0) {
+          const matched = templateAssets.find((a: any) => a.assetId === d.assetId);
+          if (matched?.url) url = matched.url;
+        }
+        return url ? { ...d, url } : null;
+      })
+      .filter((d): d is any => {
+        if (!d || !d.url) return false;
+        const isOverlay = d.overlay !== false && d.position !== 'background';
+        return isOverlay === overlayFilter;
+      })
       .map((d, i) => {
-        let left: any = d.x !== undefined ? (d.x <= 1 ? `${d.x * 100}%` : d.x) : 0;
-        let top: any = d.y !== undefined ? (d.y <= 1 ? `${d.y * 100}%` : d.y) : 0;
-        let width: any = d.width !== undefined ? (d.width <= 1 ? `${d.width * 100}%` : d.width) : '100%';
-        let height: any = d.height !== undefined ? (d.height <= 1 ? `${d.height * 100}%` : d.height) : '100%';
+        const isRelX = d.x === undefined || Math.abs(Number(d.x)) <= 4;
+        const isRelY = d.y === undefined || Math.abs(Number(d.y)) <= 4;
+        const isRelW = d.width === undefined || Number(d.width) <= 4;
+        const isRelH = d.height === undefined || Number(d.height) <= 4;
+
+        let left: any = d.x !== undefined ? (isRelX ? `${Number(d.x) * 100}%` : `${(Number(d.x) / (canvas.width || 1200)) * 100}%`) : 0;
+        let top: any = d.y !== undefined ? (isRelY ? `${Number(d.y) * 100}%` : `${(Number(d.y) / (canvas.height || 1800)) * 100}%`) : 0;
+        let width: any = d.width !== undefined ? (isRelW ? `${Number(d.width) * 100}%` : `${(Number(d.width) / (canvas.width || 1200)) * 100}%`) : '100%';
+        let height: any = d.height !== undefined ? (isRelH ? `${Number(d.height) * 100}%` : `${(Number(d.height) / (canvas.height || 1800)) * 100}%`) : '100%';
         let right: any = undefined;
         let bottom: any = undefined;
 
@@ -212,11 +416,16 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
           bottom = 0; left = 0; top = undefined; width = '30%'; height = '30%';
         }
 
+        const isFullFrame =
+          (d.width === undefined || (isRelW && Number(d.width) >= 0.95 && Number(d.width) <= 1.05)) &&
+          (d.height === undefined || (isRelH && Number(d.height) >= 0.95 && Number(d.height) <= 1.05)) &&
+          (d.x === undefined || Math.abs(Number(d.x)) <= 0.05) &&
+          (d.y === undefined || Math.abs(Number(d.y)) <= 0.05);
+
         return (
-          <Image
+          <View
             key={`dec-${overlayFilter ? 'over' : 'under'}-${i}`}
-            source={{ uri: d.url }}
-            resizeMode="contain"
+            pointerEvents="none"
             style={{
               position: 'absolute',
               left,
@@ -227,23 +436,83 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
               height,
               zIndex: overlayFilter ? 25 : 5,
             }}
-          />
+          >
+            <Image
+              source={{ uri: d.url }}
+              resizeMode={isFullFrame ? 'stretch' : 'contain'}
+              style={{ width: '100%', height: '100%' }}
+            />
+          </View>
         );
       });
   };
 
+  const rawPhotoSlots = (layout?.photoSlots && layout.photoSlots.length > 0)
+    ? layout.photoSlots
+    : ((template as any).slots || []);
+
   const canvasContent = (
-    <View style={[styles.innerFrame, { backgroundColor: primaryBg }]}>
+    <View style={[styles.innerFrame, { backgroundColor: fallbackBgColor }]}>
       {/* Secondary background layer if gradient */}
-      {bgType === 'gradient' && bgColors.length > 1 && (
+      {!isImageBg && bgType === 'gradient' && bgColors.length > 1 && (
+        <>
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: '65%',
+              backgroundColor: secondaryBg,
+              opacity: 0.65,
+              zIndex: 1,
+            }}
+          />
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: '38%',
+              backgroundColor: secondaryBg,
+              opacity: 0.9,
+              zIndex: 1,
+            }}
+          />
+        </>
+      )}
+
+      {/* Background Image Layer */}
+      {isImageBg && bgUrl ? (
+        <Image
+          source={{ uri: bgUrl }}
+          style={[StyleSheet.absoluteFill, { zIndex: 2 }]}
+          resizeMode="cover"
+        />
+      ) : null}
+
+      {/* Top Title Band when template specifies titleBand (e.g., RoyalWedding, FestiveMaroon, LegacyGuestbook) */}
+      {hasTitleBand && template.componentId !== 'CorporateGrid' && title ? (
         <View
           pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: secondaryBg, opacity: 0.45 },
-          ]}
-        />
-      )}
+          style={{
+            position: 'absolute',
+            top: '3.2%',
+            left: '6%',
+            right: '6%',
+            alignItems: 'center',
+            zIndex: 9,
+          }}
+        >
+          <Text numberOfLines={1} style={[styles.footerTitle, { color: textColor, fontSize: 12 }]}>
+            {title}
+          </Text>
+          <View style={{ width: '36%', height: 1.5, backgroundColor: accent, marginTop: 2, opacity: 0.85 }} />
+        </View>
+      ) : null}
 
       {/* Under-slot Decorations */}
       {renderDecorations(false)}
@@ -255,13 +524,30 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
       {renderOrnament()}
 
       {/* Photo Slots */}
-      {((layout?.photoSlots && layout.photoSlots.length > 0) ? layout.photoSlots : ((template as any).slots || [])).map((slot: any, index: number) => {
+      {rawPhotoSlots.map((slot: any, index: number) => {
         const photo = photos[index];
+        const cw = canvas.width || 1200;
+        const ch = canvas.height || 1800;
         const isRelative = Number(slot.width) <= 1.0 && Number(slot.height) <= 1.0 && Number(slot.x) <= 1.0 && Number(slot.y) <= 1.0;
-        const leftPercent = isRelative ? `${Number(slot.x) * 100}%` : `${(Number(slot.x) / (canvas.width || 1200)) * 100}%`;
-        const topPercent = isRelative ? `${Number(slot.y) * 100}%` : `${(Number(slot.y) / (canvas.height || 1800)) * 100}%`;
-        const widthPercent = isRelative ? `${Number(slot.width) * 100}%` : `${(Number(slot.width) / (canvas.width || 1200)) * 100}%`;
-        const heightPercent = isRelative ? `${Number(slot.height) * 100}%` : `${(Number(slot.height) / (canvas.height || 1800)) * 100}%`;
+        let rx = isRelative ? Number(slot.x) : Number(slot.x) / cw;
+        let ry = isRelative ? Number(slot.y) : Number(slot.y) / ch;
+        let rw = isRelative ? Number(slot.width) : Number(slot.width) / cw;
+        let rh = isRelative ? Number(slot.height) : Number(slot.height) / ch;
+
+        // If an older cached snapshot produced an un-padded edge-to-edge autoSlot (x=0, y=0, w=100%), inset it slightly so background/border show
+        if ((template as any).source !== 'manual' && rx === 0 && ry === 0 && rw >= 0.98) {
+          const insetX = 0.04;
+          const insetTop = hasTitleBand ? 0.11 : 0.035;
+          rx = insetX;
+          ry = insetTop;
+          rw = Math.max(0.2, rw - insetX * 2);
+          rh = Math.max(0.2, rh - insetTop - 0.02);
+        }
+
+        const leftPercent = `${rx * 100}%`;
+        const topPercent = `${ry * 100}%`;
+        const widthPercent = `${rw * 100}%`;
+        const heightPercent = `${rh * 100}%`;
 
         const photoSource = photo?.uri
           ? { uri: photo.uri }
@@ -275,11 +561,19 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
               styles.slot,
               {
                 borderRadius: slotBorderRadius,
-                borderColor: (design as any).photoTreatment?.border
+                ...(isArchSlot
+                  ? {
+                      borderTopLeftRadius: 999,
+                      borderTopRightRadius: 999,
+                      borderBottomLeftRadius: 6,
+                      borderBottomRightRadius: 6,
+                    }
+                  : {}),
+                borderColor: design.photoTreatment?.border
                   ? (palette.primary || accent)
-                  : accent + '50',
-                borderWidth: (design as any).photoTreatment?.border
-                  ? (design as any).photoTreatment.borderWidth || 3
+                  : accent + '70',
+                borderWidth: design.photoTreatment?.border
+                  ? design.photoTreatment.borderWidth || 3
                   : 1.5,
                 overflow: 'hidden',
               },
@@ -300,10 +594,10 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
               </>
             ) : (
               <View style={styles.emptySlot}>
-                <Text style={[styles.emptySlotNumber, { color: textColor + '80' }]}>
+                <Text style={[styles.emptySlotNumber, { color: textColor + '90' }]}>
                   {index + 1}
                 </Text>
-                <Text style={[styles.emptySlotLabel, { color: textColor + '60' }]}>
+                <Text style={[styles.emptySlotLabel, { color: textColor + '70' }]}>
                   PHOTO
                 </Text>
               </View>
@@ -324,6 +618,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
                   top: topPercent as any,
                   width: widthPercent as any,
                   height: heightPercent as any,
+                  zIndex: 15,
                 },
               ]}
             >
@@ -342,6 +637,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
                 top: topPercent as any,
                 width: widthPercent as any,
                 height: heightPercent as any,
+                zIndex: 15,
               },
             ]}
           >
@@ -354,7 +650,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
       {renderDecorations(true)}
 
       {/* Footer Branding & Text */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { zIndex: 20 }]} pointerEvents="none">
         {customization.logo ? (
           <Image
             source={{ uri: customization.logo }}
@@ -363,7 +659,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
           />
         ) : null}
         <View style={styles.footerTextContainer}>
-          {title ? (
+          {!hasTitleBand && title ? (
             <Text
               numberOfLines={1}
               style={[styles.footerTitle, { color: textColor }]}
@@ -390,7 +686,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
             pointerEvents="none"
             style={[
               styles.stickerWrapper,
-              { left: `${st.x}%` as any, top: `${st.y}%` as any },
+              { left: `${st.x}%` as any, top: `${st.y}%` as any, zIndex: 30 },
             ]}
           >
             <Text style={[styles.stickerText, st.size ? { fontSize: st.size } : null]}>
@@ -405,22 +701,12 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
     <View
       style={[
         styles.outerContainer,
-        { aspectRatio: aspect },
+        { aspectRatio: aspect, backgroundColor: fallbackBgColor },
         containerWidth ? { width: containerWidth } : null,
         style,
       ]}
     >
-      {isImageBg && bgUrl ? (
-        <ImageBackground
-          source={{ uri: bgUrl }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-        >
-          {canvasContent}
-        </ImageBackground>
-      ) : (
-        canvasContent
-      )}
+      {canvasContent}
     </View>
   );
 };

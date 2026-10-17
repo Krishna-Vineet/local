@@ -63,18 +63,17 @@ export const OrderSuccessScreen: React.FC<Props> = ({ navigation }) => {
     if (paused) return;
 
     const interval = setInterval(() => {
-      setSeconds((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          resetGuestSession(navigation);
-          return 0;
-        }
-        return prev - 1;
-      });
+      setSeconds((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [navigation, resetGuestSession, paused]);
+  }, [paused]);
+
+  useEffect(() => {
+    if (seconds === 0 && !paused) {
+      resetGuestSession(navigation);
+    }
+  }, [seconds, paused, navigation, resetGuestSession]);
 
   const handleFinish = () => {
     SoundManager.play('click');
@@ -138,18 +137,20 @@ export const OrderSuccessScreen: React.FC<Props> = ({ navigation }) => {
               </View>
 
               <Text style={styles.eyebrow}>
-                {isSuccess ? 'ALL DONE • MEMORIES READY' : 'PRINT STATUS'}
+                {isSuccess ? 'ALL DONE • MEMORIES READY' : 'PRINTER STATUS'}
               </Text>
               <Text style={styles.title}>
                 {isSuccess
                   ? 'Your memories are printing!'
-                  : 'We couldn’t finish the print.'}
+                  : (outcome?.error && outcome.error.toLowerCase().includes('printer')
+                      ? 'Printer Not Connected'
+                      : 'We couldn’t finish the print.')}
               </Text>
               <Text style={styles.desc}>
                 {isSuccess
                   ? 'Please collect your glossy copies from the output tray below.'
                   : outcome?.error ||
-                    'Please notify the operator or tap below to submit a support ticket.'}
+                    'No printer is connected right now. Your digital photos are safe — please ask the booth attendant to check the printer connection and tap Retry Print.'}
               </Text>
 
               {outcome?.jobId && (
@@ -215,22 +216,18 @@ export const OrderSuccessScreen: React.FC<Props> = ({ navigation }) => {
                   Open the camera on your phone to scan and download your high-resolution photos.
                 </Text>
                 <Text style={styles.qrExpiry}>
-                  🔒 Link is secured and permanent for this event.
+                  🔒 Link is secured and valid for 24 hours.
                 </Text>
               </View>
-            ) : (
-              <>
-              <View style={styles.thankYouCard}>
-                <Text style={styles.heartIcon}>♥</Text>
-                <Text style={styles.thankYouTitle}>
-                  Thank you for making memories with us!
+            ) : session.digitalCopy !== false ? (
+              <View style={styles.downloadCard}>
+                <Text style={styles.kicker}>YOUR DIGITAL PASS</Text>
+                <Text style={styles.downloadTitle}>Digital Download QR</Text>
+                <Text style={[styles.qrInstructions, { marginTop: 10, marginBottom: 14 }]}>
+                  {retrying === 'share'
+                    ? 'Preparing your digital download QR code…'
+                    : 'Your digital copy link is being prepared. Tap below to generate your QR code.'}
                 </Text>
-                <Text style={styles.thankYouSub}>
-                  This screen will automatically reset for the next guest.
-                </Text>
-              </View>
-              {/* Retry digital share (only when the share link could not be prepared) */}
-              {session.digitalCopy && (
                 <TouchableOpacity
                   style={styles.retryBtn}
                   onPress={retryShare}
@@ -240,11 +237,20 @@ export const OrderSuccessScreen: React.FC<Props> = ({ navigation }) => {
                   {retrying === 'share' ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.retryBtnText}>RETRY SHARING</Text>
+                    <Text style={styles.retryBtnText}>GENERATE QR CODE</Text>
                   )}
                 </TouchableOpacity>
-              )}
-              </>
+              </View>
+            ) : (
+              <View style={styles.thankYouCard}>
+                <Text style={styles.heartIcon}>♥</Text>
+                <Text style={styles.thankYouTitle}>
+                  Thank you for making memories with us!
+                </Text>
+                <Text style={styles.thankYouSub}>
+                  This screen will automatically reset for the next guest.
+                </Text>
+              </View>
             )}
           </View>
         </View>

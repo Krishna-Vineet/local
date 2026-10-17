@@ -19,6 +19,9 @@
 
 import express from 'express';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import Razorpay from 'razorpay';
 import { Cashfree, CFEnvironment } from 'cashfree-pg';
 import { decryptSecret } from '../utils/crypto.js';
@@ -33,7 +36,7 @@ import Template from '../models/Template.js';
 import OrgAiTemplate from '../models/OrgAiTemplate.js';
 import Payment from '../models/Payment.js';
 import Photo from '../models/Photo.js';
-import { uploadToS3, s3KeyFromUrl } from '../utils/s3.js';
+import { s3, uploadToS3, s3KeyFromUrl } from '../utils/s3.js';
 import SupportTicket from '../models/SupportTicket.js';
 import Coupon from '../models/Coupon.js';
 
@@ -51,6 +54,58 @@ import { orgLimits, assertDeviceLimit, computePlanStatus } from '../services/pla
 import { computeEventStatus } from '../services/eventService.js';
 
 const router = express.Router();
+
+// Public/booth-accessible asset proxy for template backgrounds, overlays, stickers, and logos
+router.get('/asset-proxy', async (req, res) => {
+  try {
+    const rawKey = String(req.query.key || '').trim();
+    if (!rawKey) return res.status(400).json({ error: 'key query param required' });
+
+    if (rawKey.startsWith('data:')) {
+      return res.redirect(rawKey);
+    }
+
+    let key = rawKey;
+    if (key.startsWith('http://') || key.startsWith('https://')) {
+      key = s3KeyFromUrl(key) || key.replace(/^https?:\/\/[^/]+\//, '');
+    }
+
+    const cleanKey = key.replace(/^(\/?uploads\/|\/)/, '');
+    const localPath = path.join(process.cwd(), 'uploads', cleanKey);
+    if (fs.existsSync(localPath)) {
+      const ext = path.extname(localPath).toLowerCase();
+      const contentType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      return fs.createReadStream(localPath).pipe(res);
+    }
+
+    if (process.env.S3_BUCKET_NAME) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: process.env.S3_BUCKET_NAME,
+          Key: cleanKey,
+        });
+        const s3Response = await s3.send(command);
+        const contentType = s3Response.ContentType || (cleanKey.endsWith('.png') ? 'image/png' : 'image/jpeg');
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=31536000');
+        const chunks = [];
+        for await (const chunk of s3Response.Body) {
+          chunks.push(chunk);
+        }
+        return res.send(Buffer.concat(chunks));
+      } catch (s3Err) {
+        console.warn('⚠️ Booth S3 asset proxy fetch failed:', s3Err.message);
+      }
+    }
+
+    res.status(404).json({ error: 'Asset not found' });
+  } catch (err) {
+    console.error('Booth asset proxy error:', err);
+    res.status(500).json({ error: 'Failed to proxy asset' });
+  }
+});
 
 // ─── helpers ───────────────────────────────────────────────────
 
@@ -879,7 +934,9 @@ router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res
   await device.save();
 
   const settings = await getGallerySettings();
-  const consent = req.body.guestConsent === true || (req.body.consent && req.body.consent.publish === true);
+  const consent = !settings.requireGuestConsent
+    ? true
+    : (req.body.guestConsent === true || (req.body.consent && req.body.consent.publish === true));
   let eventId = req.body.eventId || device.assignedEventId || null;
   // If not provided on device or payload, auto-link to the organization's current active event
   if (!eventId) {

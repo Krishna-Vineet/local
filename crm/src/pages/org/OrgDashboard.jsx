@@ -93,7 +93,7 @@ export default function OrgDashboard() {
 
             {isAdmin ? (
               <div className="mt-24">
-                <div className="t11 fw7" style={{ letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 10 }}>Plans on the HappyPix website</div>
+                <div className="t11 fw7" style={{ letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: 10 }}>Plans on the HappyPix website (excl. 18% GST)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                   {PLAN_ORDER.filter((p) => p !== 'trial').map((p) => {
                     const pd = PLANS[p]
@@ -101,7 +101,12 @@ export default function OrgDashboard() {
                     return (
                       <div key={p} className="card" style={{ padding: '10px 12px', borderColor: current ? 'var(--hp-pink)' : undefined, background: current ? 'var(--hp-pink-softer)' : undefined, minWidth: 0 }}>
                         <div className="t12 fw7" style={{ textTransform: 'capitalize' }}>{pd.name}</div>
-                        <div className="t11 num" style={{ color: 'var(--muted)' }}>{pd.price != null ? inr(pd.price) : 'Custom'}</div>
+                        <div className="t11 num" style={{ color: 'var(--muted)' }}>
+                          {pd.annualPerMonth != null ? `from ${inr(pd.annualPerMonth)}/mo` : pd.price != null ? inr(pd.price) : 'Custom'}
+                        </div>
+                        {pd.priceMonthly ? (
+                          <div className="t10 faint">{inr(pd.priceMonthly)}/mo (1M) · {inr(pd.priceAnnual)}/yr</div>
+                        ) : null}
                         <div className="t10 t11 faint">{pd.devices} dev · {pd.events} evt</div>
                       </div>
                     )

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+>
+  <url>
+    <loc>https://happypix.in/</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://happypix.in/images/hero-pro-1.jpg</image:loc>
+      <image:title>HappyPix Photo Booth Platform — Every Pixel is a Happy Moment</image:title>
+      <image:caption>All-in-one photo booth software, hardware, instant DNP printing, QR digital copies and operator CRM.</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://happypix.in/pricing</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>
+  <url>
+    <loc>https://happypix.in/booth</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.90</priority>
+    <image:image>
+      <image:loc>https://happypix.in/images/hero-booth.jpg</image:loc>
+      <image:title>HappyPix Interactive Photo Booth Experience</image:title>
+      <image:caption>Touchscreen countdown, custom event frames, ~12-second prints and 24-hour private QR digital downloads.</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://happypix.in/software</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.90</priority>
+  </url>
+  <url>
+    <loc>https://happypix.in/hardware</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://happypix.in/images/retro-booth.jpg</image:loc>
+      <image:title>HappyPix Photo Booth Hardware, DNP Printers and Canon Cameras</image:title>
+      <image:caption>Compatible with DNP DS620A, DS820A, DS-RX1HS, QW410 dye-sub printers and Canon EOS mirrorless/DSLR cameras.</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://happypix.in/business</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://happypix.in/contact</loc>
+    <lastmod>2026-10-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.80</priority>
+  </url>
+</urlset>

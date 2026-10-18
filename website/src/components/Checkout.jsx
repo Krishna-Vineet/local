@@ -12,7 +12,14 @@ import { Icon } from './ui.jsx'
 
 const emptyForm = { organizationName: '', ownerName: '', phone: '', email: '', password: '' }
 
-export default function Checkout({ plans, addons = [], selectedKey, onSelect, billing = 'monthly', selectedAddons = [], onToggleAddon }) {
+const BILLING_LABELS = {
+  annual: '12 Months (Annual)',
+  semiannual: '6 Months',
+  quarterly: '3 Months',
+  monthly: '1 Month (Monthly)',
+}
+
+export default function Checkout({ plans, addons = [], selectedKey, onSelect, billing = 'annual', onBillingChange, selectedAddons = [], onToggleAddon }) {
   const [form, setForm] = useState(emptyForm)
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState('')
@@ -28,11 +35,19 @@ export default function Checkout({ plans, addons = [], selectedKey, onSelect, bi
 
   if (!plan) return null
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
-  const contactSales = plan.price == null
-  // Period pricing (INR — the charged currency). Add-ons ride the
-  // same billing period; the server recomputes all of this.
-  const periodInr = plan.billing?.inr ? (billing === 'annual' ? plan.billing.inr.annual : plan.billing.inr.monthly) : plan.effectivePrice
-  const addonInr = (addon) => (addon.billing?.inr ? (billing === 'annual' ? addon.billing.inr.annual : addon.billing.inr.monthly) : addon.price) || 0
+  const contactSales = plan.price == null && plan.billing?.inr?.monthly == null
+  // Period pricing (INR — the charged currency, excluding GST 18%).
+  const inrMap = plan.billing?.inr || {}
+  const resolvePlanPeriodInr = (p, period) => {
+    const m = p.billing?.inr || {}
+    if (p.key === 'trial') return 0
+    if (period === 'annual' && m.annual != null) return m.annual
+    if (period === 'semiannual' && m.semiannual != null) return m.semiannual
+    if (period === 'quarterly' && m.quarterly != null) return m.quarterly
+    return m.monthly ?? p.effectivePrice
+  }
+  const periodInr = resolvePlanPeriodInr(plan, billing)
+  const addonInr = (addon) => (addon.billing?.inr?.monthly ?? addon.price ?? 249) || 0
   const chosenAddons = addons.filter((addon) => selectedAddons.includes(addon.key))
   const totalInr = (periodInr || 0) + chosenAddons.reduce((sum, addon) => sum + addonInr(addon), 0)
   const isFree = totalInr === 0
@@ -152,15 +167,31 @@ export default function Checkout({ plans, addons = [], selectedKey, onSelect, bi
               </p>
 
               <div style={{ display: 'grid', gap: 16 }}>
-                <div className="field">
-                  <label htmlFor="co-plan">Choose your plan</label>
-                  <select id="co-plan" value={plan.key} onChange={(e) => onSelect(e.target.value)}>
-                    {plans.map((p) => (
-                      <option key={p.key} value={p.key}>
-                        {p.name} — {p.price == null ? 'Contact sales' : p.effectivePrice === 0 ? 'Free' : `${inr(p.effectivePrice)} / ${p.durationLabel}`}
-                      </option>
-                    ))}
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: onBillingChange ? '1fr 1fr' : '1fr', gap: 16 }} className="form-2col">
+                  <div className="field">
+                    <label htmlFor="co-plan">Choose your plan</label>
+                    <select id="co-plan" value={plan.key} onChange={(e) => onSelect(e.target.value)}>
+                      {plans.map((p) => {
+                        const pInr = resolvePlanPeriodInr(p, billing)
+                        return (
+                          <option key={p.key} value={p.key}>
+                            {p.name} — {p.price == null && p.billing?.inr?.monthly == null ? 'Contact sales' : p.key === 'trial' || pInr === 0 ? 'Free (14 days)' : `${inr(pInr)} (${BILLING_LABELS[billing] || billing} · excl. 18% GST)`}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+                  {onBillingChange ? (
+                    <div className="field">
+                      <label htmlFor="co-billing">Subscription duration</label>
+                      <select id="co-billing" value={billing} onChange={(e) => onBillingChange(e.target.value)}>
+                        <option value="annual">12 Months (Annual · Best value)</option>
+                        <option value="semiannual">6 Months</option>
+                        <option value="quarterly">3 Months</option>
+                        <option value="monthly">1 Month (Monthly)</option>
+                      </select>
+                    </div>
+                  ) : null}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }} className="form-2col">
                   <div className="field">
@@ -197,7 +228,7 @@ export default function Checkout({ plans, addons = [], selectedKey, onSelect, bi
 
               {addons.length ? (
                 <div className="field" style={{ marginTop: 18 }}>
-                  <label>Make it yours — add-ons ({billing === 'annual' ? 'annual' : 'monthly'})</label>
+                  <label>Make it yours — modular add-ons (₹249 each · excluding GST 18%)</label>
                   <div style={{ display: 'grid', gap: 8 }}>
                     {addons.map((addon) => (
                       <label key={addon.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', border: '1.5px solid var(--line)', borderRadius: 12, cursor: 'pointer', fontWeight: 500 }}>
@@ -227,7 +258,7 @@ export default function Checkout({ plans, addons = [], selectedKey, onSelect, bi
                             setError('');
                           }}
                         >
-                          Switch to Basic Plan (₹799/mo) →
+                          Switch to Basic Plan (from ₹499/mo) →
                         </button>
                       </div>
                     ) : null}
@@ -269,11 +300,19 @@ export default function Checkout({ plans, addons = [], selectedKey, onSelect, bi
         <p style={{ color: 'rgba(255,247,234,.7)', fontSize: '.95rem' }}>{plan.description}</p>
 
         <div style={{ margin: '24px 0', padding: '18px 0', borderTop: '1px solid var(--line-dark)', borderBottom: '1px solid var(--line-dark)', display: 'grid', gap: 10, fontSize: '.97rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'rgba(255,247,234,.65)' }}>Billing</span><b>{billing === 'annual' ? 'Annual · 12 months' : 'Monthly · 1 month'}</b></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'rgba(255,247,234,.65)' }}>Billing</span><b>{BILLING_LABELS[billing] || billing}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'rgba(255,247,234,.65)' }}>Devices included</span><b>{plan.devices}</b></div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'rgba(255,247,234,.65)' }}>Parallel events</span><b>{plan.events}</b></div>
           {plan.billing?.aiCredits ? <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'rgba(255,247,234,.65)' }}>AI credits</span><b>{plan.billing.aiCredits} / period</b></div> : null}
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'rgba(255,247,234,.65)' }}>Plan price</span><b>{plan.price == null ? 'Custom' : inr(periodInr)}</b></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'rgba(255,247,234,.65)' }}>Plan price (excl. 18% GST)</span><b>{contactSales ? 'Custom' : inr(periodInr)}</b></div>
+          {!contactSales && plan.key !== 'trial' && inrMap ? (
+            <div style={{ fontSize: '.82rem', color: 'rgba(255,247,234,.75)' }}>
+              {billing === 'annual' && inrMap.annual != null ? `Annual: ${inr(inrMap.annualPerMonth ?? Math.round(inrMap.annual / 12))}/Month - ${plan.devices} Device = ${inr(inrMap.annual)}/year` : null}
+              {billing === 'semiannual' && inrMap.semiannual != null ? `${inr(inrMap.semiannualPerMonth ?? Math.round(inrMap.semiannual / 6))}/Month - ${plan.devices} Device = ${inr(inrMap.semiannual)}/6 Months` : null}
+              {billing === 'quarterly' && inrMap.quarterly != null ? `${inr(inrMap.quarterlyPerMonth ?? Math.round(inrMap.quarterly / 3))}/Month - ${plan.devices} Device = ${inr(inrMap.quarterly)}/3 Months` : null}
+              {billing === 'monthly' && inrMap.monthly != null ? `Monthly: ${inr(inrMap.monthly)}/Month - ${plan.devices} Device = ${inr(inrMap.monthlyAnnualized ?? inrMap.monthly * 12)}/year` : null}
+            </div>
+          ) : null}
           {chosenAddons.map((addon) => (
             <div key={addon.key} style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'rgba(255,247,234,.65)' }}>+ {addon.name}</span><b>{inr(addonInr(addon))}</b>
@@ -284,7 +323,7 @@ export default function Checkout({ plans, addons = [], selectedKey, onSelect, bi
               <span>{plan.discount.discountLabel || 'Discount'} on plan</span><b>applied at payment</b>
             </div>
           ) : null}
-          <p style={{ fontSize: '.8rem', color: 'rgba(255,247,234,.55)', margin: 0 }}>Charged in ₹ via Razorpay. A$ prices on the cards are indicative.</p>
+          <p style={{ fontSize: '.8rem', color: 'rgba(255,247,234,.55)', margin: 0 }}>Prices shown are excluding GST 18%. Charged in ₹ via Razorpay.</p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>

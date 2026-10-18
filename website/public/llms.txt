@@ -1,0 +1,43 @@
+# HappyPix (https://happypix.in)
+
+> Every Pixel is a Happy Moment. HappyPix is the all-in-one photo booth software, hardware, and operator CRM platform for event planners, wedding photographers, venue owners, and photo booth rental businesses across India and Australia.
+
+## Core Capabilities
+- **Booth Kiosk App (Android, iPad, Windows):** Live camera preview, customizable start screen branding, multi-slot print layouts (strips, 4x6, grids), photo filters, stickers, digital signatures, AI background removal, instant dye-sub printing (~12 seconds), and Razorpay/UPI pay-per-print checkout.
+- **24-Hour Private QR Digital Copies:** Every booth session generates a private QR code on the completion screen so guests can download their composite strip and individual frames immediately without installing an app. Links expire automatically after 24 hours.
+- **Operator CRM & Cloud Dashboard:** Manage events, connected booth devices, custom templates, AI cutout studio, guest galleries with consent tracking, coupon codes, support tickets, and live event revenue in one place.
+- **Hardware Compatibility:** Native support for DNP dye-sublimation printers (DS620A, DS820A, DS-RX1HS, QW410, DS40, DS80) and Canon EOS cameras over USB tethering and Canon CCAPI (EOS R50, R100, R10, R8, R6 Mark II, 200D II, 90D, M50 Mark II).
+
+## Subscription Plans & Pricing (INR, excluding GST 18% · 2 Devices Included)
+
+### 12 Months (Annual)
+- **Basic:** ₹499/Month - 2 Devices = ₹5,988/year (excluding GST 18%)
+- **Pro:** ₹699/Month - 2 Devices = ₹8,388/year (excluding GST 18%)
+- **Premium:** ₹799/Month - 2 Devices = ₹9,588/year (excluding GST 18%)
+
+### 6 Months
+- **Basic:** ₹799/Month - 2 Devices = ₹4,794/6 Months (excluding GST 18%)
+- **Pro:** ₹999/Month - 2 Devices = ₹5,994/6 Months (excluding GST 18%)
+- **Premium:** ₹1,099/Month - 2 Devices = ₹6,594/6 Months (excluding GST 18%)
+
+### 3 Months
+- **Basic:** ₹949/Month - 2 Devices = ₹2,847/3 Months (excluding GST 18%)
+- **Pro:** ₹1,149/Month - 2 Devices = ₹3,447/3 Months (excluding GST 18%)
+- **Premium:** ₹1,299/Month - 2 Devices = ₹3,897/3 Months (excluding GST 18%)
+
+### 1 Month (Monthly)
+- **Basic:** ₹1,099/Month - 2 Devices = ₹13,188/year (excluding GST 18%)
+- **Pro:** ₹1,299/Month - 2 Devices = ₹15,588/year (excluding GST 18%)
+- **Premium:** ₹1,499/Month - 2 Devices = ₹17,988/year (excluding GST 18%)
+
+### Modular Add-ons
+- **Any Add-on = ₹249** (excluding GST 18%): Professional Headshot Mode, Video Booth Mode, Custom Start Screen Branding, Survey & Lead Capture, Custom Music & Sound Effects, Fun Event Props & Frames Pack, Extra Booth Device Slot, 1,000 AI Studio Credits Pack.
+
+## Key Pages
+- Home: https://happypix.in/
+- Pricing & Plan Checkout: https://happypix.in/pricing
+- The Booth Experience: https://happypix.in/booth
+- Software & Operator CRM: https://happypix.in/software
+- Hardware & Printer/Camera Compatibility: https://happypix.in/hardware
+- Photo Booth Business Playbook & Earnings Calculator: https://happypix.in/business
+- Contact & Book a Demo: https://happypix.in/contact

@@ -21,21 +21,31 @@ test('the plan catalogue is Basic / Pro / Premium / Custom with 2-device plans',
     assert.equal(planSync(key).devices, 2, `${key} includes 2 devices`);
   }
   assert.equal(planSync('premium').aiCredits, 500, 'Premium carries 500 AI credits');
-  // Dual-currency monthly/annual pricing
-  assert.equal(planSync('basic').priceMonthly, 799);
+  // 1M / 3M / 6M / 12M INR pricing (excluding GST 18%)
+  assert.equal(planSync('basic').priceMonthly, 1099);
+  assert.equal(planSync('basic').priceQuarterly, 2847);
+  assert.equal(planSync('basic').priceSemiannual, 4794);
   assert.equal(planSync('basic').priceAnnual, 5988);
-  assert.equal(planSync('pro').priceMonthly, 999);
-  assert.equal(planSync('premium').priceAnnual, 11988);
+  assert.equal(planSync('pro').priceMonthly, 1299);
+  assert.equal(planSync('pro').priceQuarterly, 3447);
+  assert.equal(planSync('pro').priceSemiannual, 5994);
+  assert.equal(planSync('pro').priceAnnual, 8388);
+  assert.equal(planSync('premium').priceMonthly, 1499);
+  assert.equal(planSync('premium').priceQuarterly, 3897);
+  assert.equal(planSync('premium').priceSemiannual, 6594);
+  assert.equal(planSync('premium').priceAnnual, 9588);
 });
 
-test('add-ons are ₹299/mo extras in the same catalogue', () => {
+test('add-ons are ₹249 extras in the same catalogue', () => {
   assert.ok(ADDON_CATALOG.length >= 5);
   for (const addon of ADDON_CATALOG) {
     assert.equal(addon.kind, 'addon');
     assert.ok(addon.key.startsWith('addon-'));
+    assert.equal(addon.price, 249);
+    assert.equal(addon.priceMonthly, 249);
   }
   const headshot = ADDON_CATALOG.find((a) => a.key === 'addon-headshot');
-  assert.equal(headshot.priceMonthly, 299);
+  assert.equal(headshot.priceMonthly, 249);
 });
 
 test('unknown plans fall back to trial instead of throwing', () => {
@@ -173,9 +183,14 @@ test('trial end date is 14 days out', () => {
   assert.equal(end.toISOString(), '2026-01-15T00:00:00.000Z');
 });
 
-test('billingPrices exposes monthly + annual in ₹', () => {
+test('billingPrices exposes 1M, 3M, 6M, and 12M in ₹', () => {
   const basic = billingPrices(planSync('basic'));
-  assert.equal(basic.inr.monthly, 799);
+  assert.equal(basic.inr.monthly, 1099);
+  assert.equal(basic.inr.monthlyAnnualized, 13188);
+  assert.equal(basic.inr.quarterly, 2847);
+  assert.equal(basic.inr.quarterlyPerMonth, 949);
+  assert.equal(basic.inr.semiannual, 4794);
+  assert.equal(basic.inr.semiannualPerMonth, 799);
   assert.equal(basic.inr.annual, 5988);
   assert.equal(basic.inr.annualPerMonth, 499);
   assert.equal(billingPrices(planSync('premium')).aiCredits, 500);

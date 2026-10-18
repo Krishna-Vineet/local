@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { fetchDownload, downloadFileUrl } from '../lib/api.js'
 import { buildDemoStrip, demoDownload } from '../lib/demo.js'
 import { Icon, Logo } from '../components/ui.jsx'
+import Seo from '../components/Seo.jsx'
 
 // ─── Guest page: /download/:id ───────────────────────────────
 // Reached by scanning the booth's QR on the success screen. Valid for
@@ -29,17 +30,8 @@ function useCountdown(expiresAt) {
 
 export default function Download() {
   const { id } = useParams()
-  const isDemo = id === 'demo'
+  const isDemo = !id || id === 'demo'
   const [state, setState] = useState({ kind: 'loading' })
-
-  useEffect(() => {
-    document.title = 'Your HappyPix digital copy'
-    const robots = document.createElement('meta')
-    robots.name = 'robots'
-    robots.content = 'noindex, nofollow'
-    document.head.appendChild(robots)
-    return () => { document.head.removeChild(robots); document.title = 'HappyPix — Every Pixel is a Happy Moment' }
-  }, [])
 
   useEffect(() => {
     let live = true

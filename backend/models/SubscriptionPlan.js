@@ -38,8 +38,10 @@ const subscriptionPlanSchema = new mongoose.Schema(
     // the real catalogue. Annual = total for 12 months billed upfront
     // (the per-month figure is annual / 12).
     kind: { type: String, enum: ['plan', 'addon'], default: 'plan', index: true },
-    priceMonthly: { type: Number, default: null },    // ₹ / month, billed monthly
-    priceAnnual: { type: Number, default: null },     // ₹ total / year, billed annually
+    priceMonthly: { type: Number, default: null },    // ₹ / month, billed monthly (1 Month)
+    priceQuarterly: { type: Number, default: null },  // ₹ total / 3 months, billed quarterly
+    priceSemiannual: { type: Number, default: null }, // ₹ total / 6 months, billed half-yearly
+    priceAnnual: { type: Number, default: null },     // ₹ total / year, billed annually (12 Months)
     billingNote: { type: String, default: '' },       // e.g. 'per device', 'one-time'
     // AI template credits granted per billing period (Premium: 500).
     aiCredits: { type: Number, default: 0 },

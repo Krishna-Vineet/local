@@ -27,7 +27,7 @@ export default function Business() {
         sub="Weekend rentals, unattended pay-per-print placements, products people keep for years. Here's the honest maths and the playbook behind 120+ HappyPix operators."
       >
         <div className="hero-actions">
-          <Link className="btn btn-pink btn-arrow" to="/buy">Start with a plan</Link>
+          <Link className="btn btn-pink btn-arrow" to="/pricing#checkout">Start with a plan</Link>
           <a className="btn btn-outline-light" href="#calculator">Run the numbers</a>
         </div>
       </PageHero>
@@ -70,7 +70,7 @@ export default function Business() {
                 <tr><td>Dye-sub printer (DNP DS-RX1HS class)</td><td style={{ textAlign: 'right' }}><b>₹55,000 – 75,000</b></td></tr>
                 <tr><td>Camera (Canon EOS R50 class) + lens</td><td style={{ textAlign: 'right' }}><b>₹60,000 – 85,000</b></td></tr>
                 <tr><td>Backdrop, props, first paper & ink</td><td style={{ textAlign: 'right' }}><b>₹15,000 – 30,000</b></td></tr>
-                <tr><td>HappyPix plan</td><td style={{ textAlign: 'right' }}><b>from ₹999/month</b></td></tr>
+                <tr><td>HappyPix plan (2 devices included)</td><td style={{ textAlign: 'right' }}><b>from ₹499/month (excl. 18% GST)</b></td></tr>
                 <tr><td><b>Typical all-in start</b></td><td style={{ textAlign: 'right' }}><b className="c-pink">₹1.2 – 2.5 lakh</b></td></tr>
               </tbody></table></div>
               <div className="sticky-note" style={{ marginTop: 16 }}>Already own a camera or printer? HappyPix works with the gear on our <Link to="/hardware">compatibility list</Link> — many operators start with what’s in their cupboard.</div>

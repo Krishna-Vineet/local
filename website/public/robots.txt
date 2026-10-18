@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /download/
+Disallow: /api/
+
+# Sitemaps
+Sitemap: https://happypix.in/sitemap.xml

@@ -41,7 +41,7 @@ const organizationSchema = new mongoose.Schema(
     },
     billingCycle: {
       type: String,
-      enum: ['monthly', 'annual'],
+      enum: ['monthly', 'quarterly', 'semiannual', 'annual'],
       default: 'monthly',
     },
     planStartedAt:  { type: Date, default: null },

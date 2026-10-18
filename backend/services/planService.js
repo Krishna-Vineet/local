@@ -12,16 +12,27 @@ import { conflict, sendError } from '../utils/httpError.js';
 
 // The plan catalogue (Basic / Pro / Premium / Custom + Trial) and the
 // add-on catalogue. `devices`/`events` are the plan limits used for
-// enforcement + display. Pricing is dual-currency, monthly or annual:
+// enforcement + display. Pricing covers 4 billing durations (excluding GST 18%):
 //
-//   Basic    ₹799/mo or ₹5,988/yr (₹499/mo)  ·  A$15/mo or A$144/yr (A$12/mo)
-//   Pro      ₹999/mo or ₹9,588/yr (₹799/mo)  ·  A$20/mo or A$180/yr (A$15/mo)
-//   Premium  ₹1,299/mo or ₹11,988/yr (₹999/mo) · A$25/mo or A$240/yr (A$20/mo)
-//            + AI templates with 500 credits
-//   Add-ons  A$5/mo each (₹299) — props pack is one-time.
+//   12 Months (Annual):
+//     Basic:   ₹499/mo  - 2 Devices = ₹5,988/year  (excluding GST 18%)
+//     Pro:     ₹699/mo  - 2 Devices = ₹8,388/year  (excluding GST 18%)
+//     Premium: ₹799/mo  - 2 Devices = ₹9,588/year  (excluding GST 18%)
+//   6 Months:
+//     Basic:   ₹799/mo  - 2 Devices = ₹4,794/6 Months (excluding GST 18%)
+//     Pro:     ₹999/mo  - 2 Devices = ₹5,994/6 Months (excluding GST 18%)
+//     Premium: ₹1,099/mo - 2 Devices = ₹6,594/6 Months (excluding GST 18%)
+//   3 Months:
+//     Basic:   ₹949/mo  - 2 Devices = ₹2,847/3 Months (excluding GST 18%)
+//     Pro:     ₹1,149/mo - 2 Devices = ₹3,447/3 Months (excluding GST 18%)
+//     Premium: ₹1,299/mo - 2 Devices = ₹3,897/3 Months (excluding GST 18%)
+//   1 Month (Monthly):
+//     Basic:   ₹1,099/mo - 2 Devices = ₹13,188/year (excluding GST 18%)
+//     Pro:     ₹1,299/mo - 2 Devices = ₹15,588/year (excluding GST 18%)
+//     Premium: ₹1,499/mo - 2 Devices = ₹17,988/year (excluding GST 18%)
+//   Any Add-on = ₹249
 //
-// `price` mirrors the INR monthly price for legacy readers; website and
-// checkout use priceMonthly/priceAnnual (+ AUD twins).
+// `price` mirrors the INR 1-month price (`priceMonthly`) for legacy readers.
 export const DEFAULT_PLAN_CATALOG = [
   {
     key: 'trial',
@@ -35,52 +46,63 @@ export const DEFAULT_PLAN_CATALOG = [
     active: true,
     kind: 'plan',
     priceMonthly: 0,
+    priceQuarterly: 0,
+    priceSemiannual: 0,
     priceAnnual: 0,
     aiCredits: 10,
   },
   {
     key: 'basic',
     name: 'Basic',
-    description: 'For solo event planners & freelancers: 2 booths, 2 parallel events, unlimited sessions, instant printing, QR downloads and operator dashboard.',
-    price: 799,
+    description: 'For solo event planners & freelancers: 2 devices included, 2 parallel events, unlimited sessions, instant printing, QR downloads and operator dashboard.',
+    price: 1099,
     durationMonths: 1,
     durationLabel: 'per month',
     devices: 2,
     events: 2,
     active: true,
     kind: 'plan',
-    priceMonthly: 799,
+    priceMonthly: 1099,
+    priceQuarterly: 2847,
+    priceSemiannual: 4794,
     priceAnnual: 5988,
+    billingNote: 'excluding GST 18%',
     aiCredits: 25,
   },
   {
     key: 'pro',
     name: 'Pro',
-    description: 'For booth operators & wedding planners: 2 booths included, 4 parallel events, custom branding, AI templates (250 credits), and 30-day cloud gallery.',
-    price: 999,
+    description: 'For booth operators & wedding planners: 2 devices included, 4 parallel events, custom branding, AI templates (250 credits), and 30-day cloud gallery.',
+    price: 1299,
     durationMonths: 1,
     durationLabel: 'per month',
     devices: 2,
     events: 4,
     active: true,
     kind: 'plan',
-    priceMonthly: 999,
-    priceAnnual: 9588,
+    priceMonthly: 1299,
+    priceQuarterly: 3447,
+    priceSemiannual: 5994,
+    priceAnnual: 8388,
+    billingNote: 'excluding GST 18%',
     aiCredits: 250,
   },
   {
     key: 'premium',
     name: 'Premium',
-    description: 'For rental businesses & fleets: 2 booths included, 8 parallel events, analytics, AI templates with 500 credits, own payment gateways, and priority support.',
-    price: 1299,
+    description: 'For rental businesses & fleets: 2 devices included, 8 parallel events, analytics, AI templates with 500 credits, own payment gateways, and priority support.',
+    price: 1499,
     durationMonths: 1,
     durationLabel: 'per month',
     devices: 2,
     events: 8,
     active: true,
     kind: 'plan',
-    priceMonthly: 1299,
-    priceAnnual: 11988,
+    priceMonthly: 1499,
+    priceQuarterly: 3897,
+    priceSemiannual: 6594,
+    priceAnnual: 9588,
+    billingNote: 'excluding GST 18%',
     aiCredits: 500,
   },
   {
@@ -95,28 +117,30 @@ export const DEFAULT_PLAN_CATALOG = [
     active: true,
     kind: 'plan',
     priceMonthly: null,
+    priceQuarterly: null,
+    priceSemiannual: null,
     priceAnnual: null,
     aiCredits: 2500,
   },
 ];
 
-// Add-ons: A$5/mo each (₹299), props pack one-time. Sold alongside any
-// plan; managed in the same CRM catalogue (kind: 'addon').
+// Add-ons: Every add-on is ₹249. Sold alongside any plan; managed in
+// the same CRM catalogue (kind: 'addon').
 export const ADDON_CATALOG = [
-  { key: 'addon-headshot', name: 'Professional Headshot Mode', description: 'Studio-style AI headshots for corporate events.', priceMonthly: 299, priceAnnual: 2990, billingNote: 'per user / month' },
-  { key: 'addon-video', name: 'Video Booth Mode', description: 'Video, GIF & boomerang capture with slow-motion.', priceMonthly: 299, priceAnnual: 2990, billingNote: 'per user / month' },
-  { key: 'addon-branding', name: 'Custom Start Screen Branding', description: 'Your own start screen, colours and sponsor logos.', priceMonthly: 299, priceAnnual: 2990, billingNote: 'per user / month' },
-  { key: 'addon-survey', name: 'Survey & Lead Capture', description: 'Guest surveys and marketing opt-ins built into the flow.', priceMonthly: 299, priceAnnual: 2990, billingNote: 'per user / month' },
-  { key: 'addon-music', name: 'Custom Music & Sound Effects', description: 'Event soundtracks and branded audio cues.', priceMonthly: 299, priceAnnual: 2990, billingNote: 'per user / month' },
-  { key: 'addon-props', name: 'Fun Event Props & Frames Pack', description: '30 props and 2 premium frames, unlocked forever.', priceMonthly: 2999, priceAnnual: 2999, billingNote: 'one-time' },
-  { key: 'addon-extra-device', name: 'Extra Booth Device Slot', description: 'Add 1 additional connected booth device to your active plan.', priceMonthly: 499, priceAnnual: 4990, billingNote: 'per booth / month' },
-  { key: 'addon-ai-1000', name: '1,000 AI Studio Credits Pack', description: 'Bulk credit pack for AI background removal & custom frame creation.', priceMonthly: 999, priceAnnual: 999, billingNote: 'one-time pack', aiCredits: 1000 },
+  { key: 'addon-headshot', name: 'Professional Headshot Mode', description: 'Studio-style AI headshots for corporate events.', priceMonthly: 249, priceQuarterly: 249, priceSemiannual: 249, priceAnnual: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-video', name: 'Video Booth Mode', description: 'Video, GIF & boomerang capture with slow-motion.', priceMonthly: 249, priceQuarterly: 249, priceSemiannual: 249, priceAnnual: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-branding', name: 'Custom Start Screen Branding', description: 'Your own start screen, colours and sponsor logos.', priceMonthly: 249, priceQuarterly: 249, priceSemiannual: 249, priceAnnual: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-survey', name: 'Survey & Lead Capture', description: 'Guest surveys and marketing opt-ins built into the flow.', priceMonthly: 249, priceQuarterly: 249, priceSemiannual: 249, priceAnnual: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-music', name: 'Custom Music & Sound Effects', description: 'Event soundtracks and branded audio cues.', priceMonthly: 249, priceQuarterly: 249, priceSemiannual: 249, priceAnnual: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-props', name: 'Fun Event Props & Frames Pack', description: '30 props and 2 premium frames, unlocked forever.', priceMonthly: 249, priceQuarterly: 249, priceSemiannual: 249, priceAnnual: 249, billingNote: 'one-time · excluding GST 18%' },
+  { key: 'addon-extra-device', name: 'Extra Booth Device Slot', description: 'Add 1 additional connected booth device to your active plan.', priceMonthly: 249, priceQuarterly: 249, priceSemiannual: 249, priceAnnual: 249, billingNote: 'per booth · excluding GST 18%' },
+  { key: 'addon-ai-1000', name: '1,000 AI Studio Credits Pack', description: 'Bulk credit pack for AI background removal & custom frame creation.', priceMonthly: 249, priceQuarterly: 249, priceSemiannual: 249, priceAnnual: 249, billingNote: 'one-time pack · excluding GST 18%', aiCredits: 1000 },
 ].map((addon) => ({
   ...addon,
   description: addon.description,
   price: addon.priceMonthly,
   durationMonths: 1,
-  durationLabel: 'per month',
+  durationLabel: 'per add-on',
   devices: 0,
   events: 0,
   active: true,
@@ -295,12 +319,15 @@ export async function listPlans({ fresh = false } = {}) {
       byKey.delete(key);
       continue;
     }
+    const base = byKey.get(key) || {};
     byKey.set(key, {
-      ...(byKey.get(key) || {}),
+      ...base,
       ...row,
       key,
-      devices: toLimit(row.devices, byKey.get(key)?.devices),
-      events: toLimit(row.events, byKey.get(key)?.events),
+      priceQuarterly: row.priceQuarterly ?? base.priceQuarterly ?? null,
+      priceSemiannual: row.priceSemiannual ?? base.priceSemiannual ?? null,
+      devices: (row.kind === 'addon' || base.kind === 'addon') ? Math.max(0, Number(row.devices) || 0) : toLimit(row.devices, base.devices),
+      events: (row.kind === 'addon' || base.kind === 'addon') ? Math.max(0, Number(row.events) || 0) : toLimit(row.events, base.events),
     });
   }
   const plans = [...byKey.values()];
@@ -322,20 +349,39 @@ export async function resolvePlan(key) {
 }
 
 /**
- * Billing-period prices (₹ only). Monthly = pay per month; annual =
- * one upfront payment for 12 months (perMonth = annual / 12).
+ * Billing-period prices (₹, excluding GST 18%):
+ *   monthly    = 1 Month total (and annualized = monthly * 12)
+ *   quarterly  = 3 Months total (quarterlyPerMonth = quarterly / 3)
+ *   semiannual = 6 Months total (semiannualPerMonth = semiannual / 6)
+ *   annual     = 12 Months total (annualPerMonth = annual / 12)
  * Discounts apply on top of the period price via planPricing.
  */
 export function billingPrices(plan = {}) {
   const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+  const isAddon = plan.kind === 'addon';
   const monthly = num(plan.priceMonthly ?? plan.price);
-  const annual = num(plan.priceAnnual ?? (monthly != null ? monthly * 12 : null));
+  const quarterly = isAddon
+    ? num(plan.priceQuarterly ?? monthly)
+    : num(plan.priceQuarterly ?? (monthly != null ? monthly * 3 : null));
+  const semiannual = isAddon
+    ? num(plan.priceSemiannual ?? monthly)
+    : num(plan.priceSemiannual ?? (monthly != null ? monthly * 6 : null));
+  const annual = isAddon
+    ? num(plan.priceAnnual ?? monthly)
+    : num(plan.priceAnnual ?? (monthly != null ? monthly * 12 : null));
   return {
     kind: plan.kind || 'plan',
     aiCredits: Number(plan.aiCredits) || 0,
     billingNote: plan.billingNote || '',
+    gstRate: 18,
+    gstNote: 'excluding GST 18%',
     inr: {
       monthly,
+      monthlyAnnualized: monthly != null ? monthly * 12 : null,
+      quarterly,
+      quarterlyPerMonth: quarterly != null ? Math.round(quarterly / 3) : null,
+      semiannual,
+      semiannualPerMonth: semiannual != null ? Math.round(semiannual / 6) : null,
       annual,
       annualPerMonth: annual != null ? Math.round(annual / 12) : null,
     },

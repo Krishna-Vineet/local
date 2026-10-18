@@ -9,6 +9,7 @@ import Pricing from './pages/Pricing.jsx'
 import Contact from './pages/Contact.jsx'
 import Business from './pages/Business.jsx'
 import Download from './pages/Download.jsx'
+import Seo from './components/Seo.jsx'
 import { useGlobalFx } from './fx/useGlobalFx.js'
 import LiquidCursor from './fx/LiquidCursor.jsx'
 import { ScrollProgress } from './fx/ScrollFx.jsx'
@@ -44,8 +45,10 @@ export default function App() {
   if (isDownload) {
     return (
       <>
+        <Seo />
         <ScrollTop />
         <Routes>
+          <Route path="/download" element={<Download />} />
           <Route path="/download/:id" element={<Download />} />
         </Routes>
       </>
@@ -54,20 +57,23 @@ export default function App() {
 
   return (
     <>
+      <Seo />
       <ScrollTop />
       <LiquidCursor />
       <ScrollProgress />
       <Nav />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/booth" element={<Booth />} />
-        <Route path="/software" element={<Software />} />
-        <Route path="/hardware" element={<Hardware />} />
-        <Route path="/pricing" element={<Pricing />} />
-        <Route path="/business" element={<Business />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <main id="main-content">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/booth" element={<Booth />} />
+          <Route path="/software" element={<Software />} />
+          <Route path="/hardware" element={<Hardware />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/business" element={<Business />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
       <Footer />
     </>
   )

@@ -161,11 +161,10 @@ export default function Download() {
               <div style={{ textAlign: 'center' }}>
                 <motion.div
                   initial={{ rotate: -5, y: 26, opacity: 0 }} animate={{ rotate: -2.5, y: 0, opacity: 1 }} transition={{ duration: .8, delay: .15 }}
-                  style={{ background: 'var(--ink)', padding: '16px 12px 20px', borderRadius: 12, boxShadow: '0 24px 48px rgba(15,10,28,.28)', display: 'inline-block', maxWidth: 360, width: '100%' }}
+                  style={{ background: 'var(--ink)', padding: '16px 12px 20px', borderRadius: 12, boxShadow: '0 24px 48px rgba(15,10,28,.28)', display: 'inline-block', maxWidth: 360}}
                 >
-                  <img src={data.compositeUrl || data.photoUrls?.[0]} alt="Your final HappyPix print" style={{ width: '100%', borderRadius: 6, display: 'block', aspectRatio: '4/3.4', objectFit: 'cover', background: '#241a3d' }} />
-                  <div style={{ color: 'var(--paper)', fontFamily: 'var(--serif)', fontStyle: 'italic', marginTop: 12 }}>HappyPix ✦ made tonight</div>
-                </motion.div>
+                  <img src={data.compositeUrl || data.photoUrls?.[0]} alt="Your final HappyPix print" style={{  maxHeight: 500 ,borderRadius: 6, display: 'block', objectFit: 'contain', background: '#241a3d' }} />
+                  </motion.div>
                 <div style={{ marginTop: 20, display: 'flex', gap: 11, justifyContent: 'center', flexWrap: 'wrap' }}>
                   {isDemo ? (
                     <a className="btn btn-pink" href={data.compositeUrl} download><Icon name="download" size={17} /> Download final print</a>

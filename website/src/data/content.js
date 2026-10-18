@@ -187,8 +187,14 @@ export const WHY_POINTS = [
   { color: 'var(--purple)', ic: '🔗', title: 'Guests leave with your brand', desc: 'Every guest downloads from your branded page within hours of the event — your logo, your colors, your next-booking button in front of a warm audience.' },
 ];
 
-/* plan feature matrix (rows × plan names) */
+/* plan feature matrix (rows × plan names: Basic, Pro, Premium) */
 export const PLAN_MATRIX = [
+  ['12 Months (Annual · excl. 18% GST)', '₹499/mo · ₹5,988/yr', '₹699/mo · ₹8,388/yr', '₹799/mo · ₹9,588/yr'],
+  ['6 Months (excl. 18% GST)', '₹799/mo · ₹4,794/6m', '₹999/mo · ₹5,994/6m', '₹1,099/mo · ₹6,594/6m'],
+  ['3 Months (excl. 18% GST)', '₹949/mo · ₹2,847/3m', '₹1,149/mo · ₹3,447/3m', '₹1,299/mo · ₹3,897/3m'],
+  ['1 Month (Monthly · excl. 18% GST)', '₹1,099/mo (₹13,188/yr)', '₹1,299/mo (₹15,588/yr)', '₹1,499/mo (₹17,988/yr)'],
+  ['Booth devices included', '2 Devices', '2 Devices', '2 Devices'],
+  ['Parallel events', '2 Events', '4 Events', '8 Events'],
   ['Unlimited photo sessions & templates', true, true, true],
   ['Live view, countdown & retakes', true, true, true],
   ['Instant printing (DNP & Canon SELPHY)', true, true, true],
@@ -204,21 +210,28 @@ export const PLAN_MATRIX = [
   ['Business analytics & reports', false, false, true],
   ['Dedicated account manager', false, false, true],
   ['Priority support', false, true, true],
+  ['Any Modular Add-on (bolt-on)', '₹249 / add-on', '₹249 / add-on', '₹249 / add-on'],
 ];
 
 // Fallback copy for the add-on section if the catalogue API has no
 // add-on rows yet — live add-ons (kind: 'addon') replace this list and
-// its prices. Prices are never hard-coded here: they come from the catalogue.
+// its prices. Every add-on is ₹249 (excluding GST 18%).
 export const ADDONS = [
-  { key: 'addon-headshot', name: 'Professional Headshot Mode', desc: 'Studio-style AI headshots for corporate events and campuses.' },
-  { key: 'addon-video', name: 'Video Booth Mode', desc: 'Video, GIF & boomerang capture with slow-motion for social-first crowds.' },
-  { key: 'addon-branding', name: 'Custom Start Screen Branding', desc: 'Your own start screen, colours and sponsor logos.' },
-  { key: 'addon-survey', name: 'Survey & Lead Capture', desc: 'Ask three questions before the photo — turn footfall into a mailing list.' },
-  { key: 'addon-music', name: 'Custom Music & Sound Effects', desc: 'Event soundtracks and branded audio cues.' },
-  { key: 'addon-props', name: 'Fun Event Props & Frames Pack', desc: '30 props and 2 premium frames, unlocked forever.' },
+  { key: 'addon-headshot', name: 'Professional Headshot Mode', desc: 'Studio-style AI headshots for corporate events and campuses.', price: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-video', name: 'Video Booth Mode', desc: 'Video, GIF & boomerang capture with slow-motion for social-first crowds.', price: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-start-screen', name: 'Custom Start Screen Branding', desc: 'Your own start screen, colours and sponsor logos.', price: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-survey', name: 'Survey & Lead Capture', desc: 'Ask three questions before the photo — turn footfall into a mailing list.', price: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-music', name: 'Custom Music & Sound Effects', desc: 'Event soundtracks and branded audio cues.', price: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-props-pack', name: 'Fun Event Props & Frames Pack', desc: '30 props and 2 premium frames, unlocked forever.', price: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-extra-device', name: 'Extra Booth Device Slot', desc: 'Add 1 more active booth device to your current plan without jumping tiers.', price: 249, billingNote: 'per add-on · excluding GST 18%' },
+  { key: 'addon-ai-pack', name: '1,000 AI Studio Credits Pack', desc: 'Top-up for AI background removal, cartoon/portrait effects and CRM template cutouts.', price: 249, billingNote: 'per add-on · excluding GST 18%' },
 ];
 
 export const FAQS = [
+  {
+    q: 'What are the HappyPix subscription plans and add-on prices?',
+    a: 'All paid plans (Basic, Pro, and Premium) include 2 booth devices and are available across 4 billing durations (all prices excluding GST 18%): 12 Months (Annual: Basic ₹499/Month = ₹5,988/year, Pro ₹699/Month = ₹8,388/year, Premium ₹799/Month = ₹9,588/year), 6 Months (Basic ₹799/Month = ₹4,794/6 Months, Pro ₹999/Month = ₹5,994/6 Months, Premium ₹1,099/Month = ₹6,594/6 Months), 3 Months (Basic ₹949/Month = ₹2,847/3 Months, Pro ₹1,149/Month = ₹3,447/3 Months, Premium ₹1,299/Month = ₹3,897/3 Months), and 1 Month (Basic ₹1,099/Month = ₹13,188/year, Pro ₹1,299/Month = ₹15,588/year, Premium ₹1,499/Month = ₹17,988/year). Any modular add-on is ₹249.',
+  },
   {
     q: 'Do I need to buy a HappyPix booth to use the software?',
     a: 'No. HappyPix is software-first: start with the booth app on your own hardware, and add printers and cameras from the compatibility list. Our own booth hardware is coming soon for operators who want the full turn-key ritual.',
@@ -247,8 +260,8 @@ export const FAQS = [
 
 export const PLAN_HIGHLIGHTS = {
   trial: ['Full product for 14 days', '1 booth · 1 event', 'QR digital copies', 'Organization gallery'],
-  basic: ['2 devices included', '2 parallel events', 'Instant printing + QR downloads', 'Operator dashboard & gallery'],
-  pro: ['2 devices included', '4 parallel events', 'Custom branding & premium templates', 'Cloud gallery — 30 days'],
-  premium: ['2 devices included', '8 parallel events', 'AI templates + 500 credits', 'Analytics, own gateways, priority support'],
+  basic: ['2 Devices included', '2 parallel events', 'Instant printing + QR downloads', 'Operator dashboard & gallery'],
+  pro: ['2 Devices included', '4 parallel events', 'Custom branding & premium templates', 'Cloud gallery — 30 days'],
+  premium: ['2 Devices included', '8 parallel events', 'AI templates + 500 credits', 'Analytics, own gateways, priority support'],
   custom: ['Customisable — volume booths', 'Custom limits & onboarding', 'Dedicated success manager', 'Talk to sales →'],
 }

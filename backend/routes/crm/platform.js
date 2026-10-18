@@ -395,6 +395,8 @@ function planAdminView(plan, doc, organizations, subscriptions) {
     description: plan.description || '',
     kind: plan.kind || 'plan',
     priceMonthly: plan.priceMonthly ?? plan.price ?? null,
+    priceQuarterly: plan.priceQuarterly ?? null,
+    priceSemiannual: plan.priceSemiannual ?? null,
     priceAnnual: plan.priceAnnual ?? null,
     billingNote: plan.billingNote || '',
     aiCredits: Number(plan.aiCredits) || 0,
@@ -454,6 +456,8 @@ router.post('/plans', requirePerm(PERMS.SUBSCRIPTION_PLANS_MANAGE), asyncRoute(a
     active: req.body.active !== false,
     kind: req.body.kind === 'addon' ? 'addon' : 'plan',
     priceMonthly: req.body.priceMonthly === undefined ? price : Number(req.body.priceMonthly) || null,
+    priceQuarterly: req.body.priceQuarterly === undefined ? null : Number(req.body.priceQuarterly) || null,
+    priceSemiannual: req.body.priceSemiannual === undefined ? null : Number(req.body.priceSemiannual) || null,
     priceAnnual: req.body.priceAnnual === undefined ? null : Number(req.body.priceAnnual) || null,
     billingNote: String(req.body.billingNote || '').trim(),
     aiCredits: Math.max(0, Number(req.body.aiCredits) || 0),
@@ -494,7 +498,7 @@ router.put('/plans/:id', requirePerm(PERMS.SUBSCRIPTION_PLANS_MANAGE), asyncRout
   }
   if (req.body.active !== undefined) plan.active = !!req.body.active;
   if (req.body.kind !== undefined && ['plan', 'addon'].includes(req.body.kind)) plan.kind = req.body.kind;
-  for (const field of ['priceMonthly', 'priceAnnual']) {
+  for (const field of ['priceMonthly', 'priceQuarterly', 'priceSemiannual', 'priceAnnual']) {
     if (req.body[field] !== undefined) {
       const value = req.body[field] === null || req.body[field] === '' ? null : Number(req.body[field]);
       if (value !== null && (!Number.isFinite(value) || value < 0)) throw badRequest(`${field} must be a non-negative amount.`, 'BAD_PLAN_PRICE');
@@ -1035,27 +1039,30 @@ export async function ensurePlanCatalog() {
       await SubscriptionPlan.create(plan);
     } else {
       const updates = {};
-      if (existing.devices !== plan.devices && (plan.key === 'pro' || plan.key === 'premium')) {
-        updates.devices = plan.devices;
-      }
-      if (existing.events !== plan.events) {
-        updates.events = plan.events;
-      }
-      if (existing.kind !== plan.kind) {
-        updates.kind = plan.kind;
-      }
-      if (existing.aiCredits !== plan.aiCredits) {
-        updates.aiCredits = plan.aiCredits;
+      const syncFields = [
+        'price',
+        'priceMonthly',
+        'priceQuarterly',
+        'priceSemiannual',
+        'priceAnnual',
+        'devices',
+        'events',
+        'kind',
+        'aiCredits',
+        'billingNote',
+        'durationLabel',
+      ];
+      for (const field of syncFields) {
+        if (plan[field] !== undefined && existing[field] !== plan[field]) {
+          updates[field] = plan[field];
+        }
       }
       if (Object.keys(updates).length > 0) {
         await SubscriptionPlan.updateOne({ _id: existing._id }, { $set: updates });
       }
     }
   }
-
-  // Also update existing organizations' allowedDevices to match their plan
-  await Organization.updateMany({ plan: 'pro', allowedDevices: { $lt: 4 } }, { $set: { allowedDevices: 4 } });
-  await Organization.updateMany({ plan: 'premium', allowedDevices: { $lt: 8 } }, { $set: { allowedDevices: 8 } });
+  await listPlans({ fresh: true });
 }
 
 // ─── TEMPLATE LAYOUTS ────────────────────────────────────────────────────────

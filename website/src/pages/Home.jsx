@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { Reveal, CtaBand } from '../components/ui.jsx';
-import PricingCards from '../components/PricingCards.jsx';
+import PricingCards, { BILLING_PERIODS } from '../components/PricingCards.jsx';
 import CrmShowcase from '../components/CrmShowcase.jsx';
 import ParticleSwarm from '../fx/ParticleSwarm.jsx';
 import LiquidOrbs from '../fx/LiquidOrbs.jsx';
@@ -28,6 +28,7 @@ export default function Home() {
   const heroY = useTransform(heroP, [0, 1], [0, 140])
   const heroFade = useTransform(heroP, [0, 0.75], [1, 0])
   const [plans, setPlans] = useState([]);
+  const [billing, setBilling] = useState('annual');
   const [openFaq, setOpenFaq] = useState(0)
   const [heroSlide, setHeroSlide] = useState(0)
 
@@ -212,13 +213,31 @@ export default function Home() {
           <Reveal className="section-head center">
             <span className="kicker c-green">Straightforward pricing</span>
             <Kinetic as="h2" className="h-lg">One event can cover <span className="accent-it" style={{ color: '#5f9420' }}>months of plan</span></Kinetic>
-            <ScrollText as="p" className="lead" text="Plans are billed monthly, cancel anytime. The software is the small cost — the booth is the earner." />
+            <ScrollText as="p" className="lead" text="Choose 12, 6, 3, or 1 Month billing — all with 2 devices included (excluding GST 18%). Any modular add-on is ₹249." />
           </Reveal>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 28 }}>
+            <div style={{ display: 'inline-flex', gap: 4, padding: 4, border: '1.5px solid var(--line)', borderRadius: 999, background: 'var(--white)', flexWrap: 'wrap', justifyContent: 'center' }} role="tablist" aria-label="Billing duration">
+              {BILLING_PERIODS.map((bp) => (
+                <button
+                  key={bp.id}
+                  type="button"
+                  onClick={() => setBilling(bp.id)}
+                  style={{
+                    border: 0, cursor: 'pointer', borderRadius: 999, padding: '8px 16px', fontWeight: 700, fontSize: '.88rem',
+                    background: billing === bp.id ? 'var(--pink)' : 'transparent',
+                    color: billing === bp.id ? '#fff' : 'var(--ink-soft)',
+                  }}
+                >
+                  {bp.label}
+                </button>
+              ))}
+            </div>
+          </div>
           {plans.length
-            ? <PricingCards plans={plans.slice(0, 6)} linkToCheckout />
+            ? <PricingCards plans={plans.slice(0, 6)} billing={billing} linkToCheckout />
             : <p style={{ textAlign: 'center', color: 'var(--muted)' }}>Loading plans…</p>}
           <p style={{ textAlign: 'center', marginTop: 26 }}>
-            <Link to="/pricing" style={{ fontWeight: 700 }} className="c-pink">Compare every feature, add-ons & FAQs →</Link>
+            <Link to="/pricing" style={{ fontWeight: 700 }} className="c-pink">Compare every feature, add-ons (₹249) & FAQs →</Link>
           </p>
         </div>
       </section>

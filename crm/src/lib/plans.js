@@ -3,10 +3,10 @@
 // reads the resulting plan/subscription state. Nothing here is editable.
 
 export const PLANS = {
-  trial: { key: 'trial', name: 'Trial', devices: 1, events: 1, duration: '14 days', price: 0, color: 'chip-trial' },
-  basic: { key: 'basic', name: 'Basic', devices: 2, events: 2, duration: 'per month', price: 799, color: 'chip-purple' },
-  pro: { key: 'pro', name: 'Pro', devices: 4, events: 4, duration: 'per month', price: 999, color: 'chip-pink' },
-  premium: { key: 'premium', name: 'Premium', devices: 8, events: 8, duration: 'per month', price: 1299, color: 'chip-solid-green' },
+  trial: { key: 'trial', name: 'Trial', devices: 1, events: 1, duration: '14 days', price: 0, priceMonthly: 0, priceQuarterly: 0, priceSemiannual: 0, priceAnnual: 0, color: 'chip-trial' },
+  basic: { key: 'basic', name: 'Basic', devices: 2, events: 2, duration: 'per month', price: 1099, priceMonthly: 1099, priceQuarterly: 2847, priceSemiannual: 4794, priceAnnual: 5988, annualPerMonth: 499, semiannualPerMonth: 799, quarterlyPerMonth: 949, color: 'chip-purple' },
+  pro: { key: 'pro', name: 'Pro', devices: 2, events: 4, duration: 'per month', price: 1299, priceMonthly: 1299, priceQuarterly: 3447, priceSemiannual: 5994, priceAnnual: 8388, annualPerMonth: 699, semiannualPerMonth: 999, quarterlyPerMonth: 1149, color: 'chip-pink' },
+  premium: { key: 'premium', name: 'Premium', devices: 2, events: 8, duration: 'per month', price: 1499, priceMonthly: 1499, priceQuarterly: 3897, priceSemiannual: 6594, priceAnnual: 9588, annualPerMonth: 799, semiannualPerMonth: 1099, quarterlyPerMonth: 1299, color: 'chip-solid-green' },
   custom: { key: 'custom', name: 'Custom', devices: '5–25', events: '5–20', duration: 'Custom term', price: null, color: 'chip-neutral' },
 }
 

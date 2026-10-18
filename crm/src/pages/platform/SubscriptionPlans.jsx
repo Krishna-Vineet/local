@@ -8,11 +8,18 @@ import { inr, relativeTime } from '../../lib/format.js'
 const emptyPlan = {
   key: '', name: '', description: '', price: '', durationMonths: 1,
   durationLabel: 'per month', devices: 2, events: 2, active: true,
-  kind: 'plan', priceMonthly: '', priceAnnual: '',
-  billingNote: '', aiCredits: 0,
+  kind: 'plan', priceMonthly: '', priceQuarterly: '', priceSemiannual: '', priceAnnual: '',
+  billingNote: 'excluding GST 18%', aiCredits: 0,
   discountType: 'none', discountValue: '', discountLabel: '', discountStartsAt: '', discountEndsAt: '',
   discountMaxRedemptions: '', 
 }
+
+const DURATION_OPTIONS = [
+  { id: 'annual', label: '12 Months', months: 12, unitLabel: '/year' },
+  { id: 'semiannual', label: '6 Months', months: 6, unitLabel: '/6 Months' },
+  { id: 'quarterly', label: '3 Months', months: 3, unitLabel: '/3 Months' },
+  { id: 'monthly', label: '1 Month', months: 1, unitLabel: '/year' },
+]
 
 // Mirror of backend services/planService.js planPricing() — used ONLY for
 // instant preview in the editor; the server remains the source of truth and
@@ -48,7 +55,7 @@ const toLocalInput = (iso) => {
 }
 const fromLocalInput = (value) => (value ? new Date(value).toISOString() : null)
 
-function PlanCard({ plan, onEdit, onDelete }) {
+function PlanCard({ plan, selectedDuration = 'annual', onEdit, onDelete }) {
   const pricing = plan.pricing
     ? {
         price: plan.pricing.originalPrice,
@@ -64,6 +71,35 @@ function PlanCard({ plan, onEdit, onDelete }) {
         slotsLeft: plan.pricing.discount.discountMaxRedemptions > 0 ? Math.max(0, Number(plan.pricing.discount.discountMaxRedemptions) - (Number(plan.pricing.discount.discountRedemptions) || 0)) : null,
       }
     : computePricing(plan)
+
+  const inrMap = plan.billing?.inr || {}
+  const isFree = pricing.price === 0 && plan.key === 'trial'
+  const isCustom = pricing.price == null && inrMap.monthly == null
+
+  let perMonthDisplay = pricing.active ? pricing.effectivePrice : pricing.price
+  let periodSubtitle = plan.durationLabel || `${plan.durationMonths} months`
+
+  if (!isFree && !isCustom) {
+    const devLabel = `${plan.devices} Device${plan.devices === 1 ? '' : 's'}`
+    if (selectedDuration === 'annual' && (inrMap.annual != null || plan.priceAnnual != null)) {
+      const total = Number(inrMap.annual ?? plan.priceAnnual)
+      perMonthDisplay = inrMap.annualPerMonth ?? Math.round(total / 12)
+      periodSubtitle = `Annual: ${inr(perMonthDisplay)}/Month - ${devLabel} = ${inr(total)}/year (excluding GST 18%)`
+    } else if (selectedDuration === 'semiannual' && (inrMap.semiannual != null || plan.priceSemiannual != null)) {
+      const total = Number(inrMap.semiannual ?? plan.priceSemiannual)
+      perMonthDisplay = inrMap.semiannualPerMonth ?? Math.round(total / 6)
+      periodSubtitle = `${inr(perMonthDisplay)}/Month - ${devLabel} = ${inr(total)}/6 Months (excluding GST 18%)`
+    } else if (selectedDuration === 'quarterly' && (inrMap.quarterly != null || plan.priceQuarterly != null)) {
+      const total = Number(inrMap.quarterly ?? plan.priceQuarterly)
+      perMonthDisplay = inrMap.quarterlyPerMonth ?? Math.round(total / 3)
+      periodSubtitle = `${inr(perMonthDisplay)}/Month - ${devLabel} = ${inr(total)}/3 Months (excluding GST 18%)`
+    } else if (inrMap.monthly != null || plan.priceMonthly != null || pricing.price != null) {
+      const m = Number(inrMap.monthly ?? plan.priceMonthly ?? pricing.price)
+      perMonthDisplay = pricing.active ? pricing.effectivePrice : m
+      const annualized = inrMap.monthlyAnnualized ?? m * 12
+      periodSubtitle = `Monthly: ${inr(perMonthDisplay)}/Month - ${devLabel} = ${inr(annualized)}/year (excluding GST 18%)`
+    }
+  }
 
   return (
     <Card style={{ overflow: 'hidden', opacity: plan.active ? 1 : 0.66, display: 'flex', flexDirection: 'column' }}>
@@ -83,13 +119,13 @@ function PlanCard({ plan, onEdit, onDelete }) {
 
         <div className="row gap-8" style={{ alignItems: 'baseline', marginTop: 12, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 24, fontWeight: 750, letterSpacing: '-.03em', color: 'var(--ink)' }}>
-            {pricing.price == null ? 'Contact sales' : inr(pricing.active ? pricing.effectivePrice : pricing.price)}
+            {isCustom ? 'Contact sales' : isFree ? 'Free' : `${inr(perMonthDisplay)}/Month`}
           </div>
-          {pricing.active ? <div className="t13 faint" style={{ textDecoration: 'line-through' }}>{inr(pricing.price)}</div> : null}
+          {pricing.active && selectedDuration === 'monthly' ? <div className="t13 faint" style={{ textDecoration: 'line-through' }}>{inr(pricing.price)}</div> : null}
           {pricing.active ? <Chip tone="pink">−{pricing.discountPercent}%</Chip> : pricing.scheduled ? <Chip tone="info">Discount scheduled</Chip> : null}
         </div>
-        <div className="t11 muted" style={{ marginTop: 2 }}>
-          {plan.durationLabel || `${plan.durationMonths} months`}
+        <div className="t11 muted" style={{ marginTop: 3 }}>
+          {periodSubtitle}
           {pricing.active ? ` · You save ${inr(pricing.discountAmount)}${pricing.ends ? ` · ends ${relativeTime(pricing.ends.toISOString())}` : ''}` : ''}
           {pricing.scheduled && pricing.starts ? ` · ${plan.discountType === 'percent' ? `${plan.discountValue}%` : inr(Number(plan.discountValue))} off from ${relativeTime(pricing.starts.toISOString())}` : ''}
           {!pricing.active && !pricing.scheduled && plan.discountLabel ? ` · ${plan.discountLabel}` : ''}
@@ -107,11 +143,21 @@ function PlanCard({ plan, onEdit, onDelete }) {
             {plan.aiCredits ? <Chip tone="warn"><Icon name="sparkles" size={11} style={{ marginRight: 3 }} /> {plan.aiCredits} AI credits</Chip> : null}
           </div>
 
-          {plan.billing ? (
-            <div className="t11 muted" style={{ marginTop: 12, lineHeight: 1.6, padding: '7px 9px', background: 'var(--surface-2)', borderRadius: 6, border: '1px solid var(--line-soft)' }}>
-              {plan.billing.inr.monthly != null ? <span><b>Monthly:</b> {inr(plan.billing.inr.monthly)}</span> : null}
-              {plan.billing.inr.annual != null ? <span style={{ marginLeft: 6 }}>· <b>Annual:</b> {inr(plan.billing.inr.annual)} ({inr(plan.billing.inr.annualPerMonth)}/mo)</span> : null}
-              {plan.billingNote ? <span style={{ marginLeft: 6 }}>· {plan.billingNote}</span> : null}
+          {!isFree && !isCustom && plan.billing ? (
+            <div className="t11 muted" style={{ marginTop: 12, lineHeight: 1.65, padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 6, border: '1px solid var(--line-soft)', display: 'grid', gap: 2 }}>
+              {inrMap.annual != null ? (
+                <div><b>12 Months:</b> {inr(inrMap.annualPerMonth ?? Math.round(inrMap.annual / 12))}/mo · {inr(inrMap.annual)}/year</div>
+              ) : null}
+              {inrMap.semiannual != null ? (
+                <div><b>6 Months:</b> {inr(inrMap.semiannualPerMonth ?? Math.round(inrMap.semiannual / 6))}/mo · {inr(inrMap.semiannual)}/6 Months</div>
+              ) : null}
+              {inrMap.quarterly != null ? (
+                <div><b>3 Months:</b> {inr(inrMap.quarterlyPerMonth ?? Math.round(inrMap.quarterly / 3))}/mo · {inr(inrMap.quarterly)}/3 Months</div>
+              ) : null}
+              {inrMap.monthly != null ? (
+                <div><b>1 Month:</b> {inr(inrMap.monthly)}/mo · {inr(inrMap.monthlyAnnualized ?? inrMap.monthly * 12)}/year</div>
+              ) : null}
+              <div className="faint" style={{ fontSize: 10.5, marginTop: 2 }}>All prices excluding GST 18% · {plan.devices} Device{plan.devices === 1 ? '' : 's'}</div>
             </div>
           ) : null}
         </div>
@@ -203,6 +249,7 @@ function AddonCard({ addon, onEdit, onDelete }) {
 export default function SubscriptionPlans() {
   const { toast } = useApp()
   const [plans, setPlans] = useState(null)
+  const [selectedDuration, setSelectedDuration] = useState('annual')
   const [editing, setEditing] = useState(null)
   const [draft, setDraft] = useState(null)
   const [deleting, setDeleting] = useState(null)
@@ -231,10 +278,15 @@ export default function SubscriptionPlans() {
     setDraft({
       ...emptyPlan,
       kind: defaultKind,
+      price: defaultKind === 'addon' ? 249 : '',
+      priceMonthly: defaultKind === 'addon' ? 249 : '',
+      priceQuarterly: defaultKind === 'addon' ? 249 : '',
+      priceSemiannual: defaultKind === 'addon' ? 249 : '',
+      priceAnnual: defaultKind === 'addon' ? 249 : '',
       devices: defaultKind === 'addon' ? 0 : 2,
       events: defaultKind === 'addon' ? 0 : 2,
-      durationLabel: 'per month',
-      billingNote: defaultKind === 'addon' ? 'per user / month' : '',
+      durationLabel: defaultKind === 'addon' ? 'per add-on' : 'per month',
+      billingNote: defaultKind === 'addon' ? 'per add-on · excluding GST 18%' : 'excluding GST 18%',
     })
   }
 
@@ -246,7 +298,9 @@ export default function SubscriptionPlans() {
       price: plan.price == null ? '' : plan.price,
       kind: plan.kind || 'plan',
       priceMonthly: plan.priceMonthly == null ? '' : plan.priceMonthly,
-      priceAnnual: plan.priceAnnual == null ? '' : plan.priceAnnual,
+      priceQuarterly: plan.priceQuarterly == null ? (plan.billing?.inr?.quarterly ?? '') : plan.priceQuarterly,
+      priceSemiannual: plan.priceSemiannual == null ? (plan.billing?.inr?.semiannual ?? '') : plan.priceSemiannual,
+      priceAnnual: plan.priceAnnual == null ? (plan.billing?.inr?.annual ?? '') : plan.priceAnnual,
       discountMaxRedemptions: plan.discountMaxRedemptions || '',
       discountRedemptions: Number(plan.discountRedemptions) || 0,
       billingNote: plan.billingNote || '',
@@ -309,6 +363,8 @@ export default function SubscriptionPlans() {
         events: draft.kind === 'addon' ? Math.max(0, Number(draft.events) || 0) : Math.max(1, Number(draft.events) || 1),
         kind: draft.kind === 'addon' ? 'addon' : 'plan',
         priceMonthly: draft.priceMonthly === '' || draft.priceMonthly == null ? null : Number(draft.priceMonthly),
+        priceQuarterly: draft.priceQuarterly === '' || draft.priceQuarterly == null ? null : Number(draft.priceQuarterly),
+        priceSemiannual: draft.priceSemiannual === '' || draft.priceSemiannual == null ? null : Number(draft.priceSemiannual),
         priceAnnual: draft.priceAnnual === '' || draft.priceAnnual == null ? null : Number(draft.priceAnnual),
         discountMaxRedemptions: Math.max(0, Math.floor(Number(draft.discountMaxRedemptions) || 0)),
         discountRedemptions: Number(draft.discountRedemptions) || 0,
@@ -353,17 +409,38 @@ export default function SubscriptionPlans() {
         <div>
           {/* ─── Upper Section: Core Subscription Plans ─── */}
           <div style={{ marginBottom: 38 }}>
-            <div className="row between gap-12 items-center" style={{ marginBottom: 16 }}>
+            <div className="row between gap-12 items-center" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
               <div className="row gap-10 items-center">
                 <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--hp-pink-soft)', color: 'var(--hp-pink-deep)', display: 'grid', placeItems: 'center' }}>
                   <Icon name="tag" size={17} />
                 </div>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>Subscription Plans</div>
-                  <div className="t12 muted">Tiered organization subscriptions with booth devices, parallel events, and AI limits.</div>
+                  <div className="t12 muted">Tiered organization subscriptions (12, 6, 3, and 1 Month durations · 2 devices included · excluding GST 18%).</div>
                 </div>
               </div>
-              <div className="row gap-8 items-center">
+              <div className="row gap-8 items-center" style={{ flexWrap: 'wrap' }}>
+                <div style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--line)' }}>
+                  {DURATION_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSelectedDuration(opt.id)}
+                      style={{
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '5px 11px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 650,
+                        background: selectedDuration === opt.id ? 'var(--hp-pink)' : 'transparent',
+                        color: selectedDuration === opt.id ? '#fff' : 'var(--ink-2)',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
                 <Chip tone="pink">{subscriptionPlans.length} Tier{subscriptionPlans.length === 1 ? '' : 's'}</Chip>
                 <Button size="sm" variant="primary" icon="plus" onClick={() => openNew('plan')}>Add Plan</Button>
               </div>
@@ -374,7 +451,7 @@ export default function SubscriptionPlans() {
             ) : (
               <div className="plan-grid">
                 {subscriptionPlans.map((plan) => (
-                  <PlanCard key={plan.id || plan.key} plan={plan} onEdit={openEdit} onDelete={setDeleting} />
+                  <PlanCard key={plan.id || plan.key} plan={plan} selectedDuration={selectedDuration} onEdit={openEdit} onDelete={setDeleting} />
                 ))}
               </div>
             )}
@@ -388,8 +465,8 @@ export default function SubscriptionPlans() {
                   <Icon name="sparkles" size={17} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>Modular Add-ons & Bolt-ons</div>
-                  <div className="t12 muted">Optional superpowers sold alongside any plan (billed monthly per-user or one-time feature unlock).</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--ink)' }}>Modular Add-ons & Bolt-ons (₹249 each)</div>
+                  <div className="t12 muted">Any add-on is ₹249 (excluding GST 18%) — optional superpowers sold alongside any subscription plan.</div>
                 </div>
               </div>
               <div className="row gap-8 items-center">
@@ -505,10 +582,16 @@ export default function SubscriptionPlans() {
               <Field label="AI credits / period" hint="e.g. Premium includes 500, or 1000 for credit pack.">
                 <TextInput type="number" min="0" value={draft.aiCredits} onChange={(e) => setDraft({ ...draft, aiCredits: e.target.value })} />
               </Field>
-              <Field label="Monthly price ₹" hint="Billed monthly. Mirrors the legacy price field.">
-                <TextInput type="number" min="0" value={draft.priceMonthly} onChange={(e) => setDraft({ ...draft, priceMonthly: e.target.value, price: e.target.value })} placeholder="799" />
+              <Field label="1 Month price ₹ (Monthly)" hint="Billed monthly (e.g. Basic 1099, Pro 1299, Premium 1499, Add-on 249).">
+                <TextInput type="number" min="0" value={draft.priceMonthly} onChange={(e) => setDraft({ ...draft, priceMonthly: e.target.value, price: e.target.value })} placeholder="1099" />
               </Field>
-              <Field label="Annual price ₹ (12 months)" hint="Total billed upfront, e.g. 5988 = ₹499/mo.">
+              <Field label="3 Months price ₹ (Quarterly total)" hint="Total for 3 months (e.g. Basic 2847 = ₹949/mo, Pro 3447 = ₹1,149/mo, Premium 3897 = ₹1,299/mo).">
+                <TextInput type="number" min="0" value={draft.priceQuarterly} onChange={(e) => setDraft({ ...draft, priceQuarterly: e.target.value })} placeholder="2847" />
+              </Field>
+              <Field label="6 Months price ₹ (6-Month total)" hint="Total for 6 months (e.g. Basic 4794 = ₹799/mo, Pro 5994 = ₹999/mo, Premium 6594 = ₹1,099/mo).">
+                <TextInput type="number" min="0" value={draft.priceSemiannual} onChange={(e) => setDraft({ ...draft, priceSemiannual: e.target.value })} placeholder="4794" />
+              </Field>
+              <Field label="12 Months price ₹ (Annual total)" hint="Total for 12 months (e.g. Basic 5988 = ₹499/mo, Pro 8388 = ₹699/mo, Premium 9588 = ₹799/mo).">
                 <TextInput type="number" min="0" value={draft.priceAnnual} onChange={(e) => setDraft({ ...draft, priceAnnual: e.target.value })} placeholder="5988" />
               </Field>
               <Field label="Billing note" hint="e.g. per user / month, one-time, per booth / month.">

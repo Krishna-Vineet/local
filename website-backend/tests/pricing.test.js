@@ -41,14 +41,21 @@ test('subscription periods: months for paid plans, 14 days for trial', () => {
 });
 
 
-test('billing period prices: monthly vs annual, ₹ only', () => {
-  const basic = { key: 'basic', price: 799, priceMonthly: 799, priceAnnual: 5988 };
+test('billing period prices: 1m, 3m, 6m, 12m in ₹ only', () => {
+  const basic = { key: 'basic', price: 1099, priceMonthly: 1099, priceQuarterly: 2847, priceSemiannual: 4794, priceAnnual: 5988 };
   const view = billingPrices(basic);
-  assert.equal(view.inr.monthly, 799);
+  assert.equal(view.inr.monthly, 1099);
+  assert.equal(view.inr.monthlyAnnualized, 13188);
+  assert.equal(view.inr.quarterly, 2847);
+  assert.equal(view.inr.quarterlyPerMonth, 949);
+  assert.equal(view.inr.semiannual, 4794);
+  assert.equal(view.inr.semiannualPerMonth, 799);
   assert.equal(view.inr.annual, 5988);
   assert.equal(view.inr.annualPerMonth, 499);
   assert.equal(view.aud, undefined, '₹-only catalog: no AUD pricing block');
-  assert.equal(periodPrice(basic, 'monthly'), 799);
+  assert.equal(periodPrice(basic, 'monthly'), 1099);
+  assert.equal(periodPrice(basic, 'quarterly'), 2847);
+  assert.equal(periodPrice(basic, 'semiannual'), 4794);
   assert.equal(periodPrice(basic, 'annual'), 5988);
 });
 

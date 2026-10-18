@@ -1,0 +1,24 @@
+{
+  "name": "HappyPix — Photo Booth Software, Hardware & CRM",
+  "short_name": "HappyPix",
+  "description": "The all-in-one photo booth platform for events, weddings, venues and operators — booth kiosk software, instant DNP printing, 24h QR digital copies and operator CRM.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#141020",
+  "theme_color": "#EA097F",
+  "categories": ["business", "photo", "productivity", "entertainment"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-mark-on-dark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

@@ -81,19 +81,38 @@ export function planPricing(plan = {}, now = new Date()) {
 
 /**
  * Billing-period prices (mirror of backend planService.billingPrices).
- * Monthly = per month billed monthly; annual = 12 months billed
- * upfront (annualPerMonth = annual / 12). ₹ only.
+ * Supports 4 billing durations (excluding GST 18%):
+ *   monthly    = 1 Month (and monthlyAnnualized = monthly * 12)
+ *   quarterly  = 3 Months (quarterlyPerMonth = quarterly / 3)
+ *   semiannual = 6 Months (semiannualPerMonth = semiannual / 6)
+ *   annual     = 12 Months (annualPerMonth = annual / 12)
  */
 export function billingPrices(plan = {}) {
   const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+  const isAddon = plan.kind === 'addon';
   const monthly = num(plan.priceMonthly ?? plan.price);
-  const annual = num(plan.priceAnnual ?? (monthly != null ? monthly * 12 : null));
+  const quarterly = isAddon
+    ? num(plan.priceQuarterly ?? monthly)
+    : num(plan.priceQuarterly ?? (monthly != null ? monthly * 3 : null));
+  const semiannual = isAddon
+    ? num(plan.priceSemiannual ?? monthly)
+    : num(plan.priceSemiannual ?? (monthly != null ? monthly * 6 : null));
+  const annual = isAddon
+    ? num(plan.priceAnnual ?? monthly)
+    : num(plan.priceAnnual ?? (monthly != null ? monthly * 12 : null));
   return {
     kind: plan.kind || 'plan',
     aiCredits: Number(plan.aiCredits) || 0,
     billingNote: plan.billingNote || '',
+    gstRate: 18,
+    gstNote: 'excluding GST 18%',
     inr: {
       monthly,
+      monthlyAnnualized: monthly != null ? monthly * 12 : null,
+      quarterly,
+      quarterlyPerMonth: quarterly != null ? Math.round(quarterly / 3) : null,
+      semiannual,
+      semiannualPerMonth: semiannual != null ? Math.round(semiannual / 6) : null,
       annual,
       annualPerMonth: annual != null ? Math.round(annual / 12) : null,
     },
@@ -103,7 +122,11 @@ export function billingPrices(plan = {}) {
 /** Charged INR amount for a billing period, before plan discounts. */
 export function periodPrice(plan = {}, billingPeriod = 'monthly') {
   const billing = billingPrices(plan);
-  return billingPeriod === 'annual' ? billing.inr.annual : billing.inr.monthly;
+  if (plan.kind === 'addon') return billing.inr.monthly;
+  if (billingPeriod === 'annual' || billingPeriod === '12m') return billing.inr.annual;
+  if (billingPeriod === 'semiannual' || billingPeriod === '6m') return billing.inr.semiannual;
+  if (billingPeriod === 'quarterly' || billingPeriod === '3m') return billing.inr.quarterly;
+  return billing.inr.monthly;
 }
 
 /** Public shape for one plan/add-on on the pricing page (no internal fields). */

@@ -41,6 +41,8 @@ const subscriptionPlanSchema = new mongoose.Schema(
     // Catalogue kind + ₹ pricing (mirrors backend model)
     kind: { type: String, enum: ['plan', 'addon'], default: 'plan' },
     priceMonthly: { type: Number, default: null },
+    priceQuarterly: { type: Number, default: null },
+    priceSemiannual: { type: Number, default: null },
     priceAnnual: { type: Number, default: null },
     billingNote: { type: String, default: '' },
     aiCredits: { type: Number, default: 0 },
@@ -183,9 +185,9 @@ const websiteCheckoutSchema = new mongoose.Schema(
     existingOrganizationId: { type: mongoose.Schema.Types.ObjectId, default: null },
 
     status: { type: String, enum: ['created', 'paid', 'failed', 'expired'], default: 'created', index: true },
-    // Billing period chosen on the website: 'monthly' (1 month) or
-    // 'annual' (12 months upfront). Add-ons ride the same checkout.
-    billingPeriod: { type: String, enum: ['monthly', 'annual'], default: 'monthly' },
+    // Billing period chosen on the website: 'monthly' (1 month),
+    // 'quarterly' (3 months), 'semiannual' (6 months), or 'annual' (12 months).
+    billingPeriod: { type: String, enum: ['monthly', 'quarterly', 'semiannual', 'annual'], default: 'monthly' },
     addons: {
       type: [{
         key: { type: String, required: true },

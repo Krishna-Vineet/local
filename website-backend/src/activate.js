@@ -97,8 +97,9 @@ export async function activateCheckout(checkout, plan, { razorpayPaymentId = nul
   const previousEnd = previous && previous.endDate && new Date(previous.endDate) > now
     ? new Date(previous.endDate)
     : null;
-  // Annual billing grants 12 months; monthly grants 1 (trial stays 14d).
-  const months = plan.key === 'trial' ? null : (checkout.billingPeriod === 'annual' ? 12 : 1);
+  // Billing period duration: annual (12m), semiannual (6m), quarterly (3m), monthly (1m); trial stays 14d.
+  const PERIOD_MONTHS = { monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
+  const months = plan.key === 'trial' ? null : (PERIOD_MONTHS[checkout.billingPeriod] || 1);
   const { startDate, endDate } = subscriptionPeriod(plan, previousEnd || now, months);
 
   const subscription = await Subscription.create({

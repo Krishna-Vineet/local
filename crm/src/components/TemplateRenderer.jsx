@@ -38,8 +38,10 @@ export default function TemplateRenderer({
   }
 
   // If bgUrl still points to S3 amazonaws.com, route it via /api/org/asset-proxy
-  if (bgUrl && (bgUrl.includes('amazonaws.com') || bgUrl.includes('happypix-bucket'))) {
-    const s3Key = bgAssetId || bgUrl.replace(/^https?:\/\/[^\/]+\//, '');
+  if (bgUrl && (bgUrl.includes('amazonaws.com') || bgUrl.includes('happypix-bucket')) && !bgUrl.includes('X-Amz-Signature')) {
+    const s3Key = (bgAssetId && !bgAssetId.startsWith('temp-') && !bgAssetId.startsWith('http') && !bgAssetId.startsWith('data:'))
+      ? bgAssetId
+      : bgUrl.replace(/^https?:\/\/[^\/]+\//, '').split('?')[0];
     bgUrl = `/api/org/asset-proxy?key=${encodeURIComponent(s3Key)}`;
   }
 
@@ -93,8 +95,10 @@ export default function TemplateRenderer({
       }
     }
 
-    if (decUrl && (decUrl.includes('amazonaws.com') || decUrl.includes('happypix-bucket'))) {
-      const s3Key = dec.assetId || decUrl.replace(/^https?:\/\/[^\/]+\//, '');
+    if (decUrl && (decUrl.includes('amazonaws.com') || decUrl.includes('happypix-bucket')) && !decUrl.includes('X-Amz-Signature')) {
+      const s3Key = (dec.assetId && !dec.assetId.startsWith('temp-') && !dec.assetId.startsWith('http') && !dec.assetId.startsWith('data:'))
+        ? dec.assetId
+        : decUrl.replace(/^https?:\/\/[^\/]+\//, '').split('?')[0];
       decUrl = `/api/org/asset-proxy?key=${encodeURIComponent(s3Key)}`;
     }
 

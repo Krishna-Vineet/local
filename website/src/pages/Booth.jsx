@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { PageHero, Reveal, Marquee, CtaBand } from '../components/ui.jsx'
 import RetroBooth from '../components/RetroBooth.jsx'
+import { ScrollText, ParallaxMedia, ScrollTilt, ScrollFade } from '../fx/ScrollFx.jsx'
 
 const MOMENTS = [
   { title: 'The welcome', text: 'Your event name, your logos, your tagline — the attract screen is a poster for the night, showing real sample photos from your last event.', img: '/images/hero-booth.jpg', note: 'Start screens carry sponsor branding on Pro plans and above.' },
@@ -39,7 +40,7 @@ export default function Booth() {
           <Reveal className="section-head center">
             <span className="kicker c-pink">Hands-on</span>
             <h2 className="h-lg">Go on. Press the <span className="accent-it">big pink button.</span></h2>
-            <p className="lead">This is the exact rhythm your guests will feel — countdown, flash, print, QR. No instructions needed, which is rather the point.</p>
+            <ScrollText as="p" className="lead" text="This is the exact rhythm your guests will feel — countdown, flash, print, QR. No instructions needed, which is rather the point." />
           </Reveal>
           <Reveal><RetroBooth /></Reveal>
         </div>
@@ -55,7 +56,7 @@ export default function Booth() {
             {MOMENTS.map((m, i) => (
               <Reveal key={m.title}>
                 <div className="grid-2" style={{ direction: i % 2 ? 'rtl' : 'ltr' }}>
-                  <div className="photo-card" style={{ height: 340, direction: 'ltr' }}><img src={m.img} alt={m.title} loading="lazy" /></div>
+                  <div className="photo-card" style={{ height: 340, direction: 'ltr' }}><ParallaxMedia src={m.img} alt={m.title} /></div>
                   <div style={{ direction: 'ltr' }}>
                     <span style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 19 }} className="c-pink">moment {i + 1}</span>
                     <h3 className="h-md" style={{ margin: '10px 0 14px' }}>{m.title}</h3>
@@ -74,7 +75,7 @@ export default function Booth() {
           <Reveal className="section-head">
             <span className="kicker c-purple">Two sides of the glass</span>
             <h2 className="h-lg">Simple for guests. <span className="accent-it" style={{ color: 'var(--purple)' }}>Serious for you.</span></h2>
-            <p className="lead">Everything a guest touches is one tap deep. Everything you control sits behind it in the CRM.</p>
+            <ScrollText as="p" className="lead" text="Everything a guest touches is one tap deep. Everything you control sits behind it in the CRM." />
           </Reveal>
           <Reveal>
             <div className="tbl-wrap">
@@ -107,14 +108,14 @@ export default function Booth() {
             </Reveal>
             <Reveal delay={0.1}>
               <div style={{ display: 'flex', gap: 20, justifyContent: 'center', alignItems: 'flex-start' }}>
-                <div className="filmstrip" style={{ transform: 'rotate(-4deg)', width: 180 }}>
+                <ScrollTilt from={-9} to={-4} style={{ width: 180 }}><div className="filmstrip" style={{ width: 180 }}>
                   {['/images/guests-party.jpg', '/images/hero-booth.jpg'].map((src, i) => <figure key={i} style={{ aspectRatio: '4/3' }}><img src={src} alt="" loading="lazy" /></figure>)}
                   <div style={{ textAlign: 'center', color: '#fff', fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 12, padding: '2px 0 4px' }}>HappyPix ✦ est. tonight</div>
-                </div>
-                <div className="filmstrip" style={{ transform: 'rotate(3deg)', width: 180, marginTop: 40 }}>
+                </div></ScrollTilt>
+                <ScrollTilt from={8} to={3} style={{ width: 180, marginTop: 40 }}><div className="filmstrip" style={{ width: 180 }}>
                   {['/images/wedding-booth.jpg', '/images/retro-booth.jpg'].map((src, i) => <figure key={i} style={{ aspectRatio: '4/3' }}><img src={src} alt="" loading="lazy" /></figure>)}
                   <div style={{ textAlign: 'center', color: '#fff', fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: 12, padding: '2px 0 4px' }}>HappyPix ✦ est. tonight</div>
-                </div>
+                </div></ScrollTilt>
               </div>
             </Reveal>
           </div>

@@ -124,9 +124,9 @@ export default function Pricing() {
       <section className="section section-cream">
         <div className="wrap">
           <Reveal className="section-head">
-            <span className="kicker c-blue">Add-ons · ₹299 each</span>
+            <span className="kicker c-blue">Add-ons</span>
             <h2 className="h-lg">Bolt on <span className="accent-it" style={{ color: 'var(--blue)' }}>superpowers</span></h2>
-            <p className="lead">Every add-on is ₹299 a month per user — tick them in the checkout above, or add them later from your CRM. The props pack is a one-time unlock.</p>
+            <p className="lead">Tick any add-on in the checkout above, or add them later from your CRM. Each add-on shows its own price for your billing period, and the props pack is a one-time unlock.</p>
           </Reveal>
           <div className="grid-3">
             {(addons.length ? addons : ADDONS).map((addon, i) => {
@@ -139,7 +139,7 @@ export default function Pricing() {
                     <p>{addon.description || addon.desc}</p>
                     <p style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <b style={{ color: 'var(--pink-deep)' }}>
-                        {live ? `${money(addonPrice(addon))}${addon.billingNote?.includes('one-time') ? ' one-time' : billing === 'annual' ? ' / year' : ' / month'}` : addon.price}
+                        {live ? `${money(addonPrice(addon))}${addon.billingNote?.includes('one-time') ? ' one-time' : billing === 'annual' ? ' / year' : ' / month'}` : 'Price at checkout'}
                       </b>
                       {live ? (
                         <button className={active ? 'btn btn-pink' : 'btn btn-ghost'} style={{ padding: '8px 16px' }} onClick={() => toggleAddon(addon.key)}>

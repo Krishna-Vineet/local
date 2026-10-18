@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { fetchDownload, downloadFileUrl } from '../lib/api.js'
+import { buildDemoStrip, demoDownload } from '../lib/demo.js'
 import { Icon, Logo } from '../components/ui.jsx'
 
-// ─── Hidden guest page: /download/:id ────────────────────────
-// Not linked anywhere on the site; the booth shows its QR on the
-// success screen. Valid for 24 hours after the session, then this
-// page becomes a polite goodbye. There is no sample/demo mode: an
-// unknown or expired id shows the honest state below.
+// ─── Guest page: /download/:id ───────────────────────────────
+// Reached by scanning the booth's QR on the success screen. Valid for
+// 24 hours after the session, then this page becomes a polite goodbye.
+// /download/demo is the public sample: the same page built from sample
+// photos, so clients can see what their guests will get. Any other unknown
+// or expired id shows the honest state below.
 
 function useCountdown(expiresAt) {
   const [now, setNow] = useState(Date.now())
@@ -27,6 +29,7 @@ function useCountdown(expiresAt) {
 
 export default function Download() {
   const { id } = useParams()
+  const isDemo = id === 'demo'
   const [state, setState] = useState({ kind: 'loading' })
 
   useEffect(() => {
@@ -40,16 +43,46 @@ export default function Download() {
 
   useEffect(() => {
     let live = true
-    fetchDownload(id)
-      .then((data) => live && setState({ kind: 'ready', data }))
-      .catch((error) => {
-        if (!live) return
-        if (error.status === 410) setState({ kind: 'expired' })
-        else if (error.status === 404) setState({ kind: 'invalid' })
-        else setState({ kind: 'error', message: error.message })
-      })
-    return () => { live = false }
-  }, [id])
+    if (isDemo) {
+      buildDemoStrip()
+        .catch(() => null)
+        .then((strip) => live && setState({ kind: 'ready', data: demoDownload(strip) }))
+      return () => { live = false }
+    }
+
+    let retries = 0
+    let retryTimer = null
+
+    const loadDownload = () => {
+      fetchDownload(id)
+        .then((data) => {
+          if (live) setState({ kind: 'ready', data })
+        })
+        .catch((error) => {
+          if (!live) return
+          if (error.status === 410) {
+            setState({ kind: 'expired' })
+          } else if (error.status === 404) {
+            if (retries < 6) {
+              retries += 1
+              setState({ kind: 'preparing', attempt: retries })
+              retryTimer = setTimeout(loadDownload, 2000)
+            } else {
+              setState({ kind: 'invalid' })
+            }
+          } else {
+            setState({ kind: 'error', message: error.message })
+          }
+        })
+    }
+
+    loadDownload()
+
+    return () => {
+      live = false
+      if (retryTimer) clearTimeout(retryTimer)
+    }
+  }, [id, isDemo])
 
   const data = state.kind === 'ready' ? state.data : null
   const expiresAt = data?.expiresAt
@@ -72,10 +105,17 @@ export default function Download() {
       </header>
 
       <main className="wrap" style={{ flex: 1, width: '100%', paddingBottom: 90 }}>
-        {state.kind === 'loading' && (
+        {(state.kind === 'loading' || state.kind === 'preparing') && (
           <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--muted)' }}>
-            <div style={{ fontSize: '2rem' }}>📸</div>
-            <p style={{ marginTop: 10 }}>Fetching your photos…</p>
+            <div style={{ fontSize: '2.5rem' }}>📸</div>
+            <p style={{ marginTop: 14, fontSize: '1.1rem', fontWeight: 600, color: 'var(--ink)' }}>
+              {state.kind === 'preparing'
+                ? 'Your photos are being prepared from the booth…'
+                : 'Fetching your photos…'}
+            </p>
+            <p style={{ fontSize: '0.9rem', color: 'var(--muted)', marginTop: 4 }}>
+              Almost ready! Please hold on a moment.
+            </p>
           </div>
         )}
 

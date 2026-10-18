@@ -9,6 +9,7 @@ import {
   Image,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import type { Orientation } from '@happypix/types';
 import {
   ScreenContainer,
@@ -49,6 +50,7 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isFocused = useIsFocused();
 
   useEffect(() => {
     setIdleTimerEnabled(true);
@@ -57,10 +59,10 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-    if (secondsLeft === 0) {
+    if (secondsLeft === 0 && isFocused) {
       resetGuestSession(navigation);
     }
-  }, [secondsLeft]);
+  }, [secondsLeft, isFocused]);
 
   const selectOrientation = (orientation: Orientation) => {
     SoundManager.play('click');

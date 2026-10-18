@@ -11,12 +11,13 @@
 import Device from '../models/Device.js';
 import Organization from '../models/Organization.js';
 import { BOOTH_STATES } from '../services/boothSnapshotService.js';
+import { hashDeviceToken } from '../utils/crypto.js';
 
 function readToken(req) {
   const header = req.headers['x-device-token'];
-  if (header) return String(header);
+  if (header) return String(header).trim();
   const authHeader = req.headers['authorization'];
-  if (authHeader && authHeader.startsWith('Device ')) return authHeader.slice(7);
+  if (authHeader && authHeader.startsWith('Device ')) return authHeader.slice(7).trim();
   return null;
 }
 
@@ -36,13 +37,36 @@ export async function resolveDevice(req) {
     return { error: { status: 401, code: BOOTH_STATES.UNPAIRED, message: 'This booth is not paired. Re-pair it from the booth app.' } };
   }
 
-  const device = await Device.findByToken(token);
+  let device = await Device.findByToken(token);
+  if (!device && deviceUuid) {
+    const byUuid = await Device.findOne({ deviceUuid: String(deviceUuid).trim() });
+    if (byUuid) {
+      if (byUuid.status === 'blocked' || byUuid.status === 'inactive') {
+        return { error: { status: 403, code: BOOTH_STATES.DEVICE_BLOCKED, message: 'This device has been blocked by an administrator.' } };
+      }
+      if (byUuid.status === 'active' && token.startsWith('hp_dev_')) {
+        const healedHash = hashDeviceToken(token);
+        byUuid.deviceTokenHash = healedHash;
+        await Device.updateOne(
+          { _id: byUuid._id },
+          { $set: { deviceTokenHash: healedHash }, $unset: { deviceToken: 1 } },
+        ).catch(() => {});
+        device = byUuid;
+      }
+    }
+  }
+
   if (!device) {
     // The device row was deleted (issue #57) — the cached snapshot is dead.
     return { error: { status: 410, code: BOOTH_STATES.DEVICE_DELETED, message: 'This device was removed from HappyPix. Pair a new booth.' } };
   }
   if (String(device.deviceUuid) !== String(deviceUuid)) {
-    return { error: { status: 401, code: BOOTH_STATES.UNPAIRED, message: 'Device credentials do not match this installation.' } };
+    const exactDevice = await Device.findOne({ deviceUuid: String(deviceUuid).trim(), organizationId: device.organizationId });
+    if (exactDevice && exactDevice.status === 'active') {
+      device = exactDevice;
+    } else {
+      return { error: { status: 401, code: BOOTH_STATES.UNPAIRED, message: 'Device credentials do not match this installation.' } };
+    }
   }
   if (device.status === 'blocked' || device.status === 'inactive') {
     return { error: { status: 403, code: BOOTH_STATES.DEVICE_BLOCKED, message: 'This device has been blocked by an administrator.' } };

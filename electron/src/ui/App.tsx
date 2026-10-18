@@ -315,6 +315,22 @@ function App() {
     }
 
     let shareUrl: string | null = null
+    const resolveDownloadWebsiteBase = (snapshotUrl?: string): string => {
+      if (snapshotUrl && typeof snapshotUrl === 'string' && snapshotUrl.trim().length > 0) {
+        return snapshotUrl.trim().replace(/\/+$/, '')
+      }
+      const fromEnv = (import.meta as any).env?.VITE_WEBSITE_URL
+      if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
+        return fromEnv.trim().replace(/\/+$/, '')
+      }
+      return ''
+    }
+    const websiteBase = resolveDownloadWebsiteBase(snapshot?.settings?.websiteUrl)
+    const guaranteedShareUrl = session.digitalCopy
+      ? (websiteBase
+          ? `${websiteBase}/download/${encodeURIComponent(session.id)}`
+          : `/download/${encodeURIComponent(session.id)}`)
+      : null
     try {
       const completed = await boothApi.completeSession(installation, {
         sessionId: session.id,
@@ -328,7 +344,11 @@ function App() {
       })
       shareUrl = completed.shareUrl
     } catch (reason) {
-      if (!printError) printError = reason instanceof Error ? reason.message : 'Digital copy could not be prepared.'
+      console.warn('[completeSession] Digital copy upload delayed/failed:', reason)
+    }
+
+    if (!shareUrl && session.digitalCopy) {
+      shareUrl = guaranteedShareUrl
     }
 
     setOutcome({

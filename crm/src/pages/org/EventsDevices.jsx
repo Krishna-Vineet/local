@@ -651,6 +651,18 @@ function DeviceEditModal({ device, onClose, onSaved }) {
 
 const FAMILY_ORDER = Object.fromEntries(LAYOUT_FAMILIES.map((f, i) => [f.id, i]))
 
+function getTemplateTypeLabel(t) {
+  if (t?.source === 'manual' || t?.source === 'custom') return 'Custom'
+  if (t?.source === 'ai_generated' || t?.source === 'ai') return 'AI generated'
+  return 'Default'
+}
+
+function getTemplateTypeTone(label) {
+  if (label === 'Custom') return 'pink'
+  if (label === 'AI generated') return 'purple'
+  return 'info'
+}
+
 function EventEditor({ open, initial, templates, defaults, onClose, onSaved }) {
   const { toast } = useApp()
   const [busy, setBusy] = useState(false)
@@ -686,7 +698,7 @@ function EventEditor({ open, initial, templates, defaults, onClose, onSaved }) {
     cashfreeEnv: initial?.cashfreeEnv || 'production',
   }))
   const [pricingSubTab, setPricingSubTab] = useState('templates')
-  const [tf, setTf] = useState({ orientation: '', sheet: '', slots: '', category: '' })
+  const [tf, setTf] = useState({ orientation: '', sheet: '', slots: '', category: '', type: '' })
   const [step, setStep] = useState(0)
   useEffect(() => {
     if (open) {
@@ -756,10 +768,11 @@ function EventEditor({ open, initial, templates, defaults, onClose, onSaved }) {
 
   const filteredTemplates = useMemo(() => {
     let r = templates
-    if (tf.orientation) r = r.filter((t) => t.layout?.orientation === tf.orientation)
-    if (tf.sheet) r = r.filter((t) => t.layout?.sheets?.includes(tf.sheet))
-    if (tf.slots) r = r.filter((t) => t.layout?.slots === Number(tf.slots))
+    if (tf.orientation) r = r.filter((t) => resolveLayout(t)?.orientation === tf.orientation || t.layout?.orientation === tf.orientation)
+    if (tf.sheet) r = r.filter((t) => resolveLayout(t)?.sheets?.includes(tf.sheet) || t.layout?.sheets?.includes(tf.sheet))
+    if (tf.slots) r = r.filter((t) => (resolveLayout(t)?.slots ?? t.layout?.slots) === Number(tf.slots))
     if (tf.category) r = r.filter((t) => t.category === tf.category)
+    if (tf.type) r = r.filter((t) => getTemplateTypeLabel(t) === tf.type)
     return r
   }, [templates, tf])
 
@@ -810,6 +823,9 @@ function EventEditor({ open, initial, templates, defaults, onClose, onSaved }) {
   const getTemplateDefaultPrice = useCallback((t) => {
     if (defaults?.templatePrices?.[t.id] != null) {
       return defaults.templatePrices[t.id]
+    }
+    if (t?.price != null && !isNaN(Number(t.price)) && Number(t.price) > 0) {
+      return Number(t.price)
     }
     const layout = resolveLayout(t)
     if (!layout) return 0
@@ -1187,6 +1203,12 @@ function EventEditor({ open, initial, templates, defaults, onClose, onSaved }) {
                 <option value="">Category</option>
                 {TEMPLATE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </Select>
+              <Select value={tf.type} onChange={(e) => setTf((x) => ({ ...x, type: e.target.value }))} style={{ width: 132, height: 32, fontSize: 12 }}>
+                <option value="">All types</option>
+                <option value="Default">Default</option>
+                <option value="Custom">Custom</option>
+                <option value="AI generated">AI generated</option>
+              </Select>
               <span className="t11 faint">{filteredTemplates.length} shown across {groups.length} layout{groups.length === 1 ? '' : 's'}</span>
             </div>
 
@@ -1198,21 +1220,20 @@ function EventEditor({ open, initial, templates, defaults, onClose, onSaved }) {
                       {layout.name}
                       <span className="t11 muted fw400" style={{ fontWeight: 400 }}> · {layoutLabel(layout)}</span>
                     </span>
-                    <span className="chip chip-info" style={{ height: 19, fontSize: 10.5 }} title="Guest price saved for this event">
-                      {priceFor(layout) != null ? `₹${priceFor(layout)}/print` : 'not priced'}
-                    </span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8 }}>
                     {list.map((t) => {
                       const sel = form.templateIds.includes(t.id)
                       const a = layout.canvas.w / layout.canvas.h
                       const pw = a < 0.45 ? 52 : a < 1 ? 84 : 108
+                      const typeLabel = getTemplateTypeLabel(t)
+                      const typeTone = getTemplateTypeTone(typeLabel)
                       return (
                         <button
                           key={t.id}
                           type="button"
                           onClick={() => toggleTemplate(t.id)}
-                          title={`${t.name} — ${t.category}`}
+                          title={`${t.name} — ${typeLabel} (${t.category || 'General'})`}
                           style={{
                             position: 'relative', padding: 6, borderRadius: 8, cursor: 'pointer', textAlign: 'center',
                             border: `1.5px solid ${sel ? 'var(--hp-pink)' : 'var(--line)'}`,
@@ -1223,7 +1244,11 @@ function EventEditor({ open, initial, templates, defaults, onClose, onSaved }) {
                             <TemplatePreview template={t} width={pw} />
                           </div>
                           <div className="t11 fw6 mt-8 ellipsis" style={{ fontSize: 10.5 }} title={t.name}>{t.name}</div>
-                          <div className="t11 faint" style={{ fontSize: 9 }}>{t.source === 'designer' ? 'Designer' : t.source === 'ai_generated' ? 'AI' : 'Playground'}</div>
+                          <div style={{ marginTop: 4, display: 'flex', justifyContent: 'center' }}>
+                            <span className={`chip chip-${typeTone}`} style={{ height: 18, fontSize: 9.5, padding: '0 6px' }}>
+                              {typeLabel}
+                            </span>
+                          </div>
                           {sel ? (
                             <span style={{
                               position: 'absolute', top: 4, right: 4, width: 18, height: 18, borderRadius: '50%',

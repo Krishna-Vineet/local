@@ -38,7 +38,7 @@ export default function PricingCards({ plans, selectedKey, onSelect, linkToCheck
         return (
           <motion.article
             key={plan.key}
-            className={`plan-card${featured ? ' hot' : ''}${selectedKey === plan.key ? ' selected' : ''}`}
+            className={`plan-card${featured ? ' hot foil' : ''}${selectedKey === plan.key ? ' selected' : ''}`}
             initial={{ opacity: 0, y: 26 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-40px' }}

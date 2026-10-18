@@ -25,8 +25,14 @@ export default function TemplatePreview({ template, width = 120, photos, logos, 
         bgUrl = bgAsset.url;
       }
     }
-    if (!bgUrl && bgAssetId) {
-      bgUrl = bgAssetId.startsWith('http') || bgAssetId.startsWith('/') ? bgAssetId : `/api/org/asset-proxy?key=${encodeURIComponent(bgAssetId)}`;
+    if (!bgUrl && bgAssetId && !bgAssetId.startsWith('temp-')) {
+      bgUrl = bgAssetId.startsWith('http') || bgAssetId.startsWith('data:') || bgAssetId.startsWith('/') ? bgAssetId : `/api/org/asset-proxy?key=${encodeURIComponent(bgAssetId)}`;
+    }
+    if (bgUrl && (bgUrl.includes('amazonaws.com') || bgUrl.includes('happypix-bucket')) && !bgUrl.includes('X-Amz-Signature')) {
+      const s3Key = (bgAssetId && !bgAssetId.startsWith('temp-') && !bgAssetId.startsWith('http') && !bgAssetId.startsWith('data:'))
+        ? bgAssetId
+        : bgUrl.replace(/^https?:\/\/[^/]+\//, '').split('?')[0];
+      bgUrl = `/api/org/asset-proxy?key=${encodeURIComponent(s3Key)}`;
     }
     if (bgUrl && bgUrl.startsWith('http://localhost:5000/uploads')) {
       bgUrl = bgUrl.replace('http://localhost:5000', '');
@@ -59,24 +65,37 @@ export default function TemplatePreview({ template, width = 120, photos, logos, 
       mappedTemplate.design.decorations = template.design.decorations.map(dec => {
         let newDec = { ...dec };
         
-        if (newDec.assetId && template.assets) {
+        if (!newDec.url && newDec.assetId && template.assets) {
            const decAsset = template.assets.find(a => a.assetId === newDec.assetId);
            if (decAsset && decAsset.url) {
               newDec.url = decAsset.url;
            }
         }
+        if (newDec.url && (newDec.url.includes('amazonaws.com') || newDec.url.includes('happypix-bucket')) && !newDec.url.includes('X-Amz-Signature')) {
+           const s3Key = (newDec.assetId && !newDec.assetId.startsWith('temp-') && !newDec.assetId.startsWith('http') && !newDec.assetId.startsWith('data:'))
+             ? newDec.assetId
+             : newDec.url.replace(/^https?:\/\/[^/]+\//, '').split('?')[0];
+           newDec.url = `/api/org/asset-proxy?key=${encodeURIComponent(s3Key)}`;
+        }
+        if (newDec.url && newDec.url.startsWith('http://localhost:5000/uploads')) {
+           newDec.url = newDec.url.replace('http://localhost:5000', '');
+        }
 
-        if (newDec.x !== undefined && newDec.x <= 1 && newDec.y <= 1) {
+        const rawX = newDec.x ?? 0;
+        const rawY = newDec.y ?? 0;
+        const rawW = newDec.width ?? 1;
+        const rawH = newDec.height ?? 1;
+        if (Math.abs(rawX) <= 4 && Math.abs(rawY) <= 4 && rawW <= 4 && rawH <= 4) {
           return {
             ...newDec,
-            x: newDec.x * w,
-            y: newDec.y * h,
-            width: newDec.width ? newDec.width * w : undefined,
-            height: newDec.height ? newDec.height * h : undefined,
-            size: newDec.width ? newDec.width * w : newDec.size
-          }
+            x: rawX * w,
+            y: rawY * h,
+            width: rawW * w,
+            height: rawH * h,
+            size: rawW * w,
+          };
         }
-        return newDec
+        return newDec;
       })
     }
   }

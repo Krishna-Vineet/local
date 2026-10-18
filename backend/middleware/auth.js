@@ -67,6 +67,9 @@ export const authenticate = async (req, res, next) => {
       const authHeader = req.headers.authorization;
       if (authHeader?.startsWith('Bearer ')) token = authHeader.split(' ')[1];
     }
+    if (!token && typeof req.query?.token === 'string' && req.query.token.trim()) {
+      token = req.query.token.trim();
+    }
     if (!token) return res.status(401).json({ error: 'Access denied. No token provided.', code: 'UNAUTHENTICATED' });
 
     let decoded;

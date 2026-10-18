@@ -67,33 +67,145 @@ export function SupportDecision({ request }) {
   return null
 }
 
+const MAX_IMAGES = 4
+const MAX_RAW_IMAGE_BYTES = 15 * 1024 * 1024 // 15 MB raw input; compressed client-side before sending
+
+function compressImageToDataUrl(file, maxDim = 1400, quality = 0.82) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onerror = () => resolve(null)
+    reader.onload = () => {
+      const rawUrl = String(reader.result || '')
+      if (!rawUrl.startsWith('data:image/')) {
+        resolve(null)
+        return
+      }
+      const img = new Image()
+      img.onerror = () => resolve(rawUrl)
+      img.onload = () => {
+        try {
+          let { width, height } = img
+          if (width <= maxDim && height <= maxDim && file.size <= 300 * 1024) {
+            resolve(rawUrl)
+            return
+          }
+          if (width > maxDim || height > maxDim) {
+            const ratio = Math.min(maxDim / width, maxDim / height)
+            width = Math.max(1, Math.round(width * ratio))
+            height = Math.max(1, Math.round(height * ratio))
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) {
+            resolve(rawUrl)
+            return
+          }
+          ctx.drawImage(img, 0, 0, width, height)
+          const mime = file.type === 'image/png' && file.size <= 600 * 1024 ? 'image/png' : 'image/jpeg'
+          const compressed = canvas.toDataURL(mime, quality)
+          resolve(compressed || rawUrl)
+        } catch {
+          resolve(rawUrl)
+        }
+      }
+      img.src = rawUrl
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 export function SupportThread({ request, mineSide }) {
+  const [previewSrc, setPreviewSrc] = useState(null)
   return (
-    <div className="support-thread">
-      {(request.messages || []).map((message) => {
-        const mine = message.side === mineSide
-        return (
-          <div key={message.id} className="thread-msg" style={mine ? { flexDirection: 'row-reverse' } : undefined}>
-            <Avatar name={message.authorName || 'User'} size={29} style={mine ? { background: 'var(--hp-pink)' } : undefined} />
-            <div style={{ maxWidth: '88%', minWidth: 0 }}>
-              <div className="thread-meta" style={mine ? { textAlign: 'right' } : undefined}>
-                {message.authorName} · {message.authorRole} · {relativeTime(message.at)}
-              </div>
-              {message.text ? <div className={`thread-bubble${mine ? ' mine' : ''}`} style={{ whiteSpace: 'pre-wrap' }}>{message.text}</div> : null}
-              {message.images?.length ? (
-                <div className="support-images" style={mine ? { justifyContent: 'flex-end' } : undefined}>
-                  {message.images.map((src, index) => (
-                    <a key={index} href={src} target="_blank" rel="noreferrer" title="Open image">
-                      <img src={src} alt={`Attachment ${index + 1}`} />
-                    </a>
-                  ))}
+    <>
+      <div className="support-thread">
+        {(request.messages || []).map((message, idx) => {
+          const mine = message.side === mineSide
+          const imgs = Array.isArray(message.images)
+            ? message.images.filter((src) => typeof src === 'string' && src.trim().length > 0)
+            : []
+          return (
+            <div key={message.id || idx} className="thread-msg" style={mine ? { flexDirection: 'row-reverse' } : undefined}>
+              <Avatar name={message.authorName || 'User'} size={29} style={mine ? { background: 'var(--hp-pink)' } : undefined} />
+              <div style={{ maxWidth: '88%', minWidth: 0 }}>
+                <div className="thread-meta" style={mine ? { textAlign: 'right' } : undefined}>
+                  {message.authorName} · {message.authorRole} · {relativeTime(message.at)}
                 </div>
-              ) : null}
+                {message.text ? <div className={`thread-bubble${mine ? ' mine' : ''}`} style={{ whiteSpace: 'pre-wrap' }}>{message.text}</div> : null}
+                {imgs.length ? (
+                  <div className="support-images" style={mine ? { justifyContent: 'flex-end' } : undefined}>
+                    {imgs.map((src, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => setPreviewSrc(src)}
+                        title="Click to view full image"
+                        style={{
+                          padding: 0,
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'zoom-in',
+                          display: 'inline-block',
+                        }}
+                      >
+                        <img src={src} alt={`Attachment ${index + 1}`} loading="lazy" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
+          )
+        })}
+      </div>
+
+      {previewSrc ? (
+        <div
+          className="modal-backdrop"
+          onClick={() => setPreviewSrc(null)}
+          style={{ zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '90vw',
+              maxHeight: '88vh',
+              background: 'var(--surface, #161822)',
+              border: '1px solid var(--line, rgba(255,255,255,0.12))',
+              borderRadius: 14,
+              padding: 14,
+              boxShadow: '0 24px 64px rgba(0,0,0,0.65)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div className="row between gap-12">
+              <span className="t12 muted">Attachment Preview</span>
+              <div className="row gap-8">
+                <a
+                  href={previewSrc}
+                  download={`support-image-${Date.now()}.jpg`}
+                  className="btn btn-outline btn-sm"
+                >
+                  Download
+                </a>
+                <Button variant="ghost" size="sm" onClick={() => setPreviewSrc(null)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+            <img
+              src={previewSrc}
+              alt="Support attachment preview"
+              style={{ maxWidth: '84vw', maxHeight: '76vh', objectFit: 'contain', borderRadius: 10 }}
+            />
           </div>
-        )
-      })}
-    </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 
@@ -101,29 +213,52 @@ export function MessageComposer({ onSend, busy = false, placeholder = 'Write a m
   const [message, setMessage] = useState('')
   const [images, setImages] = useState([])
   const [fileError, setFileError] = useState('')
+  const [processingFiles, setProcessingFiles] = useState(false)
 
-  const addImages = (event) => {
-    const files = [...(event.target.files || [])]
-    event.target.value = ''
+  const processFiles = async (files) => {
     setFileError('')
-    if (images.length + files.length > 4) {
-      setFileError('Attach up to 4 images per message.')
+    if (!files.length) return
+    if (images.length + files.length > MAX_IMAGES) {
+      setFileError(`Attach up to ${MAX_IMAGES} images per message.`)
       return
     }
     const valid = files.filter((file) => {
-      if (!file.type.startsWith('image/')) return false
-      if (file.size > 350 * 1024) {
-        setFileError('Each image must be 350 KB or smaller in demo mode.')
+      if (!file.type || !file.type.startsWith('image/')) {
+        setFileError('Only image files are supported.')
+        return false
+      }
+      if (file.size > MAX_RAW_IMAGE_BYTES) {
+        setFileError('Each image must be 15 MB or smaller.')
         return false
       }
       return true
     })
-    Promise.all(valid.map((file) => new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result)
-      reader.onerror = () => resolve(null)
-      reader.readAsDataURL(file)
-    }))).then((items) => setImages((current) => [...current, ...items.filter(Boolean)].slice(0, 4)))
+    if (!valid.length) return
+    setProcessingFiles(true)
+    try {
+      const items = await Promise.all(valid.map((file) => compressImageToDataUrl(file)))
+      setImages((current) => [...current, ...items.filter(Boolean)].slice(0, MAX_IMAGES))
+    } finally {
+      setProcessingFiles(false)
+    }
+  }
+
+  const addImages = (event) => {
+    const files = [...(event.target.files || [])]
+    event.target.value = ''
+    void processFiles(files)
+  }
+
+  const handlePaste = (event) => {
+    const items = [...(event.clipboardData?.items || [])]
+    const imageFiles = items
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter(Boolean)
+    if (imageFiles.length > 0) {
+      event.preventDefault()
+      void processFiles(imageFiles)
+    }
   }
 
   const send = async () => {
@@ -139,7 +274,7 @@ export function MessageComposer({ onSend, busy = false, placeholder = 'Write a m
 
   return (
     <div>
-      <TextArea value={message} onChange={(e) => setMessage(e.target.value)} placeholder={placeholder} />
+      <TextArea value={message} onChange={(e) => setMessage(e.target.value)} onPaste={handlePaste} placeholder={placeholder} />
       {images.length ? (
         <div className="support-compose-images">
           {images.map((src, index) => (
@@ -152,13 +287,13 @@ export function MessageComposer({ onSend, busy = false, placeholder = 'Write a m
       ) : null}
       <div className="row between gap-12 mt-8">
         <div>
-          <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer' }}>
-            <Icon name="image" size={14} /> Add images
-            <input type="file" accept="image/*" multiple onChange={addImages} style={{ display: 'none' }} />
+          <label className="btn btn-outline btn-sm" style={{ cursor: processingFiles ? 'wait' : 'pointer', opacity: processingFiles ? 0.7 : 1 }}>
+            <Icon name="image" size={14} /> {processingFiles ? 'Processing…' : `Add images (${images.length}/${MAX_IMAGES})`}
+            <input type="file" accept="image/*" multiple onChange={addImages} disabled={processingFiles || busy} style={{ display: 'none' }} />
           </label>
           {fileError ? <div className="input-error">{fileError}</div> : null}
         </div>
-        <Button variant="primary" size="sm" icon="send" onClick={send} disabled={busy || (requireText ? !message.trim() : (!message.trim() && !images.length))}>
+        <Button variant="primary" size="sm" icon="send" onClick={send} disabled={busy || processingFiles || (requireText ? !message.trim() : (!message.trim() && !images.length))}>
           {buttonLabel}
         </Button>
       </div>

@@ -83,9 +83,9 @@ deviceSchema.set('toObject', { virtuals: true });
 // value in a local variable to return it once; after save, only the hash
 // exists anywhere in the database.
 deviceSchema.pre('save', function () {
-  if (this.deviceToken) {
+  if (this.isModified('deviceToken') && typeof this.deviceToken === 'string' && this.deviceToken.startsWith('hp_dev_')) {
     this.deviceTokenHash = hashDeviceToken(this.deviceToken);
-    this.deviceToken = null;
+    this.deviceToken = undefined;
   }
 });
 
@@ -100,13 +100,23 @@ deviceSchema.statics.findByToken = async function (rawToken) {
   const tokenHash = hashDeviceToken(rawToken);
   const byHash = await this.findOne({ deviceTokenHash: tokenHash });
   if (byHash) return byHash;
-  // Legacy row still holding a plaintext token: accept it once, then
-  // migrate it to hash-only storage so the plaintext disappears.
-  const legacy = await this.findOne({ deviceToken: rawToken });
+  // Legacy row still holding a plaintext token or double-hashed token:
+  // accept it once, then migrate it to hash-only storage.
+  const doubleHash = hashDeviceToken(tokenHash);
+  const legacy = await this.findOne({
+    $or: [
+      { deviceToken: rawToken },
+      { deviceToken: tokenHash },
+      { deviceTokenHash: doubleHash },
+    ],
+  });
   if (legacy) {
     legacy.deviceTokenHash = tokenHash;
-    legacy.deviceToken = null;
-    await legacy.save().catch(() => {});
+    legacy.deviceToken = undefined;
+    await this.updateOne(
+      { _id: legacy._id },
+      { $set: { deviceTokenHash: tokenHash }, $unset: { deviceToken: 1 } },
+    ).catch(() => {});
     return legacy;
   }
   return null;

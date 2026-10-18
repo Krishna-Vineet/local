@@ -264,7 +264,7 @@ Does the CRM and Booth actually enforce features based on the customer's plan?
 ---
 
 ### 5.2 Deep-Dive: Complete Absence of Add-on Enforcement
-Customers are charged ₹299/month (or ₹2,999 one-time) for:
+Customers are charged the add-on's monthly (or one-time) price for:
 1. `addon-headshot` (Professional Headshot Mode)
 2. `addon-video` (Video, GIF & Boomerang Booth Mode)
 3. `addon-branding` (Custom Start Screen Branding)

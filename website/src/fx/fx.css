@@ -1,0 +1,223 @@
+/* HappyPix — effects layer
+   Loaded after index.css. Every effect is decorative, slow and quiet, and is
+   switched off for visitors who prefer reduced motion.
+
+   1 liquid morph · 2 holographic foil · 3 neon glow · 4 kinetic typography
+   5 particle swarm · 6 topographic lines · 7 glass morphism
+   8 paper cut & origami · 9 flow fields                                    */
+
+.fx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; z-index: 1; }
+.fx-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* ───── 1 · Liquid morph (hero) ───── */
+.liquid-stage {
+  position: absolute; right: 2%; top: 8%; width: 52%; height: 84%;
+  pointer-events: none; z-index: 1; filter: url(#fx-goo); opacity: .5;
+}
+.liquid-orb {
+  position: absolute; display: block;
+  border-radius: 42% 58% 61% 39% / 47% 37% 63% 53%;
+  animation: liquidMorph 14s ease-in-out infinite alternate, liquidDrift 26s ease-in-out infinite;
+  will-change: border-radius, transform;
+}
+.liquid-orb.o1 { width: 30%; height: 36%; left: 24%; top: 16%; background: linear-gradient(135deg, #ff5aab, #ea097f 55%, #8c0a5a); }
+.liquid-orb.o2 { width: 26%; height: 32%; left: 52%; top: 40%; background: linear-gradient(135deg, #8fb6ff, #3871c1 60%, #5f4caa); animation-delay: -5s, -9s; }
+.liquid-orb.o3 { width: 22%; height: 28%; left: 8%; top: 54%; background: linear-gradient(135deg, #c4adff, #5f4caa); animation-delay: -9s, -4s; }
+.liquid-orb.o4 { width: 13%; height: 17%; left: 68%; top: 6%; background: linear-gradient(135deg, #ffe49a, #f7b731); animation-delay: -3s, -13s; }
+@keyframes liquidMorph {
+  0%   { border-radius: 42% 58% 61% 39% / 47% 37% 63% 53%; }
+  33%  { border-radius: 61% 39% 33% 67% / 55% 62% 38% 45%; }
+  66%  { border-radius: 35% 65% 52% 48% / 38% 45% 55% 62%; }
+  100% { border-radius: 58% 42% 45% 55% / 62% 40% 60% 38%; }
+}
+@keyframes liquidDrift {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50%      { transform: translate3d(-3%, 4%, 0) rotate(8deg); }
+}
+
+/* ───── 2 · Holographic foil ─────
+   Light cards use multiply (tints the paper), dark surfaces use screen.
+   The rainbow band and the glare follow the pointer via --mx / --my. */
+.foil { position: relative; isolation: isolate; --foil-hi: rgba(120, 100, 180, .22); }
+.foil.foil-dark { --foil-hi: rgba(255, 255, 255, .6); }
+.foil::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; z-index: 4; mix-blend-mode: multiply; opacity: .5;
+  transition: opacity .6s ease;
+  background:
+    radial-gradient(340px circle at var(--mx, 50%) var(--my, 30%), var(--foil-hi), rgba(255, 255, 255, 0) 62%),
+    linear-gradient(115deg,
+      rgba(255, 90, 170, 0) 0%,
+      rgba(255, 90, 170, .55) 16%,
+      rgba(255, 214, 90, .55) 28%,
+      rgba(110, 255, 210, .55) 40%,
+      rgba(90, 150, 255, .55) 52%,
+      rgba(200, 120, 255, .55) 64%,
+      rgba(255, 90, 170, 0) 78%);
+  background-size: 100% 100%, 260% 100%;
+  background-position: 0 0, var(--mx, 50%) 0;
+}
+.foil.foil-dark::after { mix-blend-mode: screen; opacity: .32; }
+.foil:hover::after { opacity: .85; }
+.foil.foil-dark:hover::after { opacity: .6; }
+
+/* ───── 3 · Neon glow ───── */
+.hero h1 em.neon {
+  color: #ffd9ec;
+  text-shadow: 0 0 6px rgba(255, 80, 170, .7), 0 0 18px rgba(234, 9, 127, .55), 0 0 42px rgba(234, 9, 127, .35);
+  animation: neonIgnite 2.4s ease-out both, neonBreathe 7s ease-in-out 2.4s infinite;
+}
+/* a single ignition flicker on load, then a slow breathing glow */
+@keyframes neonIgnite {
+  0%   { opacity: .2; }
+  10%  { opacity: .85; }
+  14%  { opacity: .35; }
+  22%  { opacity: 1; }
+  28%  { opacity: .75; }
+  34%  { opacity: 1; }
+  100% { opacity: 1; }
+}
+@keyframes neonBreathe {
+  0%, 100% { text-shadow: 0 0 6px rgba(255, 80, 170, .6), 0 0 18px rgba(234, 9, 127, .45), 0 0 42px rgba(234, 9, 127, .25); }
+  50%      { text-shadow: 0 0 10px rgba(255, 80, 170, .85), 0 0 26px rgba(234, 9, 127, .65), 0 0 56px rgba(234, 9, 127, .42); }
+}
+.btn-neon {
+  animation: btnGlow 3.6s ease-in-out infinite;
+}
+.btn-neon:hover { animation-play-state: paused; box-shadow: 0 0 0 1px rgba(255, 170, 215, .7), 0 0 26px rgba(234, 9, 127, .8), 0 0 60px rgba(234, 9, 127, .4); }
+@keyframes btnGlow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 150, 205, .35), 0 0 12px rgba(234, 9, 127, .45), 0 0 30px rgba(234, 9, 127, .22); }
+  50%      { box-shadow: 0 0 0 1px rgba(255, 150, 205, .6), 0 0 22px rgba(234, 9, 127, .7), 0 0 52px rgba(234, 9, 127, .36); }
+}
+.page-hero .accent-it, .section-ink .accent-it, .center-cta .accent-it {
+  text-shadow: 0 0 24px rgba(234, 9, 127, .35);
+}
+
+/* ───── 4 · Kinetic typography ───── */
+.kx-w {
+  display: inline-block; overflow: hidden; vertical-align: top;
+  padding: .06em .05em .16em; margin: -.06em -.05em -.16em;
+}
+.kx-w > span {
+  display: inline-block; transform: translateY(110%) rotate(3deg); transform-origin: 0 100%;
+  opacity: 0; transition: transform 1s cubic-bezier(.2, .8, .2, 1) var(--kd, 0s), opacity .8s ease var(--kd, 0s);
+}
+.kx.is-in .kx-w > span { transform: none; opacity: 1; }
+.kx.is-done .kx-w { overflow: visible; }
+
+/* scroll-reactive marquee: tilts slightly with scroll speed (set by useGlobalFx) */
+.marquee { transform: skewY(var(--mq-skew, 0deg)); transform-origin: 50% 50%; will-change: transform; }
+
+/* ───── 5 · Particle swarm (hero) ───── */
+.hero > .fx-canvas { z-index: 1; opacity: .9; }
+
+/* ───── 6 · Topographic lines ───── */
+.topo {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none;
+  animation: topoDrift 38s ease-in-out infinite alternate; transform-origin: 50% 50%;
+}
+@keyframes topoDrift {
+  from { transform: scale(1.02) translate3d(0, 0, 0); }
+  to   { transform: scale(1.1) translate3d(-1.2%, .8%, 0); }
+}
+.topo-host { position: relative; overflow: hidden; }
+.topo-host > .wrap { position: relative; z-index: 1; }
+.center-cta > canvas.topo { position: absolute; z-index: 0; opacity: .9; }
+.center-cta > canvas.topo ~ * { position: relative; z-index: 1; }
+
+/* ───── 7 · Glass morphism ───── */
+.glass {
+  background: linear-gradient(145deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, .05));
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, .24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .38), inset 0 -1px 0 rgba(255, 255, 255, .06), 0 30px 60px -24px rgba(8, 4, 20, .6);
+  border-radius: 18px;
+}
+.nav { transition: background .35s ease, box-shadow .35s ease; }
+.nav.scrolled {
+  background: rgba(23, 18, 40, .62);
+  -webkit-backdrop-filter: blur(16px) saturate(170%);
+  backdrop-filter: blur(16px) saturate(170%);
+}
+.hero-glass {
+  position: absolute; right: 7%; top: 25%; z-index: 3; width: 268px;
+  padding: 16px 16px 14px; color: #fff; animation: glassFloat 9s ease-in-out infinite;
+}
+.hg-head { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #ffd1e7; }
+.hg-dot { width: 7px; height: 7px; border-radius: 50%; background: #85c536; animation: livePulse 2s infinite; }
+.hg-frames { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 14px 0; }
+.hg-frames i {
+  display: block; aspect-ratio: 3 / 4; border-radius: 6px; opacity: .25;
+  background: linear-gradient(160deg, #ff9fd0, #ea097f 55%, #5f4caa);
+  animation: hgFrame 2.8s ease-in-out infinite;
+}
+.hg-frames i:nth-child(2) { background: linear-gradient(160deg, #a9cbff, #3871c1 55%, #1d2a55); animation-delay: .7s; }
+.hg-frames i:nth-child(3) { background: linear-gradient(160deg, #e3f7b8, #85c536 55%, #3f6b12); animation-delay: 1.4s; }
+.hg-frames i:nth-child(4) { background: linear-gradient(160deg, #ffe9a6, #f7b731 55%, #8a5d05); animation-delay: 2.1s; }
+.hg-bar { height: 6px; border-radius: 99px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+.hg-bar span { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #ea097f, #f7b731, #85c536); animation: hgBar 4.2s ease-in-out infinite; }
+.hg-foot { display: flex; justify-content: space-between; margin-top: 10px; font-size: 12.5px; color: #d9d2ee; }
+.hg-foot b { color: #fff; font-weight: 700; }
+@keyframes glassFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(133, 197, 54, .6); } 70%, 100% { box-shadow: 0 0 0 8px rgba(133, 197, 54, 0); } }
+@keyframes hgFrame { 0%, 100% { opacity: .25; transform: translateY(0); } 25% { opacity: 1; transform: translateY(-3px); } 60% { opacity: .6; } }
+@keyframes hgBar { 0% { width: 0; } 80%, 100% { width: 100%; } }
+
+/* ───── 8 · Paper cut & origami ───── */
+.paper-cut { position: relative; height: 0; z-index: 2; pointer-events: none; }
+.paper-cut svg {
+  position: absolute; left: 0; bottom: 0; width: 100%; height: 40px; display: block;
+  filter: drop-shadow(0 -3px 4px rgba(23, 18, 40, .14));
+}
+.paper-cut.floor { position: absolute; left: 0; right: 0; bottom: 0; height: 40px; }
+/* origami: the corner of each card is folded back on itself; the fold opens on hover */
+.card.origami { position: relative; }
+.origami::after {
+  content: ""; position: absolute; right: -1.5px; bottom: -1.5px; width: 22px; height: 22px;
+  background: linear-gradient(to top left, #efe5cc 0 50%, transparent 50%);
+  filter: drop-shadow(-2px -2px 3px rgba(23, 18, 40, .12));
+  pointer-events: none; transition: width .45s cubic-bezier(.2, .8, .2, 1), height .45s cubic-bezier(.2, .8, .2, 1);
+}
+.card.origami:hover::after { width: 34px; height: 34px; }
+
+/* ───── 9 · Flow field (page headers) ───── */
+.page-hero > .fx-canvas { z-index: 0; opacity: .85; }
+.page-hero .wrap { position: relative; z-index: 1; }
+
+/* ───── Hero adjustments ───── */
+@media (max-width: 1180px) { .hero-glass { display: none; } }
+@media (max-width: 860px) { .liquid-stage { width: 80%; height: 70%; top: 14%; right: -18%; opacity: .32; } }
+
+/* ───── Reduced motion: keep the layout, drop the movement ───── */
+@media (prefers-reduced-motion: reduce) {
+  .liquid-orb, .hero-glass, .hg-dot, .hg-frames i, .hg-bar span, .topo, .btn-neon,
+  .hero h1 em.neon { animation: none !important; }
+  .hero h1 em.neon { text-shadow: 0 0 14px rgba(234, 9, 127, .45); }
+  .kx-w > span { transform: none !important; opacity: 1 !important; transition: none !important; }
+  .marquee { transform: none !important; }
+  .foil::after { transition: none; }
+}
+
+/* ───── Liquid cursor (desktop, mouse only — see LiquidCursor.jsx) ───── */
+.lc-root {
+  position: fixed; left: 0; top: 0; width: 160px; height: 160px;
+  pointer-events: none; z-index: 9998; opacity: 0;
+  filter: url(#fx-goo-cursor); will-change: transform, opacity;
+}
+/* over images & links the droplets recede behind the page content */
+.lc-root.is-back { z-index: -1; }
+.lc-drop { position: absolute; left: 0; top: 0; display: block; will-change: transform, border-radius; }
+.lc-a { background: radial-gradient(circle at 35% 30%, #ff9fd0, #ea097f 55%, #8c0a5a); opacity: .8; }
+.lc-b { background: radial-gradient(circle at 35% 30%, #c4adff, #5f4caa 55%, #3871c1); opacity: .75; }
+.lc-c { background: radial-gradient(circle at 35% 30%, #ffe49a, #f7b731 60%, #85c536); opacity: .8; }
+@media (prefers-reduced-motion: reduce) { .lc-root { display: none; } }
+
+/* ───── Scroll-linked motion (ScrollFx.jsx) ───── */
+.scroll-text .sw { display: inline; will-change: opacity; }
+.px-clip { position: absolute; inset: 0; overflow: hidden; }
+.px-clip img { width: 100%; height: 100%; object-fit: cover; will-change: transform; }
+.scroll-progress {
+  position: fixed; left: 0; right: 0; top: 70px; height: 3px; z-index: 99;
+  transform-origin: 0 50%; background: linear-gradient(90deg, var(--pink), var(--yellow), var(--green), var(--blue));
+}

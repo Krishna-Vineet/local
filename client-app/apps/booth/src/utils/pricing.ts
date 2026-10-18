@@ -13,17 +13,43 @@ function extractFromMapOrObj(container: any, key: string): number | null {
   return null;
 }
 
+function resolveLayoutKey(template: BoothTemplate): string {
+  if (!template) return '';
+  const layout = template.layout;
+  if (layout?.familyId && layout?.slots) {
+    return `${layout.familyId}:${layout.slots}`;
+  }
+  const layoutId = String(layout?.id || (template as any).layoutId || '');
+  if (!layoutId) return '';
+
+  // Legacy format e.g. "46-v1" or "46-h2"
+  const legacy = layoutId.match(/^(.+?)-[vh](\d+)$/i);
+  if (legacy) {
+    return `${legacy[1]}:${Number(legacy[2])}`;
+  }
+
+  // Codeword format e.g. "P1-46-T04-V-GRID2X2" or "26-T03-V-SQUARE"
+  const clean = layoutId.split(' ')[0].split('—')[0].toUpperCase().replace(/\s*-\s*/g, '-');
+  let parts = clean.split('-');
+  if (parts.length === 4 && parts[1].startsWith('T') && (parts[2] === 'V' || parts[2] === 'H')) {
+    parts = ['P1', ...parts];
+  }
+  if (parts.length >= 4) {
+    const mediaPart = (parts[0].startsWith('P') && parts[1]) ? parts[1] : parts[0];
+    const slotsPart = (parts[0].startsWith('P') && parts[2]) ? parts[2] : parts[1];
+    const slotsNum = parseInt(slotsPart.replace(/[^0-9]/g, ''), 10) || 1;
+    return `${mediaPart}:${slotsNum}`;
+  }
+
+  return layoutId;
+}
+
 export function getTemplatePrice(
   template: BoothTemplate,
   eventOrSnapshotOrPrices?: any,
   orgDefaultsOrSettings?: any
 ): number {
   if (!template) return 0;
-
-  // 1. If template object already carries a verified non-zero resolved price from the server snapshot
-  if (typeof (template as any).price === 'number' && (template as any).price > 0) {
-    return (template as any).price;
-  }
 
   // Auto-unpack if a full booth snapshot was passed
   let event = eventOrSnapshotOrPrices;
@@ -38,57 +64,72 @@ export function getTemplatePrice(
     }
   }
 
-  const templateId = String((template as any).id || (template as any)._id || '');
-  const key = template.layout?.familyId && template.layout?.slots
-    ? `${template.layout.familyId}:${template.layout.slots}`
-    : (template.layout?.id || '');
+  const id1 = String((template as any).id || '');
+  const id2 = String((template as any)._id || '');
+  const ids = [id1, id2].filter(Boolean);
 
-  // 2. If event has overrideTemplatePrices enabled, check event-specific template price
+  const key = resolveLayoutKey(template);
+
+  // 1. If event has overrideTemplatePrices enabled, check event-specific template price (CRM Event Setting)
   const isOverride = !!(event && event.overrideTemplatePrices);
   if (isOverride && event?.templatePrices) {
-    const p = extractFromMapOrObj(event.templatePrices, templateId);
-    if (p !== null && !isNaN(p) && p >= 0) return p;
+    for (const tid of ids) {
+      const p = extractFromMapOrObj(event.templatePrices, tid);
+      if (p !== null) return p;
+    }
   }
 
-  // 3. Check Organization Defaults template price
+  // 2. Check Organization Defaults template price (CRM Org Defaults)
   if (settings?.templatePrices) {
-    const p = extractFromMapOrObj(settings.templatePrices, templateId);
-    if (p !== null && !isNaN(p) && p >= 0) return p;
+    for (const tid of ids) {
+      const p = extractFromMapOrObj(settings.templatePrices, tid);
+      if (p !== null) return p;
+    }
   }
   if (orgDefaultsOrSettings?.templatePrices) {
-    const p = extractFromMapOrObj(orgDefaultsOrSettings.templatePrices, templateId);
-    if (p !== null && !isNaN(p) && p >= 0) return p;
+    for (const tid of ids) {
+      const p = extractFromMapOrObj(orgDefaultsOrSettings.templatePrices, tid);
+      if (p !== null) return p;
+    }
   }
+  // When event does not override, check event.templatePrices if snapshot populated effective prices
   if (!isOverride && event?.templatePrices) {
-    const p = extractFromMapOrObj(event.templatePrices, templateId);
-    if (p !== null && !isNaN(p) && p >= 0) return p;
+    for (const tid of ids) {
+      const p = extractFromMapOrObj(event.templatePrices, tid);
+      if (p !== null) return p;
+    }
   }
 
-  // 4. If template has an explicit price of 0 (free template from snapshot)
-  if (typeof (template as any).price === 'number') {
+  // 3. Template document baseline price from template record (if > 0)
+  if (typeof (template as any).price === 'number' && !isNaN((template as any).price) && (template as any).price > 0) {
     return (template as any).price;
   }
 
-  // 5. Layout / Size baseline price from event
+  // 4. Layout / Size baseline price from event
   if (event?.layoutPrices && key) {
     const p = extractFromMapOrObj(event.layoutPrices, key);
-    if (p !== null && !isNaN(p) && p >= 0) return p;
+    if (p !== null) return p;
   }
 
-  // 6. Layout / Size baseline price from organization defaults / settings
+  // 5. Layout / Size baseline price from organization defaults / settings
   if (settings?.layoutPrices && key) {
     const p = extractFromMapOrObj(settings.layoutPrices, key);
-    if (p !== null && !isNaN(p) && p >= 0) return p;
+    if (p !== null) return p;
   }
   if (orgDefaultsOrSettings?.layoutPrices && key) {
     const p = extractFromMapOrObj(orgDefaultsOrSettings.layoutPrices, key);
-    if (p !== null && !isNaN(p) && p >= 0) return p;
+    if (p !== null) return p;
   }
 
-  // 7. Direct layoutPrices map if passed directly
+  // 6. Direct layoutPrices map if passed directly
   if (event && key) {
     const p = extractFromMapOrObj(event, key);
-    if (p !== null && !isNaN(p) && p >= 0) return p;
+    if (p !== null) return p;
+  }
+
+  // 7. If template has explicit price of 0 (Free)
+  if (typeof (template as any).price === 'number' && (template as any).price === 0) {
+    return 0;
   }
 
   return 0;

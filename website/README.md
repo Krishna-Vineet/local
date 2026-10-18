@@ -23,6 +23,28 @@ Copy `.env.example` to `.env` for production values:
 | `VITE_API_URL` | Origin of `website-backend` (empty in dev = vite proxy) |
 | `VITE_CRM_URL` | Where buyers are sent to sign in after checkout |
 
+## Visual effects (`src/fx/`)
+
+Decorative layer, no extra dependencies. Everything respects
+`prefers-reduced-motion` (animations stop, a settled still frame is drawn)
+and canvases pause when off screen.
+
+| Effect | Where | Built with |
+|---|---|---|
+| Liquid morph | Home hero | `LiquidOrbs.jsx` (CSS morph + SVG goo filter) |
+| Holographic foil | "Most loved" plan card, CTA band | `.foil` class + `useGlobalFx` pointer tracking |
+| Neon glow | Hero accent, primary CTAs | `.neon`, `.btn-neon` in `fx.css` |
+| Kinetic typography | All headings (word-by-word rise), count-up stats, scroll-tilting marquee | `Kinetic.jsx`, `CountUp`, `useGlobalFx` |
+| Particle swarm | Home hero (cursor-reactive) | `ParticleSwarm.jsx` |
+| Topographic lines | Operator stories, CTA band | `TopoLines.jsx` (marching squares) |
+| Glass morphism | Hero "live print" card, nav on scroll | `.glass` in `fx.css` |
+| Paper cut & origami | Section edges, card corners | `PaperCut.jsx`, `.origami` |
+| Flow fields | Every inner-page header | `FlowField.jsx` |
+| Liquid cursor | Pointer devices, all non-download pages (shows only while moving, recedes behind links and images) | `LiquidCursor.jsx`, `.lc-root` in `fx.css` |
+| Scroll animation | Home lead paragraphs (word-by-word reading), venue photos (parallax), CRM showcase (scale-in), hero (fade out), top progress line | `ScrollFx.jsx` (Framer Motion), `ScrollProgress` in `App.jsx` |
+
+Tune intensity in `src/fx/fx.css`; remove an effect by dropping its component.
+
 ## Structure
 
 ```

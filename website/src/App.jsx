@@ -9,6 +9,9 @@ import Pricing from './pages/Pricing.jsx'
 import Contact from './pages/Contact.jsx'
 import Business from './pages/Business.jsx'
 import Download from './pages/Download.jsx'
+import { useGlobalFx } from './fx/useGlobalFx.js'
+import LiquidCursor from './fx/LiquidCursor.jsx'
+import { ScrollProgress } from './fx/ScrollFx.jsx'
 
 function ScrollTop() {
   const { pathname, hash } = useLocation()
@@ -33,6 +36,7 @@ function NotFound() {
 
 export default function App() {
   const { pathname } = useLocation()
+  useGlobalFx()
   // The guest download page is hidden/deliberately chrome-less:
   // no marketing nav, no pricing CTAs — just the guest and their photos.
   const isDownload = pathname.startsWith('/download')
@@ -51,6 +55,8 @@ export default function App() {
   return (
     <>
       <ScrollTop />
+      <LiquidCursor />
+      <ScrollProgress />
       <Nav />
       <Routes>
         <Route path="/" element={<Home />} />

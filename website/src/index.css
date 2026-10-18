@@ -58,6 +58,11 @@ a { color: inherit; }
   border: 2px solid transparent; text-decoration: none; white-space: nowrap;
   transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
 }
+.nav-btn {
+  border-radius: var(--radius-sm); cursor: pointer;
+  border: 2px solid transparent; text-decoration: none; white-space: nowrap;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
 .btn:hover { transform: translateY(-2px); }
 .btn:active { transform: translateY(0); }
 .btn-pink { background: var(--pink); color: #fff; box-shadow: 0 8px 20px rgba(234,9,127,.28); }

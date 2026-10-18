@@ -757,13 +757,23 @@ router.get('/support/:id', requirePerm(PERMS.PLATFORM_SUPPORT_VIEW), asyncRoute(
   res.json({ request: supportView(request, { organization, decisionBy }) });
 }));
 
-function pushPlatformMessage(request, req, text) {
+function sanitizeSupportImages(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item) => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim())
+    .filter((item) => item.startsWith('data:image/') || item.startsWith('http://') || item.startsWith('https://') || item.startsWith('/uploads/') || item.startsWith('/api/'))
+    .slice(0, 6);
+}
+
+function pushPlatformMessage(request, req, text, images = []) {
   request.messages.push({
     authorId: req.user._id,
     authorName: req.user.name,
     authorRole: req.user.role,
     side: 'platform',
-    text,
+    text: text || '',
+    images: sanitizeSupportImages(images),
     at: new Date(),
   });
 }
@@ -775,8 +785,10 @@ router.post('/support/:id/accept', requirePerm(PERMS.PLATFORM_SUPPORT_VIEW), asy
   request.status = 'open';
   request.acceptedAt = new Date();
   request.ticketNo = request.ticketNo || `T-${String(request._id).slice(-6).toUpperCase()}`;
-  request.decision = { type: 'accepted', reason: String(req.body.message || '').trim() || null, by: req.user._id, at: new Date() };
-  if (req.body.message) pushPlatformMessage(request, req, String(req.body.message).trim());
+  const images = sanitizeSupportImages(req.body.images);
+  const note = String(req.body.message || '').trim();
+  request.decision = { type: 'accepted', reason: note || null, by: req.user._id, at: new Date() };
+  if (note || images.length) pushPlatformMessage(request, req, note, images);
   await request.save();
   await writeAudit({ req, organizationId: request.organizationId, action: 'platform.support.accepted', entity: 'support_request', summary: `Accepted support request “${request.subject}” (${request.ticketNo})` });
   const organization = await Organization.findById(request.organizationId).lean();
@@ -788,10 +800,11 @@ router.post('/support/:id/deny', requirePerm(PERMS.PLATFORM_SUPPORT_VIEW), async
   if (!request) throw notFound('Support request not found.', 'SUPPORT_REQUEST_NOT_FOUND');
   if (['resolved'].includes(request.status)) throw conflict('A resolved request cannot be denied.', 'TICKET_RESOLVED');
   const reason = String(req.body.reason || req.body.message || '').trim();
+  const images = sanitizeSupportImages(req.body.images);
   if (!reason) throw badRequest('A reason is required to deny a request.', 'REASON_REQUIRED');
   request.status = 'denied';
   request.decision = { type: 'denied', reason, by: req.user._id, at: new Date() };
-  pushPlatformMessage(request, req, reason);
+  pushPlatformMessage(request, req, reason, images);
   await request.save();
   await writeAudit({ req, organizationId: request.organizationId, action: 'platform.support.denied', entity: 'support_request', summary: `Denied support request “${request.subject}” — ${reason}`, severity: 'warn' });
   const organization = await Organization.findById(request.organizationId).lean();
@@ -803,8 +816,9 @@ router.post('/support/:id/reply', requirePerm(PERMS.PLATFORM_SUPPORT_VIEW), asyn
   if (!request) throw notFound('Support request not found.', 'SUPPORT_REQUEST_NOT_FOUND');
   if (!['open', 'in_progress'].includes(request.status)) throw conflict('Reply on an accepted, active ticket.', 'TICKET_NOT_OPEN');
   const text = String(req.body.message || req.body.text || '').trim();
-  if (!text) throw badRequest('A message is required.', 'EMPTY_MESSAGE');
-  pushPlatformMessage(request, req, text);
+  const images = sanitizeSupportImages(req.body.images);
+  if (!text && images.length === 0) throw badRequest('A message or image attachment is required.', 'EMPTY_MESSAGE');
+  pushPlatformMessage(request, req, text, images);
   request.status = 'in_progress';
   await request.save();
   const organization = await Organization.findById(request.organizationId).lean();
@@ -816,8 +830,9 @@ router.post('/support/:id/resolve', requirePerm(PERMS.PLATFORM_SUPPORT_VIEW), as
   if (!request) throw notFound('Support request not found.', 'SUPPORT_REQUEST_NOT_FOUND');
   request.status = 'resolved';
   request.resolvedAt = new Date();
+  const images = sanitizeSupportImages(req.body.images);
   request.resolution = String(req.body.resolution || req.body.message || 'Resolved by HappyPix support.').trim();
-  if (req.body.message) pushPlatformMessage(request, req, request.resolution);
+  if (req.body.message || images.length) pushPlatformMessage(request, req, request.resolution, images);
   await request.save();
   await writeAudit({ req, organizationId: request.organizationId, action: 'platform.support.resolved', entity: 'support_request', summary: `Resolved support request “${request.subject}”` });
   const organization = await Organization.findById(request.organizationId).lean();
@@ -831,7 +846,9 @@ router.post('/support/:id/reopen', requirePerm(PERMS.PLATFORM_SUPPORT_VIEW), asy
   request.status = 'open';
   request.resolvedAt = null;
   request.resolution = null;
-  if (req.body.message) pushPlatformMessage(request, req, String(req.body.message).trim());
+  const images = sanitizeSupportImages(req.body.images);
+  const note = String(req.body.message || '').trim();
+  if (note || images.length) pushPlatformMessage(request, req, note, images);
   await request.save();
   await writeAudit({ req, organizationId: request.organizationId, action: 'platform.support.reopened', entity: 'support_request', summary: `Reopened support request “${request.subject}”`, severity: 'warn' });
   const organization = await Organization.findById(request.organizationId).lean();
@@ -850,6 +867,7 @@ router.get('/templates', requirePerm(PERMS.GLOBAL_TEMPLATES_MANAGE), asyncRoute(
       name: template.name,
       category: template.category,
       description: template.description,
+      price: Number(template.price) || 0,
       layoutId: template.layoutId,
       layout: layoutMeta(template.layoutId),
       design: template.design || {},
@@ -867,10 +885,14 @@ router.post('/templates', requirePerm(PERMS.GLOBAL_TEMPLATES_MANAGE), asyncRoute
   const name = String(req.body.name || '').trim();
   if (!name) throw badRequest('Template name is required.', 'BAD_TEMPLATE');
   if (!req.body.layoutId) throw badRequest('A layout variant is required.', 'BAD_TEMPLATE');
+  const price = req.body.price !== undefined && req.body.price !== ''
+    ? Math.max(0, Math.round(Number(req.body.price) || 0))
+    : 0;
   const template = await Template.create({
     name,
     description: String(req.body.description || '').trim(),
     category: req.body.category || 'Custom',
+    price,
     layoutId: req.body.layoutId,
     componentId: req.body.componentId || null,
     design: req.body.design || null,
@@ -879,7 +901,7 @@ router.post('/templates', requirePerm(PERMS.GLOBAL_TEMPLATES_MANAGE), asyncRoute
     createdBy: req.user._id,
   });
   await writeAudit({ req, action: 'platform.template.created', entity: 'template', summary: `Template “${template.name}” created (${template.layoutId})` });
-  res.status(201).json({ template: { id: String(template._id), ...template.toObject(), layout: layoutMeta(template.layoutId) } });
+  res.status(201).json({ template: { id: String(template._id), ...template.toObject(), price: Number(template.price) || 0, layout: layoutMeta(template.layoutId) } });
 }));
 
 router.put('/templates/:id', requirePerm(PERMS.GLOBAL_TEMPLATES_MANAGE), asyncRoute(async (req, res) => {
@@ -892,6 +914,9 @@ router.put('/templates/:id', requirePerm(PERMS.GLOBAL_TEMPLATES_MANAGE), asyncRo
   }
   for (const field of ['name', 'description', 'category']) {
     if (req.body[field] !== undefined) template[field] = String(req.body[field] || '').trim();
+  }
+  if (req.body.price !== undefined && req.body.price !== '') {
+    template.price = Math.max(0, Math.round(Number(req.body.price) || 0));
   }
   if (req.body.componentId !== undefined) {
     template.componentId = req.body.componentId || null;
@@ -910,7 +935,7 @@ router.put('/templates/:id', requirePerm(PERMS.GLOBAL_TEMPLATES_MANAGE), asyncRo
     entity: 'template',
     summary: `Global template “${template.name}” ${req.body.active === false ? 'unpublished' : 'updated'}`,
   });
-  res.json({ template: { id: String(template._id), ...template.toObject(), layout: layoutMeta(template.layoutId) } });
+  res.json({ template: { id: String(template._id), ...template.toObject(), price: Number(template.price) || 0, layout: layoutMeta(template.layoutId) } });
 }));
 
 router.delete('/templates/:id', requirePerm(PERMS.GLOBAL_TEMPLATES_MANAGE), asyncRoute(async (req, res) => {

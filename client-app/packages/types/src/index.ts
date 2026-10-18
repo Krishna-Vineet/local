@@ -97,6 +97,7 @@ export interface BoothSettings {
   maximumPrints: number;
   galleryEnabled?: boolean;
   requireGuestConsent?: boolean;
+  websiteUrl?: string;
   branding?: { logoUrl: string | null; tagline: string };
 }
 

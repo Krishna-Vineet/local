@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import type { CapturedPhoto } from '@happypix/types';
 import {
   ScreenContainer,
@@ -42,6 +43,7 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isFocused = useIsFocused();
 
   const template = session.template;
   const slotsCount = template?.layout.slots ?? 1;
@@ -72,10 +74,10 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-    if (secondsLeft === 0) {
+    if (secondsLeft === 0 && isFocused) {
       resetGuestSession(navigation);
     }
-  }, [secondsLeft]);
+  }, [secondsLeft, isFocused]);
 
   // Safe navigation redirect outside render phase
   useEffect(() => {
@@ -157,21 +159,19 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const isPortraitTemplate = template.layout.orientation === 'portrait';
-  // Responsive canvas sizing that fits cleanly inside the stage card
-  const canvasWidth = isLandscape
-    ? isPortraitTemplate
-      ? scale(205)
-      : scale(330)
-    : isPortraitTemplate
-    ? scale(200)
-    : scale(280);
-  const canvasHeight = isLandscape
-    ? isPortraitTemplate
-      ? verticalScale(295)
-      : verticalScale(215)
-    : isPortraitTemplate
-    ? verticalScale(260)
-    : verticalScale(180);
+  const rawCw = template.layout?.canvas?.width;
+  const rawCh = template.layout?.canvas?.height;
+  const aspect = rawCw && rawCh ? rawCw / rawCh : isPortraitTemplate ? 2 / 3 : 3 / 2;
+
+  const maxCanvasW = isLandscape ? scale(340) : Math.max(200, width - 84);
+  const maxCanvasH = isLandscape
+    ? Math.min(verticalScale(300), Math.max(180, height * 0.44))
+    : Math.max(170, Math.min(340, Math.round(height * 0.34)));
+  const canvasWidth = Math.min(maxCanvasW, Math.round(maxCanvasH * aspect));
+  const canvasHeight = Math.round(canvasWidth / aspect);
+  const portraitReelHeight = Math.min(185, Math.max(138, Math.round(height * 0.21)));
+  const portraitCellHeight = Math.max(76, portraitReelHeight - 62);
+  const portraitCellWidth = Math.max(104, Math.round(portraitCellHeight * 1.32));
 
   return (
     <ScreenContainer style={{ backgroundColor: '#050508' }}>
@@ -186,7 +186,12 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
 
         <View style={[styles.mainLayout, isLandscape ? styles.rowLayout : styles.colLayout]}>
           {/* Negative 35mm Film Strip Reel */}
-          <View style={[styles.filmReelCard, isLandscape ? styles.filmReelLandscape : styles.filmReelPortrait]}>
+          <View
+            style={[
+              styles.filmReelCard,
+              isLandscape ? styles.filmReelLandscape : [styles.filmReelPortrait, { height: portraitReelHeight }],
+            ]}
+          >
             <View style={styles.filmReelHeader}>
               <View style={styles.filmHeaderLeft}>
                 <View style={styles.amberDot} />
@@ -229,7 +234,9 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
                       onPress={() => handlePhotoTap(photo)}
                       style={[
                         styles.photoCell,
-                        isLandscape ? styles.photoCellGrid : styles.photoCellRow,
+                        isLandscape
+                          ? styles.photoCellGrid
+                          : [styles.photoCellRow, { width: portraitCellWidth, height: portraitCellHeight }],
                         isAssigned && styles.photoCellAssigned,
                       ]}
                     >
@@ -242,7 +249,13 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
                         )}
                       </View>
 
-                      <Image source={{ uri: photo.uri }} style={styles.photoCellImg} />
+                      <View style={styles.photoCellImgWrap}>
+                        <Image
+                          source={{ uri: photo.uri }}
+                          resizeMode="cover"
+                          style={styles.photoCellImg}
+                        />
+                      </View>
 
                       {isAssigned && (
                         <View style={styles.assignedOverlay}>
@@ -277,7 +290,7 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.canvasWrap}>
               <TemplateCanvas
                 template={template}
-                photos={selectedSlots.filter(Boolean) as CapturedPhoto[]}
+                photos={selectedSlots as any}
                 interactiveSlot={handleSlotTap}
                 style={{
                   width: canvasWidth,
@@ -362,7 +375,6 @@ const styles = StyleSheet.create({
   },
   filmReelPortrait: {
     width: '100%',
-    maxHeight: verticalScale(170),
   },
   filmReelHeader: {
     flexDirection: 'row',
@@ -482,11 +494,18 @@ const styles = StyleSheet.create({
     fontSize: fontSize(7),
     fontWeight: '900',
   },
-  photoCellImg: {
+  photoCellImgWrap: {
     width: '100%',
     flex: 1,
     borderRadius: 6,
+    overflow: 'hidden',
+    position: 'relative',
     backgroundColor: '#1b1b26',
+  },
+  photoCellImg: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   assignedOverlay: {
     position: 'absolute',
@@ -527,9 +546,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   canvasStagePortrait: {
+    flex: 1,
     width: '100%',
-    maxHeight: verticalScale(320),
-    justifyContent: 'center',
+    justifyContent: 'space-between',
   },
   stageHeader: {
     flexDirection: 'row',

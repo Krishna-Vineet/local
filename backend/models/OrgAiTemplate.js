@@ -3,13 +3,23 @@ import mongoose from 'mongoose';
 const orgAiTemplateSchema = new mongoose.Schema(
   {
     organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true },
-    name: { type: String, required: true },
+    name: { type: String, required: true, trim: true },
+    category: { type: String, default: 'Custom', trim: true },
+    description: { type: String, default: '', trim: true },
+    price: { type: Number, default: 0, min: 0 },
     layout: {
       code: { type: String, required: true },
+      id: { type: String },
+      name: { type: String },
+      familyId: { type: String },
       width: { type: Number },
       height: { type: Number },
       orientation: { type: String },
-      slotCount: { type: Number }
+      slotCount: { type: Number },
+      slots: { type: Number },
+      sheets: { type: Array },
+      cutout: { type: Array },
+      printSize: { type: String },
     },
     slots: { type: Array, default: [] },
     design: { type: Object, default: {} },

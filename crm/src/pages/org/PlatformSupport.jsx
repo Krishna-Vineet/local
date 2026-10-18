@@ -85,7 +85,7 @@ export default function PlatformSupport() {
   }
 
   const reapply = async ({ message, images }) => {
-    if (!openId || !message.trim()) return false
+    if (!openId || (!message.trim() && !(images && images.length))) return false
     setBusy(true)
     try {
       const result = await api.org.reapplyPlatformSupportRequest(openId, { message: message.trim(), images })

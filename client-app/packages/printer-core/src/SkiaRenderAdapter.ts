@@ -44,8 +44,13 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
     
     let currentFont = { size: 16, family: 'System', weight: 'normal' };
     let fillStyle = '#ffffff';
+    let strokeStyle = '#000000';
+    let lineWidth = 1;
+    let globalAlpha = 1;
     let textAlign = 'left';
+    let textBaseline = 'alphabetic';
     let filterType = 'none';
+    let currentPath: any = null;
 
     const getSkiaColorFilter = (filterName: string) => {
       if (!skia.ColorFilter) return null;
@@ -102,14 +107,40 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
       surface,
       set fillStyle(color: string) {
         fillStyle = color;
-        paint.setColor(skia.Color(color));
+        try {
+          paint.setColor(skia.Color(color));
+        } catch {
+          // ignore invalid color
+        }
       },
       get fillStyle() {
         return fillStyle;
       },
+      set strokeStyle(color: string) {
+        strokeStyle = color;
+      },
+      get strokeStyle() {
+        return strokeStyle;
+      },
+      set lineWidth(w: number) {
+        lineWidth = w;
+      },
+      get lineWidth() {
+        return lineWidth;
+      },
+      set globalAlpha(a: number) {
+        globalAlpha = a;
+        try {
+          paint.setAlphaf(a);
+        } catch {
+          // ignore
+        }
+      },
+      get globalAlpha() {
+        return globalAlpha;
+      },
       set font(fontStr: string) {
-        // Match e.g. "bold 48px Arial"
-        const match = fontStr.match(/(bold)?\s*(\d+)px\s*(.*)/);
+        const match = fontStr.match(/(bold|900)?\s*(\d+)px\s*(.*)/i);
         if (match) {
           const isBold = !!match[1];
           const size = parseInt(match[2], 10);
@@ -125,6 +156,12 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
       },
       get textAlign() {
         return textAlign;
+      },
+      set textBaseline(baseline: string) {
+        textBaseline = baseline;
+      },
+      get textBaseline() {
+        return textBaseline;
       },
       set filter(f: string) {
         filterType = f;
@@ -146,44 +183,154 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
         return filterType;
       },
       fillRect(x: number, y: number, w: number, h: number) {
-        paint.setStyle(0); // 0 corresponds to Fill in Skia PaintStyle
+        paint.setStyle(0);
+        try {
+          paint.setColor(skia.Color(fillStyle));
+        } catch {}
         canvas.drawRect({ x, y, width: w, height: h }, paint);
       },
-      drawImage(img: any, sx: number, sy: number, sw: number, sh: number, dx?: number, dy?: number, dw?: number, dh?: number) {
-        // img is a SkImage
+      strokeRect(x: number, y: number, w: number, h: number) {
+        paint.setStyle(1);
+        paint.setStrokeWidth(lineWidth);
+        try {
+          paint.setColor(skia.Color(strokeStyle));
+        } catch {}
+        canvas.drawRect({ x, y, width: w, height: h }, paint);
+        paint.setStyle(0);
+      },
+      beginPath() {
+        try {
+          currentPath = skia.Path.Make();
+        } catch {
+          currentPath = null;
+        }
+      },
+      closePath() {
+        try {
+          currentPath?.close();
+        } catch {}
+      },
+      moveTo(x: number, y: number) {
+        try {
+          currentPath?.moveTo(x, y);
+        } catch {}
+      },
+      lineTo(x: number, y: number) {
+        try {
+          currentPath?.lineTo(x, y);
+        } catch {}
+      },
+      quadraticCurveTo(cpx: number, cpy: number, x: number, y: number) {
+        try {
+          currentPath?.quadTo(cpx, cpy, x, y);
+        } catch {}
+      },
+      bezierCurveTo(cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number) {
+        try {
+          currentPath?.cubicTo(cp1x, cp1y, cp2x, cp2y, x, y);
+        } catch {}
+      },
+      arc(x: number, y: number, radius: number, _startAngle: number, _endAngle: number) {
+        try {
+          currentPath?.addCircle(x, y, radius);
+        } catch {}
+      },
+      fill() {
+        if (!currentPath) return;
+        try {
+          paint.setStyle(0);
+          paint.setColor(skia.Color(fillStyle));
+          canvas.drawPath(currentPath, paint);
+        } catch {}
+      },
+      stroke() {
+        if (!currentPath) return;
+        try {
+          paint.setStyle(1);
+          paint.setStrokeWidth(lineWidth);
+          paint.setColor(skia.Color(strokeStyle));
+          canvas.drawPath(currentPath, paint);
+          paint.setStyle(0);
+        } catch {}
+      },
+      clip() {
+        if (!currentPath) return;
+        try {
+          canvas.clipPath(currentPath, 1, true);
+        } catch {}
+      },
+      drawImage(imgWrapper: any, sx: number, sy: number, sw: number, sh: number, dx?: number, dy?: number, dw?: number, dh?: number) {
+        const img = imgWrapper?._skImage || imgWrapper;
+        if (!img) return;
+        const naturalW = typeof img.width === 'function' ? img.width() : Number(imgWrapper?.width || 0);
+        const naturalH = typeof img.height === 'function' ? img.height() : Number(imgWrapper?.height || 0);
+        if (!naturalW || !naturalH) return;
+
+        paint.setStyle(0);
         if (dx === undefined || dy === undefined || dw === undefined || dh === undefined) {
-          // 5 arguments: drawImage(image, dx, dy, dw, dh)
-          const destX = sx;
-          const destY = sy;
-          const destW = sw;
-          const destH = sh;
+          const destX = Number.isFinite(sx) ? sx : 0;
+          const destY = Number.isFinite(sy) ? sy : 0;
+          const destW = Number.isFinite(sw) && sw > 0 ? sw : naturalW;
+          const destH = Number.isFinite(sh) && sh > 0 ? sh : naturalH;
           canvas.drawImageRect(
             img,
-            { x: 0, y: 0, width: img.width(), height: img.height() },
+            { x: 0, y: 0, width: naturalW, height: naturalH },
             { x: destX, y: destY, width: destW, height: destH },
             paint
           );
         } else {
-          // 9 arguments: drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh)
+          const srcX = Number.isFinite(sx) ? sx : 0;
+          const srcY = Number.isFinite(sy) ? sy : 0;
+          const srcW = Number.isFinite(sw) && sw > 0 ? sw : naturalW;
+          const srcH = Number.isFinite(sh) && sh > 0 ? sh : naturalH;
           canvas.drawImageRect(
             img,
-            { x: sx, y: sy, width: sw, height: sh },
+            { x: srcX, y: srcY, width: srcW, height: srcH },
             { x: dx, y: dy, width: dw, height: dh },
             paint
           );
         }
       },
       fillText(text: string, x: number, y: number) {
-        const font = skia.Font(null, currentFont.size);
-        let textX = x;
-        if (textAlign === 'center') {
-          const width = font.measureText(text, paint).width;
-          textX = x - width / 2;
-        } else if (textAlign === 'right') {
-          const width = font.measureText(text, paint).width;
-          textX = x - width;
+        try {
+          const skiaPkg = require('@shopify/react-native-skia');
+          let font: any = null;
+          if (typeof skiaPkg.matchFont === 'function') {
+            try {
+              font = skiaPkg.matchFont({
+                fontSize: currentFont.size,
+                fontWeight: currentFont.weight === 'bold' ? 'bold' : 'normal',
+              });
+            } catch {
+              font = null;
+            }
+          }
+          if (!font && typeof skia.Font === 'function') {
+            try {
+              font = skia.Font(undefined, currentFont.size);
+            } catch {
+              font = null;
+            }
+          }
+          if (!font) return;
+
+          paint.setStyle(0);
+          paint.setColor(skia.Color(fillStyle));
+          let textX = x;
+          try {
+            const measured = font.measureText(text, paint);
+            const width = measured?.width ?? (typeof font.getTextWidth === 'function' ? font.getTextWidth(text) : 0);
+            if (textAlign === 'center') {
+              textX = x - width / 2;
+            } else if (textAlign === 'right') {
+              textX = x - width;
+            }
+          } catch {}
+          canvas.drawText(text, textX, y, paint, font);
+        } catch (err) {
+          // Never fail composite rendering if platform font is unavailable
+          console.warn('SkiaRenderAdapter: fillText skipped:', err);
         }
-        canvas.drawText(text, textX, y, paint, font);
       },
       save() {
         canvas.save();
@@ -195,7 +342,6 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
         canvas.translate(x, y);
       },
       rotate(rad: number) {
-        // Skia rotate takes degrees
         canvas.rotate((rad * 180) / Math.PI, 0, 0);
       }
     };
@@ -203,39 +349,88 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
 
   canvasToDataUrl(canvasObj: any): string {
     const image = canvasObj.surface.makeImageSnapshot();
-    // Use JPEG with 85% quality to drastically reduce the base64 string size 
-    // This prevents the React Native fetch API from silently dropping the request due to JS bridge memory limits.
-    const data = image.encodeToBase64(this.skia.ImageFormat.JPEG, 85);
-    return `data:image/jpeg;base64,${data}`;
+    try {
+      const jpegFmt = this.skia.ImageFormat?.JPEG ?? 3;
+      const data = image.encodeToBase64(jpegFmt, 82);
+      if (data) return `data:image/jpeg;base64,${data}`;
+    } catch {}
+    const pngData = image.encodeToBase64();
+    return `data:image/png;base64,${pngData}`;
   }
 
   async loadImage(uri: string): Promise<any> {
     if (!this.skia) {
       throw new Error('Skia library is not loaded');
     }
-    
-    let data;
-    try {
-      // Skia natively supports fromURI for local file:// paths on React Native
-      data = await this.skia.Data.fromURI(uri);
-    } catch (err) {
-      // Fallback for remote URLs or if fromURI fails
+
+    let normalizedUri = String(uri || '').trim();
+    if (
+      normalizedUri &&
+      !normalizedUri.startsWith('data:') &&
+      !normalizedUri.startsWith('http://') &&
+      !normalizedUri.startsWith('https://') &&
+      !normalizedUri.startsWith('file://') &&
+      normalizedUri.startsWith('/')
+    ) {
+      normalizedUri = `file://${normalizedUri}`;
+    }
+
+    const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`Timeout (${ms}ms) loading ${label}`)), ms);
+        promise.then(
+          (val) => {
+            clearTimeout(timer);
+            resolve(val);
+          },
+          (err) => {
+            clearTimeout(timer);
+            reject(err);
+          }
+        );
+      });
+
+    let data: any = null;
+
+    if (normalizedUri.startsWith('data:')) {
+      const commaIdx = normalizedUri.indexOf(',');
+      const b64 = (commaIdx >= 0 ? normalizedUri.slice(commaIdx + 1) : normalizedUri).replace(/\s/g, '');
+      data = this.skia.Data.fromBase64(b64);
+    } else if (normalizedUri.startsWith('http://') || normalizedUri.startsWith('https://')) {
+      // Never call Skia.Data.fromURI on remote HTTP(S) URLs on Android as it can block indefinitely.
+      const response = await withTimeout(fetch(normalizedUri), 5000, normalizedUri);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} loading ${normalizedUri}`);
+      }
+      const arrayBuffer = await withTimeout(response.arrayBuffer(), 5000, normalizedUri);
+      data = this.skia.Data.fromBytes(new Uint8Array(arrayBuffer));
+    } else {
       try {
-        const response = await fetch(uri);
-        const arrayBuffer = await response.arrayBuffer();
-        data = this.skia.Data.fromBytes(new Uint8Array(arrayBuffer));
-      } catch (fallbackErr) {
-        throw new Error(`SkiaRenderAdapter: Failed to load file from ${uri}: ${fallbackErr}`);
+        data = await withTimeout(this.skia.Data.fromURI(normalizedUri), 4000, normalizedUri);
+      } catch (err) {
+        try {
+          const response = await withTimeout(fetch(normalizedUri), 4000, normalizedUri);
+          const arrayBuffer = await withTimeout(response.arrayBuffer(), 4000, normalizedUri);
+          data = this.skia.Data.fromBytes(new Uint8Array(arrayBuffer));
+        } catch (fallbackErr) {
+          throw new Error(`SkiaRenderAdapter: Failed to load file from ${normalizedUri}: ${fallbackErr}`);
+        }
       }
     }
 
     if (!data) {
-      throw new Error(`SkiaRenderAdapter: Failed to load data: ${uri}`);
+      throw new Error(`SkiaRenderAdapter: Failed to load data: ${normalizedUri}`);
     }
     const image = this.skia.Image.MakeImageFromEncoded(data);
     if (!image) {
-      throw new Error(`SkiaRenderAdapter: Failed to decode image from bytes: ${uri}`);
+      throw new Error(`SkiaRenderAdapter: Failed to decode image from bytes: ${normalizedUri}`);
     }
-    return image;
+    const width = typeof image.width === 'function' ? image.width() : Number(image.width || 0);
+    const height = typeof image.height === 'function' ? image.height() : Number(image.height || 0);
+    return {
+      _skImage: image,
+      width,
+      height,
+    };
   }
 }

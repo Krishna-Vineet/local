@@ -34,6 +34,7 @@ import deviceRoutes       from './routes/deviceRoutes.js';
 import boothRoutes        from './routes/boothRoutes.js';
 
 import photoShareRoutes   from './routes/photoShareRoutes.js';
+import downloadRoutes     from './routes/downloadRoutes.js';
 
 // CRM v2 Route imports
 import crmAuthRoutes      from './routes/crm/auth.js';
@@ -252,6 +253,7 @@ app.use('/api/devices',       deviceRoutes);         // Legacy Device tracking +
 app.use('/api/booth',         boothRoutes);          // New React+Vite Booth App API
 
 app.use('/api/share',         photoShareRoutes);
+app.use('/api/downloads',     downloadRoutes);
 
 // External / Vercel Cron Endpoint to expire trials and plans reliably on Serverless
 app.all('/api/cron/check-expirations', async (req, res) => {
@@ -267,6 +269,7 @@ app.all('/api/cron/check-expirations', async (req, res) => {
 
   try {
     await cronService.checkExpirations();
+    await cronService.cleanupLocalUploads(7);
     res.json({ ok: true, timestamp: new Date().toISOString() });
   } catch (err) {
     res.status(500).json({ error: err.message });

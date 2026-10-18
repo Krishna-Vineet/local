@@ -13,6 +13,7 @@ import {
   PanResponder,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import type { Customization, FilterId, OrnamentId, PlacedSticker } from '@happypix/types';
 import {
   ScreenContainer,
@@ -178,6 +179,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isFocused = useIsFocused();
 
   const event = snapshot?.event;
   const template = session.template;
@@ -189,11 +191,14 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
 
   const orgName = snapshot?.settings?.organizationName || snapshot?.organization?.name || 'HappyPix';
   const galleryEnabled = snapshot?.settings?.galleryEnabled !== false;
+  const requireGuestConsent = snapshot?.settings?.requireGuestConsent === true;
 
   const [activeTab, setActiveTab] = useState<TabId>('patterns');
   const [printing, setPrinting] = useState(false);
   const [guestConsent, setGuestConsent] = useState(
-    customization.guestConsent !== undefined ? customization.guestConsent : true
+    requireGuestConsent
+      ? (customization.guestConsent !== undefined ? customization.guestConsent : true)
+      : true
   );
 
   useEffect(() => {
@@ -203,10 +208,10 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-    if (secondsLeft === 0 && !printing) {
+    if (secondsLeft === 0 && !printing && isFocused) {
       resetGuestSession(navigation);
     }
-  }, [secondsLeft, printing]);
+  }, [secondsLeft, printing, isFocused]);
 
   // Safe navigation redirect outside render phase
   useEffect(() => {
@@ -220,25 +225,23 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
   }
 
   const isPortraitTemplate = template.layout.orientation === 'portrait';
-  const canvasWidth = isLandscape
-    ? isPortraitTemplate
-      ? scale(220)
-      : scale(310)
-    : isPortraitTemplate
-    ? scale(200)
-    : scale(270);
-  const canvasHeight = isLandscape
-    ? isPortraitTemplate
-      ? verticalScale(310)
-      : verticalScale(210)
-    : isPortraitTemplate
-    ? verticalScale(270)
-    : verticalScale(185);
+  const rawCw = template.layout?.canvas?.width;
+  const rawCh = template.layout?.canvas?.height;
+  const aspect = rawCw && rawCh ? rawCw / rawCh : isPortraitTemplate ? 2 / 3 : 3 / 2;
+
+  const maxCanvasW = isLandscape ? scale(320) : Math.max(200, width - 84);
+  const maxCanvasH = isLandscape
+    ? Math.min(verticalScale(310), Math.max(180, height * 0.44))
+    : Math.max(175, Math.min(320, Math.round(height * 0.32)));
+  const canvasWidth = Math.min(maxCanvasW, Math.round(maxCanvasH * aspect));
+  const canvasHeight = Math.round(canvasWidth / aspect);
 
   const lastStickerAddRef = useRef(0);
 
-  const update = (patch: Partial<Customization>) => {
-    SoundManager.play('click');
+  const update = (patch: Partial<Customization>, silent = false) => {
+    if (!silent) {
+      SoundManager.play('click');
+    }
     updateSession({
       customization: { ...customization, ...patch },
     });
@@ -285,11 +288,12 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
   const handlePrint = async () => {
     if (printing) return;
     setPrinting(true);
+    setIdleTimerEnabled(false);
     SoundManager.play('click');
 
     try {
       updateSession({
-        customization: { ...customization, guestConsent },
+        customization: { ...customization, guestConsent: requireGuestConsent ? guestConsent : true },
       });
       await finishAndPrint();
       navigation.navigate('OrderSuccess');
@@ -510,7 +514,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                     <TextInput
                       style={styles.textInput}
                       value={customization.title}
-                      onChangeText={(val) => update({ title: val })}
+                      onChangeText={(val) => update({ title: val }, true)}
                       placeholder={template.design.title || 'Event Title'}
                       placeholderTextColor="#52525b"
                       maxLength={40}
@@ -520,7 +524,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                     <TextInput
                       style={styles.textInput}
                       value={customization.subtitle}
-                      onChangeText={(val) => update({ subtitle: val })}
+                      onChangeText={(val) => update({ subtitle: val }, true)}
                       placeholder={template.design.subtitle || 'Subtitle or Tagline'}
                       placeholderTextColor="#52525b"
                       maxLength={60}
@@ -536,8 +540,8 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
               )}
 
-              {/* Online Gallery Guest Consent Toggle (Respecting platform gallery settings) */}
-              {galleryEnabled && (
+              {/* Online Gallery Guest Consent Toggle (only shown when both galleryEnabled and requireGuestConsent are enabled) */}
+              {galleryEnabled && requireGuestConsent && (
                 <View style={styles.consentCard}>
                   <View style={styles.consentInfo}>
                     <Text style={styles.consentTitle}>

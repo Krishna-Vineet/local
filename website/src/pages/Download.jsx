@@ -49,15 +49,39 @@ export default function Download() {
         .then((strip) => live && setState({ kind: 'ready', data: demoDownload(strip) }))
       return () => { live = false }
     }
-    fetchDownload(id)
-      .then((data) => live && setState({ kind: 'ready', data }))
-      .catch((error) => {
-        if (!live) return
-        if (error.status === 410) setState({ kind: 'expired' })
-        else if (error.status === 404) setState({ kind: 'invalid' })
-        else setState({ kind: 'error', message: error.message })
-      })
-    return () => { live = false }
+
+    let retries = 0
+    let retryTimer = null
+
+    const loadDownload = () => {
+      fetchDownload(id)
+        .then((data) => {
+          if (live) setState({ kind: 'ready', data })
+        })
+        .catch((error) => {
+          if (!live) return
+          if (error.status === 410) {
+            setState({ kind: 'expired' })
+          } else if (error.status === 404) {
+            if (retries < 6) {
+              retries += 1
+              setState({ kind: 'preparing', attempt: retries })
+              retryTimer = setTimeout(loadDownload, 2000)
+            } else {
+              setState({ kind: 'invalid' })
+            }
+          } else {
+            setState({ kind: 'error', message: error.message })
+          }
+        })
+    }
+
+    loadDownload()
+
+    return () => {
+      live = false
+      if (retryTimer) clearTimeout(retryTimer)
+    }
   }, [id, isDemo])
 
   const data = state.kind === 'ready' ? state.data : null
@@ -81,17 +105,17 @@ export default function Download() {
       </header>
 
       <main className="wrap" style={{ flex: 1, width: '100%', paddingBottom: 90 }}>
-        {isDemo && (
-          <div style={{ margin: '4px auto 0', maxWidth: 640, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'center', background: 'var(--ink)', color: 'var(--paper)', borderRadius: 14, padding: '12px 18px', fontSize: '.9rem' }}>
-            <span>This is a <b>sample</b> page — the view your guests get after scanning the booth QR.</span>
-            <a href="/pricing" style={{ color: 'var(--pink)', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>Get this for your booth →</a>
-          </div>
-        )}
-
-        {state.kind === 'loading' && (
+        {(state.kind === 'loading' || state.kind === 'preparing') && (
           <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--muted)' }}>
-            <div style={{ fontSize: '2rem' }}>📸</div>
-            <p style={{ marginTop: 10 }}>Fetching your photos…</p>
+            <div style={{ fontSize: '2.5rem' }}>📸</div>
+            <p style={{ marginTop: 14, fontSize: '1.1rem', fontWeight: 600, color: 'var(--ink)' }}>
+              {state.kind === 'preparing'
+                ? 'Your photos are being prepared from the booth…'
+                : 'Fetching your photos…'}
+            </p>
+            <p style={{ fontSize: '0.9rem', color: 'var(--muted)', marginTop: 4 }}>
+              Almost ready! Please hold on a moment.
+            </p>
           </div>
         )}
 

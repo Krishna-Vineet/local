@@ -86,6 +86,9 @@ export interface RenderInput {
   logoPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   tagline?: string;
   backgroundColor?: string;
+  backgroundImageUrl?: string;
+  gradientColors?: string[];
+  decorations?: Array<any>;
   overlayUrl?: string;
   photoShape?: PhotoShape;
   framePatternUrl?: string;
@@ -124,9 +127,30 @@ export class RenderEngine {
   }
 
   async compose(input: RenderInput): Promise<RenderOutput> {
-    const { template, photos, filter = 'none', tagline, backgroundColor, photoShape = 'rectangle', framePatternUrl, framePatternId, stickers = [], logoUrl, logo } = input;
+    const {
+      template,
+      photos,
+      filter = 'none',
+      tagline,
+      backgroundColor,
+      backgroundImageUrl,
+      gradientColors,
+      decorations = [],
+      overlayUrl,
+      photoShape = 'rectangle',
+      framePatternUrl,
+      framePatternId,
+      stickers = [],
+      logoUrl,
+      logo,
+    } = input;
     const activeLogoUrl = logoUrl || logo;
-    const dims = (PAPER_DIMENSIONS as Record<string, { width: number; height: number }>)[template.paperSize] || PAPER_DIMENSIONS['4x6'];
+    const activeBgUrl = backgroundImageUrl || framePatternUrl;
+    const rawDims = (PAPER_DIMENSIONS as Record<string, { width: number; height: number }>)[template.paperSize] || PAPER_DIMENSIONS['4x6'];
+    const dims = (template.orientation === 'portrait' && rawDims.height < rawDims.width)
+      || (template.orientation === 'landscape' && rawDims.width < rawDims.height)
+      ? { width: rawDims.height, height: rawDims.width }
+      : rawDims;
 
     // In a React Native context, canvas is provided by react-native-skia.
     // This base implementation works in web/test environments.
@@ -287,11 +311,11 @@ export class RenderEngine {
               }
            }
         }
-    } else if (framePatternUrl) {
+    } else if (activeBgUrl) {
+      ctx.fillStyle = backgroundColor ?? '#ffffff';
+      ctx.fillRect(0, 0, dims.width, dims.height);
       try {
-        const patternImg = await this.loadImage(framePatternUrl);
-        // We use objectCoverCrop for background images so they scale to fit any canvas
-        // without stretching or showing repeating seams.
+        const patternImg = await this.loadImage(activeBgUrl);
         const { sx, sy, sw, sh } = this.objectCoverCrop(
           patternImg.width,
           patternImg.height,
@@ -300,13 +324,62 @@ export class RenderEngine {
         );
         ctx.drawImage(patternImg, sx, sy, sw, sh, 0, 0, dims.width, dims.height);
       } catch (err) {
-        ctx.fillStyle = backgroundColor ?? '#ffffff';
-        ctx.fillRect(0, 0, dims.width, dims.height);
+        console.warn('RenderEngine: Could not load background image:', err);
       }
+    } else if (Array.isArray(gradientColors) && gradientColors.length >= 2) {
+      ctx.fillStyle = gradientColors[0] || backgroundColor || '#ffffff';
+      ctx.fillRect(0, 0, dims.width, dims.height);
+      ctx.fillStyle = gradientColors[1];
+      ctx.fillRect(0, Math.round(dims.height * 0.45), dims.width, Math.round(dims.height * 0.55));
     } else {
       ctx.fillStyle = backgroundColor ?? '#ffffff';
       ctx.fillRect(0, 0, dims.width, dims.height);
     }
+
+    const drawDecorationsLayer = async (overlayPass: boolean) => {
+      for (const dec of decorations) {
+        if (!dec || !dec.url) continue;
+        const isOverlay = dec.overlay !== false && dec.position !== 'background';
+        if (isOverlay !== overlayPass) continue;
+        try {
+          const decImg = await this.loadImage(dec.url);
+          let dx = 0;
+          let dy = 0;
+          let dw = dims.width;
+          let dh = dims.height;
+          if (dec.position === 'top-right') {
+            dw = dims.width * 0.3;
+            dh = dims.height * 0.3;
+            dx = dims.width - dw;
+            dy = 0;
+          } else if (dec.position === 'bottom-left') {
+            dw = dims.width * 0.3;
+            dh = dims.height * 0.3;
+            dx = 0;
+            dy = dims.height - dh;
+          } else {
+            if (dec.x !== undefined) {
+              dx = Math.abs(Number(dec.x)) <= 4 ? Number(dec.x) * dims.width : Number(dec.x);
+            }
+            if (dec.y !== undefined) {
+              dy = Math.abs(Number(dec.y)) <= 4 ? Number(dec.y) * dims.height : Number(dec.y);
+            }
+            if (dec.width !== undefined) {
+              dw = Number(dec.width) <= 4 ? Number(dec.width) * dims.width : Number(dec.width);
+            }
+            if (dec.height !== undefined) {
+              dh = Number(dec.height) <= 4 ? Number(dec.height) * dims.height : Number(dec.height);
+            }
+          }
+          ctx.drawImage(decImg, 0, 0, decImg.width, decImg.height, dx, dy, dw, dh);
+        } catch (err) {
+          console.warn('RenderEngine: Could not load decoration:', err);
+        }
+      }
+    };
+
+    // 1.5 Under-slot decorations
+    await drawDecorationsLayer(false);
 
     // 2. Place each photo into its template slot
     for (let i = 0; i < template.slots.length && i < photos.length; i++) {
@@ -380,6 +453,17 @@ export class RenderEngine {
       }
     }
 
+    // 2.5 Overlay decorations & frame overlay
+    await drawDecorationsLayer(true);
+    if (overlayUrl) {
+      try {
+        const ovImg = await this.loadImage(overlayUrl);
+        ctx.drawImage(ovImg, 0, 0, ovImg.width, ovImg.height, 0, 0, dims.width, dims.height);
+      } catch (err) {
+        console.warn('RenderEngine: Could not load overlayUrl:', err);
+      }
+    }
+
     // 3. Stickers
     for (const sticker of stickers) {
       try {
@@ -433,19 +517,23 @@ export class RenderEngine {
     }
 
     // Draw Company Text (Bottom Right)
-    ctx.fillStyle = (framePatternUrl || framePatternId || backgroundColor === '#000000') ? '#ffffff' : '#444444';
-    ctx.font = `900 ${Math.round(dims.height * 0.028)}px Arial`;
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('HAPPY PIX', dims.width - margin, footerY + footerHeight / 2);
-
-    // Draw Tagline (Center)
-    if (tagline) {
-      ctx.fillStyle = (framePatternUrl || framePatternId || backgroundColor === '#000000') ? '#ffffff' : '#222222';
-      ctx.font = `italic bold ${Math.round(dims.height * 0.035)}px Arial`;
-      ctx.textAlign = 'center';
+    try {
+      ctx.fillStyle = (activeBgUrl || framePatternId || backgroundColor === '#000000') ? '#ffffff' : '#444444';
+      ctx.font = `900 ${Math.round(dims.height * 0.028)}px Arial`;
+      ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      ctx.fillText(tagline, dims.width / 2, footerY + footerHeight / 2);
+      ctx.fillText('HAPPY PIX', dims.width - margin, footerY + footerHeight / 2);
+
+      // Draw Tagline (Center)
+      if (tagline) {
+        ctx.fillStyle = (activeBgUrl || framePatternId || backgroundColor === '#000000') ? '#ffffff' : '#222222';
+        ctx.font = `italic bold ${Math.round(dims.height * 0.035)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tagline, dims.width / 2, footerY + footerHeight / 2);
+      }
+    } catch (err) {
+      console.warn('RenderEngine: Could not draw footer text:', err);
     }
 
     const bitmap = this.canvasToDataUrl(canvas);

@@ -926,7 +926,9 @@ export default function OrgDefaults() {
                 filteredTemplates.map((t) => {
                   const layout = resolveLayout(t)
                   const baselinePrice = getBaselinePrice(t)
-                  const customPrice = d.templatePrices?.[t.id]
+                  const customPrice = d.templatePrices?.[t.id] != null && d.templatePrices?.[t.id] !== ''
+                    ? d.templatePrices[t.id]
+                    : (t.price != null && Number(t.price) > 0 ? Number(t.price) : undefined)
                   const hasCustom = customPrice != null && customPrice !== ''
 
                   return (

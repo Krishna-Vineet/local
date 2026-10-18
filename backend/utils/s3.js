@@ -1,5 +1,6 @@
-import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import multer from 'multer';
 import dotenv from 'dotenv';
 
@@ -112,3 +113,65 @@ export const upload = multer({
     }
   },
 });
+
+// ─── Signed Photo URL for downloads & sharing ─────────────────
+export async function signedPhotoUrl(rawUrl, { expiresInSec = 3600, downloadName = null } = {}) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  if (rawUrl.startsWith('data:')) return rawUrl;
+  let urlObj;
+  try {
+    urlObj = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+  const bucket = process.env.S3_BUCKET_NAME;
+  const region = process.env.AWS_REGION || 'us-east-1';
+  const hasCredentials = process.env.AWS_ACCESS_KEY_ID && 
+                         !process.env.AWS_ACCESS_KEY_ID.includes('EXAMPLE') && 
+                         bucket;
+  if (!hasCredentials) return rawUrl;
+
+  const key = s3KeyFromUrl(rawUrl);
+  const isDirectBucketHost = Boolean(bucket && (
+    urlObj.hostname === `${bucket}.s3.${region}.amazonaws.com` ||
+    urlObj.hostname === `${bucket}.s3.amazonaws.com` ||
+    urlObj.hostname.startsWith(`${bucket}.s3.`)
+  ));
+  if (!key || !isDirectBucketHost) return rawUrl;
+
+  try {
+    const params = { Bucket: bucket, Key: key };
+    if (downloadName) {
+      params.ResponseContentDisposition = `attachment; filename="${String(downloadName).replace(/"/g, '')}"`;
+    }
+    return await getSignedUrl(s3, new GetObjectCommand(params), { expiresIn: expiresInSec });
+  } catch (err) {
+    console.warn('⚠️ S3 sign URL failed:', err.message);
+    return rawUrl;
+  }
+}
+
+// ─── Direct Pre-signed Upload URL ─────────────────────────────
+export async function getPresignedUploadUrl({ key, contentType = 'image/jpeg', expiresInSec = 900 }) {
+  const bucket = process.env.S3_BUCKET_NAME;
+  const region = process.env.AWS_REGION || 'us-east-1';
+  const hasCredentials = process.env.AWS_ACCESS_KEY_ID && 
+                         !process.env.AWS_ACCESS_KEY_ID.includes('EXAMPLE') && 
+                         bucket;
+  if (!hasCredentials || !key) return null;
+
+  try {
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ContentType: contentType,
+    });
+    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: expiresInSec });
+    const publicUrl = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+    return { uploadUrl, publicUrl, key };
+  } catch (err) {
+    console.warn('⚠️ S3 pre-signed upload URL generation failed:', err.message);
+    return null;
+  }
+}
+

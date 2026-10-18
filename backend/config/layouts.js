@@ -191,3 +191,105 @@ export function resolveLayoutPrices({ eventPrices = {}, orgPrices = {} } = {}) {
     ...toPlain(eventPrices),
   };
 }
+
+/**
+ * Robustly resolve the pricing key (e.g. "46:3", "57:2") for any template,
+ * whether from MongoDB OrgAiTemplate, platform Template, or booth snapshot.
+ */
+export function resolveTemplateLayoutPriceKey(template, fallbackLayoutId = '') {
+  if (!template && !fallbackLayoutId) return '46:1';
+
+  const tLayout = template?.originalLayout || template?.layout || {};
+  const rawSlots = (template?.photoSlots && template.photoSlots.length) ? template.photoSlots : (template?.slots || []);
+  const directSlots = (Array.isArray(rawSlots) && rawSlots.length > 0)
+    ? rawSlots.length
+    : (tLayout.slots || tLayout.slotCount);
+
+  // 1. Direct familyId & slots
+  if (tLayout.familyId && directSlots) {
+    const family = FAMILY_BY_ID[tLayout.familyId] || LAYOUT_FAMILIES.find((f) => f.id === tLayout.familyId);
+    if (family) {
+      return priceKey(family.id, directSlots);
+    }
+  }
+
+  const layoutId = String(template?.layoutId || tLayout.code || tLayout.id || fallbackLayoutId || '').trim();
+
+  // 2. Parse standard or legacy layout ID
+  const parsed = parseLayoutId(layoutId);
+  if (parsed) {
+    const slots = directSlots || parsed.slots || 1;
+    return priceKey(parsed.familyId, slots);
+  }
+
+  // 3. Codeword format e.g. "P1-46-T04-V-GRID2X2" or "26-T03-V-SQUARE"
+  const clean = layoutId.split(' ')[0].split('—')[0].toUpperCase().replace(/\s*-\s*/g, '-');
+  let parts = clean.split('-');
+  if (parts.length === 4 && parts[1].startsWith('T') && (parts[2] === 'V' || parts[2] === 'H')) {
+    parts = ['P1', ...parts];
+  }
+  if (parts.length >= 4) {
+    const mediaPart = (parts[0].startsWith('P') && parts[1]) ? parts[1] : parts[0];
+    const slotsPart = (parts[0].startsWith('P') && parts[2]) ? parts[2] : parts[1];
+    const slotsNum = parseInt(slotsPart.replace(/[^0-9]/g, ''), 10) || (directSlots || 1);
+    const family = FAMILY_BY_ID[mediaPart] || LAYOUT_FAMILIES.find((f) => f.id === mediaPart) || FAMILY_BY_ID['46'];
+    return priceKey(family.id, slotsNum);
+  }
+
+  // 4. Fallback to layoutMeta
+  const meta = layoutMeta(layoutId);
+  const familyId = tLayout.familyId || meta.familyId || '46';
+  const slots = directSlots || meta.slots || 1;
+  return priceKey(familyId, slots);
+}
+
+/**
+ * Resolve effective unit price for a template following the full CRM hierarchy:
+ * 1. Event template price override (if overrideTemplatePrices is active)
+ * 2. Organization defaults template price
+ * 3. Event template price (if set)
+ * 4. Template document price (if set > 0)
+ * 5. Layout price matching the resolved familyId:slots key (event -> org -> suggested)
+ */
+export function resolveTemplateUnitPrice(template, { event = {}, defaults = {}, fallbackLayoutId = '' } = {}) {
+  const prices = resolveLayoutPrices({
+    eventPrices: event?.layoutPrices,
+    orgPrices: defaults?.layoutPrices,
+  });
+
+  const priceKey = resolveTemplateLayoutPriceKey(template, fallbackLayoutId);
+  const layoutPrice = Number(prices[priceKey] ?? prices['46:1'] ?? 0);
+
+  const tplId = String(template?._id || template?.id || '');
+  const isOverride = !!event?.overrideTemplatePrices;
+  const evTplPrices = event?.templatePrices instanceof Map
+    ? Object.fromEntries(event.templatePrices)
+    : (event?.templatePrices || {});
+  const orgTplPrices = defaults?.templatePrices instanceof Map
+    ? Object.fromEntries(defaults.templatePrices)
+    : (defaults?.templatePrices || {});
+
+  // 1. Event template price override (when overrideTemplatePrices is active)
+  if (isOverride && tplId && evTplPrices[tplId] != null && !isNaN(Number(evTplPrices[tplId]))) {
+    return { unitPrice: Number(evTplPrices[tplId]), priceKey, layoutPrice };
+  }
+
+  // 2. Org defaults template price
+  if (tplId && orgTplPrices[tplId] != null && !isNaN(Number(orgTplPrices[tplId]))) {
+    return { unitPrice: Number(orgTplPrices[tplId]), priceKey, layoutPrice };
+  }
+
+  // 3. Event template price when overrideTemplatePrices is not explicitly set
+  if (!isOverride && tplId && evTplPrices[tplId] != null && !isNaN(Number(evTplPrices[tplId]))) {
+    return { unitPrice: Number(evTplPrices[tplId]), priceKey, layoutPrice };
+  }
+
+  // 4. Template document price (if set > 0)
+  if (template?.price != null && !isNaN(Number(template.price)) && Number(template.price) > 0) {
+    return { unitPrice: Number(template.price), priceKey, layoutPrice };
+  }
+
+  // 5. Layout baseline price
+  return { unitPrice: layoutPrice, priceKey, layoutPrice };
+}
+

@@ -42,9 +42,14 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
 
   const cameraRef = useRef<Camera>(null);
   const { hasPermission, requestPermission } = useCameraPermission();
-  const frontDevice = useCameraDevice('front');
-  const backDevice = useCameraDevice('back');
+  const frontDevice = useCameraDevice('front', {
+    physicalDevices: ['ultra-wide-angle-camera', 'wide-angle-camera'],
+  });
+  const backDevice = useCameraDevice('back', {
+    physicalDevices: ['ultra-wide-angle-camera', 'wide-angle-camera'],
+  });
   const device = frontDevice || backDevice;
+  const initialZoom = device?.minZoom ?? 1;
 
   const [cameraReady, setCameraReady] = useState(false);
   const [running, setRunning] = useState(false);
@@ -131,40 +136,25 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const currentShot = Math.min(photos.length + 1, totalShots);
-  const sprocketHoles = Array.from({ length: 18 });
 
   return (
-    <ScreenContainer style={{ backgroundColor: '#000000', padding: 0 }}>
+    <ScreenContainer
+      style={{ backgroundColor: '#000000', padding: 0 }}
+      contentStyle={{ paddingVertical: 0, paddingHorizontal: 0 }}
+    >
       <View style={styles.container}>
-        {/* Top 35mm Film Rebate Bar with Kodak Portra Markings */}
-        <View style={styles.topFilmRail}>
-          <View style={styles.rebateMetaRow}>
-            <Text style={styles.rebateAmber}>KODAK PORTRA 400</Text>
-            <View style={styles.dxBarcode}>
-              <View style={[styles.barLine, { width: 3 }]} />
-              <View style={[styles.barLine, { width: 1 }]} />
-              <View style={[styles.barLine, { width: 4 }]} />
-              <View style={[styles.barLine, { width: 2 }]} />
-              <View style={[styles.barLine, { width: 3 }]} />
-              <View style={[styles.barLine, { width: 1 }]} />
-            </View>
-            <Text style={styles.rebateAmber}>HAPPYPIX LIVE BOOTH</Text>
-            <Text style={styles.rebateAmber}>EXP {currentShot}/{totalShots}</Text>
-          </View>
-          <View style={styles.sprocketRow}>
-            {sprocketHoles.map((_, i) => (
-              <View key={`top-sprocket-${i}`} style={styles.sprocketHole} />
-            ))}
-          </View>
-        </View>
-
-        {/* Viewfinder Main Viewport — MAXIMIZED Full 16:9 Sensor View */}
+        {/* Full-Screen Viewfinder — Covers 100% of frame in both Portrait and Landscape */}
         <View style={styles.viewfinderContainer}>
           {hasPermission && device && isFocused ? (
             <Camera
+              key={isLandscape ? 'cam-landscape' : 'cam-portrait'}
               ref={cameraRef}
-              style={StyleSheet.absoluteFill}
+              style={styles.cameraFullFrame}
               device={device}
+              zoom={initialZoom}
+              enableZoomGesture={true}
+              resizeMode="cover"
+              androidPreviewViewType="texture-view"
               isActive={isFocused}
               photo={true}
               onInitialized={() => setCameraReady(true)}
@@ -196,11 +186,11 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.topStatusPill}>
             <View style={[styles.statusDot, !device && styles.statusDotSim]} />
             <Text style={styles.statusText}>
-              {device ? 'HD 1080P WIDE SENSOR' : 'SIMULATOR MODE'}
+              {device ? 'FULL WIDE CAMERA VIEW' : 'SIMULATOR MODE'}
             </Text>
             <Text style={styles.statusDivider}>•</Text>
             <Text style={styles.statusCounter}>
-              {photos.length} / {totalShots} SHOTS
+              SHOT {currentShot} OF {totalShots}
             </Text>
           </View>
 
@@ -216,7 +206,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
           {/* Shutter Button when idle */}
           {!running && (
             <TouchableOpacity
-              style={styles.shutterBtn}
+              style={[styles.shutterBtn, !isLandscape && { bottom: verticalScale(96) }]}
               onPress={startCapture}
               activeOpacity={0.85}
             >
@@ -236,48 +226,35 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
               </View>
             </TouchableOpacity>
           )}
-        </View>
 
-        {/* Bottom Film Strip: Thumbnails Reel + Bottom Sprocket Holes */}
-        <View style={styles.bottomFilmRail}>
-          {/* Film Thumbnails Row */}
-          <View style={styles.filmThumbsRow}>
-            {Array.from({ length: totalShots }).map((_, i) => {
-              const photo = photos[i];
-              const isCurrent = i === photos.length && running;
+          {/* Floating Film Strip Overlay (Docked right in landscape so 100% of vertical screen height is given to the camera) */}
+          <View style={isLandscape ? styles.sideFilmRail : styles.floatingBottomFilmRail}>
+            <View style={isLandscape ? styles.filmThumbsCol : styles.filmThumbsRow}>
+              {Array.from({ length: totalShots }).map((_, i) => {
+                const photo = photos[i];
+                const isCurrent = i === photos.length && running;
 
-              return (
-                <View
-                  key={i}
-                  style={[
-                    styles.thumbCell,
-                    isCurrent && styles.thumbCellActive,
-                    photo && styles.thumbCellFilled,
-                  ]}
-                >
-                  <Text style={styles.thumbNum}>
-                    {String(i + 1).padStart(2, '0')}
-                  </Text>
-                  {photo ? (
-                    <Image source={{ uri: photo.uri }} style={styles.thumbImage} />
-                  ) : (
-                    <View style={styles.thumbEmpty} />
-                  )}
-                </View>
-              );
-            })}
-          </View>
-
-          {/* Bottom Sprocket Holes & Safety Film Markings */}
-          <View style={styles.sprocketRow}>
-            {sprocketHoles.map((_, i) => (
-              <View key={`bot-sprocket-${i}`} style={styles.sprocketHole} />
-            ))}
-          </View>
-          <View style={styles.rebateMetaRow}>
-            <Text style={styles.rebateAmber}>35MM COLOR FILM</Text>
-            <Text style={styles.rebateAmber}>SAFETY FILM</Text>
-            <Text style={styles.rebateAmber}>ISO 400 / 27°</Text>
+                return (
+                  <View
+                    key={i}
+                    style={[
+                      styles.thumbCell,
+                      isCurrent && styles.thumbCellActive,
+                      photo && styles.thumbCellFilled,
+                    ]}
+                  >
+                    <Text style={styles.thumbNum}>
+                      {String(i + 1).padStart(2, '0')}
+                    </Text>
+                    {photo ? (
+                      <Image source={{ uri: photo.uri }} resizeMode="cover" style={styles.thumbImage} />
+                    ) : (
+                      <View style={styles.thumbEmpty} />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
           </View>
         </View>
 
@@ -339,11 +316,17 @@ const styles = StyleSheet.create({
   viewfinderContainer: {
     flex: 1,
     width: '100%',
+    height: '100%',
     position: 'relative',
     backgroundColor: '#09090f',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  cameraFullFrame: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   cameraPlaceholder: {
     alignItems: 'center',
@@ -482,12 +465,43 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#1a1a24',
   },
+  floatingBottomFilmRail: {
+    position: 'absolute',
+    bottom: 10,
+    left: 12,
+    right: 12,
+    backgroundColor: 'rgba(10, 10, 14, 0.72)',
+    borderRadius: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  sideFilmRail: {
+    position: 'absolute',
+    right: 12,
+    top: 52,
+    bottom: 16,
+    backgroundColor: 'rgba(10, 10, 14, 0.72)',
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    justifyContent: 'center',
+  },
   filmThumbsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: scale(8),
     paddingVertical: verticalScale(4),
+  },
+  filmThumbsCol: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
   },
   thumbCell: {
     width: scale(64),

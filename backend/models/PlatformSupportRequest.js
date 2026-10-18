@@ -6,7 +6,7 @@ const messageSchema = new mongoose.Schema({
   authorRole: { type: String, required: true },
   side: { type: String, enum: ['org', 'platform'], required: true },
   at: { type: Date, default: Date.now },
-  text: { type: String, required: true },
+  text: { type: String, default: '' },
   images: [{ type: String }], // URLs or data:image
 }, { _id: true });
 

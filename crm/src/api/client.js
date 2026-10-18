@@ -1,5 +1,6 @@
 // API client — connects directly to the real HappyPix backend HTTP API (v2 contract).
 import { ENV } from '../lib/env.js'
+export { ENV } from '../lib/env.js'
 
 const API_BASE = ENV.API_URL
 

@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import type { BoothTemplate } from '@happypix/types';
 import {
   ScreenContainer,
@@ -40,6 +41,10 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
     resetIdleTimer,
     resetGuestSession,
   } = useBooth();
+
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+  const isFocused = useIsFocused();
 
   const event = snapshot?.event;
   const orientation = session.orientation || 'portrait';
@@ -86,10 +91,10 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-    if (secondsLeft === 0) {
+    if (secondsLeft === 0 && isFocused) {
       resetGuestSession(navigation);
     }
-  }, [secondsLeft]);
+  }, [secondsLeft, isFocused]);
 
   const handleSelectTemplate = (template: BoothTemplate) => {
     SoundManager.play('click');
@@ -119,9 +124,13 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
         />
 
         {/* Filter Chips Bar */}
-        <View style={styles.filterBar}>
+        <View style={[styles.filterBar, !isLandscape && styles.filterBarPortrait]}>
           {/* Print Size Filters */}
-          <View style={styles.filterGroup}>
+          <ScrollView
+            horizontal={!isLandscape}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterGroup}
+          >
             <Text style={styles.filterGroupLabel}>SIZE</Text>
             <TouchableOpacity
               style={[
@@ -158,10 +167,14 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
 
           {/* Slot Count Filters */}
-          <View style={styles.filterGroup}>
+          <ScrollView
+            horizontal={!isLandscape}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterGroup}
+          >
             <Text style={styles.filterGroupLabel}>SHOTS</Text>
             <TouchableOpacity
               style={[
@@ -198,78 +211,104 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         </View>
 
-        {/* Templates Carousel (Direct Template View Without Enclosing Card Box) */}
+        {/* Templates View: Horizontal Carousel in Landscape, 2-Column Grid in Portrait */}
         <ScrollView
-          horizontal
+          horizontal={isLandscape}
           showsHorizontalScrollIndicator={false}
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.carouselContainer}
+          showsVerticalScrollIndicator={false}
+          style={{ flex: 1, width: '100%' }}
+          contentContainerStyle={isLandscape ? styles.carouselContainer : styles.portraitScrollContainer}
         >
-          {filtered.map((item) => {
-            const isSelected = session.template?.id === item.id;
-            const price = getTemplatePrice(item, event, snapshot?.settings);
-            const isPortrait = (item.layout?.orientation || 'portrait').toLowerCase() !== 'landscape' && (item.layout?.orientation || 'portrait').toLowerCase() !== 'h';
-            const canvasWidth = isPortrait ? scale(180) : scale(250);
-            const canvasHeight = isPortrait ? verticalScale(260) : verticalScale(175);
+          <View style={isLandscape ? styles.landscapeRow : styles.portraitGrid}>
+            {filtered.map((item) => {
+              const isSelected = session.template?.id === item.id;
+              const price = getTemplatePrice(item, event, snapshot?.settings);
+              const isPortrait =
+                (item.layout?.orientation || 'portrait').toLowerCase() !== 'landscape' &&
+                (item.layout?.orientation || 'portrait').toLowerCase() !== 'h';
+              const rawCw = item.layout?.canvas?.width;
+              const rawCh = item.layout?.canvas?.height;
+              const aspect = rawCw && rawCh ? rawCw / rawCh : isPortrait ? 2 / 3 : 3 / 2;
 
-            return (
-              <TouchableOpacity
-                key={item.id}
-                style={[
-                  styles.templateItem,
-                  { width: canvasWidth + scale(16) },
-                ]}
-                onPress={() => handleSelectTemplate(item)}
-                activeOpacity={0.9}
-              >
-                {/* Raw Print Template Canvas with radiant glowing selection ring */}
-                <View
+              let canvasWidth: number;
+              let canvasHeight: number;
+              let cardWidth: number;
+
+              if (isLandscape) {
+                const maxH = Math.min(verticalScale(270), Math.max(160, height * 0.45));
+                const maxW = scale(260);
+                canvasWidth = Math.min(maxW, Math.round(maxH * aspect));
+                canvasHeight = Math.round(canvasWidth / aspect);
+                cardWidth = Math.max(canvasWidth + scale(16), scale(170));
+              } else {
+                const availW = Math.max(280, width - 48);
+                cardWidth = Math.min(260, Math.floor((availW - 16) / 2));
+                const maxCanvasW = cardWidth - 14;
+                const maxCanvasH = Math.min(Math.round(height * 0.32), 260);
+                canvasWidth = Math.min(maxCanvasW, Math.round(maxCanvasH * aspect));
+                canvasHeight = Math.round(canvasWidth / aspect);
+              }
+
+              return (
+                <TouchableOpacity
+                  key={item.id}
                   style={[
-                    styles.canvasGlowWrap,
-                    isSelected && styles.canvasGlowWrapSelected,
+                    styles.templateItem,
+                    !isLandscape && styles.templateItemPortrait,
+                    { width: cardWidth },
                   ]}
+                  onPress={() => handleSelectTemplate(item)}
+                  activeOpacity={0.9}
                 >
-                  <TemplateCanvas
-                    template={item}
-                    style={{
-                      width: canvasWidth,
-                      height: canvasHeight,
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                    }}
-                  />
+                  {/* Raw Print Template Canvas with radiant glowing selection ring */}
+                  <View
+                    style={[
+                      styles.canvasGlowWrap,
+                      isSelected && styles.canvasGlowWrapSelected,
+                    ]}
+                  >
+                    <TemplateCanvas
+                      template={item}
+                      style={{
+                        width: canvasWidth,
+                        height: canvasHeight,
+                        borderRadius: 12,
+                        overflow: 'hidden',
+                      }}
+                    />
 
-                  {/* Floating Checkmark Badge */}
-                  {isSelected && (
-                    <View style={styles.selectedBadge}>
-                      <Text style={styles.selectedBadgeText}>✓</Text>
+                    {/* Floating Checkmark Badge */}
+                    {isSelected && (
+                      <View style={styles.selectedBadge}>
+                        <Text style={styles.selectedBadgeText}>✓</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Bottom Floating Size & Price Pill */}
+                  <View style={[styles.floatingPill, isSelected && styles.floatingPillSelected]}>
+                    <View style={{ flex: 1, paddingRight: 6 }}>
+                      <Text numberOfLines={1} style={styles.floatingTitle}>
+                        {item.name}
+                      </Text>
+                      <Text numberOfLines={1} style={styles.floatingSize}>
+                        {item.layout.printSize} • {item.layout.slots} {item.layout.slots === 1 ? 'shot' : 'shots'}
+                      </Text>
                     </View>
-                  )}
-                </View>
 
-                {/* Bottom Floating Size & Price Pill */}
-                <View style={[styles.floatingPill, isSelected && styles.floatingPillSelected]}>
-                  <View style={{ flex: 1, paddingRight: 6 }}>
-                    <Text numberOfLines={1} style={styles.floatingTitle}>
-                      {item.name}
-                    </Text>
-                    <Text numberOfLines={1} style={styles.floatingSize}>
-                      {item.layout.printSize} • {item.layout.slots} {item.layout.slots === 1 ? 'shot' : 'shots'}
-                    </Text>
+                    <View style={[styles.floatingPriceBadge, price === 0 && styles.floatingPriceFree]}>
+                      <Text style={[styles.floatingPriceText, price === 0 && styles.floatingPriceTextFree]}>
+                        {price === 0 ? 'FREE' : `₹${price}`}
+                      </Text>
+                    </View>
                   </View>
-
-                  <View style={[styles.floatingPriceBadge, price === 0 && styles.floatingPriceFree]}>
-                    <Text style={[styles.floatingPriceText, price === 0 && styles.floatingPriceTextFree]}>
-                      {price === 0 ? 'FREE' : `₹${price}`}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           {filtered.length === 0 && (
             <View style={styles.emptyContainer}>
@@ -316,13 +355,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     flexWrap: 'wrap',
-    marginBottom: verticalScale(14),
+    marginBottom: verticalScale(10),
+  },
+  filterBarPortrait: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    width: '100%',
+    gap: 4,
+    marginBottom: 8,
   },
   filterGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: scale(10),
-    marginVertical: 4,
+    marginHorizontal: scale(6),
+    marginVertical: 3,
   },
   filterGroupLabel: {
     color: '#71717a',
@@ -355,13 +401,39 @@ const styles = StyleSheet.create({
   },
   carouselContainer: {
     alignItems: 'center',
-    paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(8),
+  },
+  portraitScrollContainer: {
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  landscapeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: scale(16),
+  },
+  portraitGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 14,
+    width: '100%',
   },
   templateItem: {
     alignItems: 'center',
-    marginHorizontal: scale(8),
+    marginHorizontal: scale(6),
+  },
+  templateItemPortrait: {
+    marginHorizontal: 0,
+    marginBottom: 8,
+    backgroundColor: 'rgba(18, 18, 27, 0.55)',
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderColor: '#1f1f2e',
   },
   canvasGlowWrap: {
     padding: 3,

@@ -18,7 +18,7 @@ import { conflict, sendError } from '../utils/httpError.js';
 //   Pro      ₹999/mo or ₹9,588/yr (₹799/mo)  ·  A$20/mo or A$180/yr (A$15/mo)
 //   Premium  ₹1,299/mo or ₹11,988/yr (₹999/mo) · A$25/mo or A$240/yr (A$20/mo)
 //            + AI templates with 500 credits
-//   Add-ons  priced per add-on in the CRM catalogue — props pack is one-time.
+//   Add-ons  A$5/mo each (₹299) — props pack is one-time.
 //
 // `price` mirrors the INR monthly price for legacy readers; website and
 // checkout use priceMonthly/priceAnnual (+ AUD twins).
@@ -100,7 +100,7 @@ export const DEFAULT_PLAN_CATALOG = [
   },
 ];
 
-// Add-ons: priced per add-on in the catalogue, props pack one-time. Sold alongside any
+// Add-ons: A$5/mo each (₹299), props pack one-time. Sold alongside any
 // plan; managed in the same CRM catalogue (kind: 'addon').
 export const ADDON_CATALOG = [
   { key: 'addon-headshot', name: 'Professional Headshot Mode', description: 'Studio-style AI headshots for corporate events.', priceMonthly: 299, priceAnnual: 2990, billingNote: 'per user / month' },

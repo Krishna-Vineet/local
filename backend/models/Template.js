@@ -8,6 +8,7 @@ const templateSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
     category: { type: String, default: 'Custom' },
+    price: { type: Number, default: 0, min: 0 },
     
     // REQUIRED — the pinned layout variant (from src/lib/layouts.js)
     layoutId: { type: String, required: true },

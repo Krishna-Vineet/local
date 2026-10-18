@@ -12,7 +12,9 @@
 // ============================================================
 
 import crypto from 'crypto';
-import { layoutMeta, resolveLayoutPrices, suggestedPriceMap, parseLayoutId } from '../config/layouts.js';
+import fs from 'fs';
+import path from 'path';
+import { layoutMeta, resolveLayoutPrices, suggestedPriceMap, parseLayoutId, resolveTemplateLayoutPriceKey } from '../config/layouts.js';
 import { getGallerySettings, photoVisibleInGallery } from './gallerySettingsService.js';
 import Photo from '../models/Photo.js';
 import OrganizationDefaults from '../models/OrganizationDefaults.js';
@@ -124,12 +126,13 @@ export function mapTemplates(templates = []) {
         name: template.name,
         category: template.category || 'Custom',
         description: template.description || '',
+        price: template.price != null && !isNaN(Number(template.price)) ? Number(template.price) : null,
         source: template.source || 'playground',
         componentId: template.componentId || null,
         active: template.active !== false,
         layout: {
           id: layoutId,
-          familyId: meta.familyId,
+          familyId: (tLayout && tLayout.familyId) || meta.familyId,
           label: `${printSize} · ${slotsCount} photo${slotsCount === 1 ? '' : 's'}`,
           printSize,
           sheetSize: printSize,
@@ -139,22 +142,247 @@ export function mapTemplates(templates = []) {
           photoSlots,
         },
         design: normalizeDesign(template.design, template),
-        assets: template.assets || [],
+        assets: Array.isArray(template.assets)
+          ? template.assets.map((a) => ({
+              ...a,
+              url: resolveAssetUrlForBooth(a?.url, a?.assetId) || a?.url || null,
+            }))
+          : [],
       };
     });
 }
 
-function normalizeDesign(design, template) {
-  const fallback = {
-    background: { type: 'solid', colors: ['#ffffff'] },
-    accent: '#ff4f9a',
-    textColor: '#251530',
-    ornament: 'none',
-    slotShape: 'square',
-    title: template.name || '',
+function tryReadLocalAssetAsDataUrl(rawKey) {
+  if (!rawKey || typeof rawKey !== 'string') return null;
+  const cleanKey = rawKey
+    .replace(/^https?:\/\/[^/]+\//, '')
+    .replace(/^(\/?uploads\/|\/)/, '')
+    .split('?')[0];
+  if (!cleanKey || cleanKey.includes('..') || cleanKey.startsWith('temp-')) return null;
+  try {
+    const localPath = path.join(process.cwd(), 'uploads', cleanKey);
+    if (fs.existsSync(localPath)) {
+      const ext = path.extname(localPath).toLowerCase();
+      const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.svg' ? 'image/svg+xml' : 'image/jpeg';
+      const buf = fs.readFileSync(localPath);
+      return `data:${mime};base64,${buf.toString('base64')}`;
+    }
+  } catch {
+    // ignore fs read errors
+  }
+  return null;
+}
+
+function resolveAssetUrlForBooth(rawUrl, assetId = null) {
+  const url = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  const cleanAssetId = typeof assetId === 'string' ? assetId.trim() : '';
+  const validAssetKey = cleanAssetId && !cleanAssetId.startsWith('temp-') && !cleanAssetId.startsWith('http') && !cleanAssetId.startsWith('data:')
+    ? cleanAssetId
+    : null;
+
+  if (url.startsWith('data:')) return url;
+
+  if (validAssetKey) {
+    const inlineFromId = tryReadLocalAssetAsDataUrl(validAssetKey);
+    if (inlineFromId) return inlineFromId;
+  }
+
+  if (url.includes('/api/org/asset-proxy') || url.includes('/api/booth/asset-proxy')) {
+    const qMatch = url.match(/[?&]key=([^&]+)/);
+    if (qMatch) {
+      const decodedKey = decodeURIComponent(qMatch[1]);
+      const inline = tryReadLocalAssetAsDataUrl(decodedKey);
+      if (inline) return inline;
+      return `/api/org/asset-proxy?key=${encodeURIComponent(decodedKey)}`;
+    }
+    const qIdx = url.indexOf('?');
+    return qIdx !== -1 ? `/api/org/asset-proxy${url.slice(qIdx)}` : url;
+  }
+
+  if (url.includes('amazonaws.com') || url.includes('happypix-bucket')) {
+    if (url.includes('X-Amz-Signature')) return url;
+    const key = validAssetKey || url.replace(/^https?:\/\/[^/]+\//, '').split('?')[0];
+    if (key) {
+      const inline = tryReadLocalAssetAsDataUrl(key);
+      if (inline) return inline;
+      return `/api/org/asset-proxy?key=${encodeURIComponent(key)}`;
+    }
+  }
+
+  if (url.startsWith('http://localhost:5000/uploads/') || url.startsWith('http://127.0.0.1:5000/uploads/') || url.startsWith('/uploads/')) {
+    const key = url.replace(/^https?:\/\/[^/]+/, '').replace(/^\/?uploads\//, '');
+    if (key) {
+      const inline = tryReadLocalAssetAsDataUrl(key);
+      if (inline) return inline;
+      return `/uploads/${key}`;
+    }
+  }
+
+  if (url) return url;
+
+  if (cleanAssetId && !cleanAssetId.startsWith('temp-')) {
+    if (cleanAssetId.startsWith('data:') || cleanAssetId.startsWith('http://') || cleanAssetId.startsWith('https://')) {
+      return resolveAssetUrlForBooth(cleanAssetId, null);
+    }
+    const key = cleanAssetId.replace(/^(\/?uploads\/|\/)/, '');
+    const inline = tryReadLocalAssetAsDataUrl(key);
+    if (inline) return inline;
+    return `/api/org/asset-proxy?key=${encodeURIComponent(key)}`;
+  }
+
+  return null;
+}
+
+const DESIGNER_COMPONENT_DESIGNS = {
+  ClassicPostcard: {
+    background: { type: 'solid', colors: ['#FFFFFF'] },
+    accent: '#2A2338',
+    textColor: '#191424',
+    ornament: 'frame',
+    slotShape: 'rect',
+    title: 'HAPPYPIX',
     subtitle: '',
+  },
+  MinimalMono: {
+    background: { type: 'solid', colors: ['#FAFAF8'] },
+    accent: '#191424',
+    textColor: '#403952',
+    ornament: 'none',
+    slotShape: 'rect',
+    title: 'UNTITLED',
+    subtitle: '',
+  },
+  PanoramaStory: {
+    background: { type: 'gradient', colors: ['#241E33', '#14101F'] },
+    accent: '#A99BE8',
+    textColor: '#FFFFFF',
+    ornament: 'none',
+    slotShape: 'round',
+    title: 'PANORAMA',
+    subtitle: '',
+  },
+  RoyalWedding: {
+    background: { type: 'gradient', colors: ['#5F4CAA', '#3A3170'] },
+    accent: '#D9B44A',
+    textColor: '#F3D9A4',
+    ornament: 'flourish',
+    slotShape: 'arch',
+    titleBand: true,
+    title: 'Royal Wedding',
+    subtitle: '',
+  },
+  VintageBookmark: {
+    background: { type: 'solid', colors: ['#F5EEDC'] },
+    accent: '#6B5B3E',
+    textColor: '#4C3F26',
+    ornament: 'dots',
+    slotShape: 'rect',
+    title: 'A Keepsake',
+    subtitle: '',
+  },
+  GalaGold: {
+    background: { type: 'solid', colors: ['#191420'] },
+    accent: '#D9B44A',
+    textColor: '#F3D9A4',
+    ornament: 'frame',
+    slotShape: 'rect',
+    title: 'Gala Night',
+    subtitle: 'Presented with joy',
+  },
+  FestiveMaroon: {
+    background: { type: 'solid', colors: ['#6E1F2A'] },
+    accent: '#D9B44A',
+    textColor: '#FFE9D6',
+    ornament: 'stripes',
+    slotShape: 'round',
+    titleBand: true,
+    title: 'Festive Wishes',
+    subtitle: '',
+  },
+  LegacyGuestbook: {
+    background: { type: 'gradient', colors: ['#1E3E70', '#12264A'] },
+    accent: '#D9B44A',
+    textColor: '#F3D9A4',
+    ornament: 'frame',
+    slotShape: 'round',
+    titleBand: true,
+    title: 'The Guest Book',
+    subtitle: '',
+  },
+  NeonParty: {
+    background: { type: 'gradient', colors: ['#EA097F', '#5F4CAA'] },
+    accent: '#FF7AC1',
+    textColor: '#FFFFFF',
+    ornament: 'glow',
+    slotShape: 'round',
+    title: 'NEON NIGHT',
+    subtitle: '',
+  },
+  SunsetStrip: {
+    background: { type: 'gradient', colors: ['#F7B733', '#EA097F'] },
+    accent: '#FFFFFF',
+    textColor: '#FFFFFF',
+    ornament: 'dots',
+    slotShape: 'round',
+    title: 'SUNSET',
+    subtitle: '',
+  },
+  FilmStrip: {
+    background: { type: 'solid', colors: ['#141414'] },
+    accent: '#FFB000',
+    textColor: '#FFB000',
+    ornament: 'sprockets',
+    slotShape: 'rect',
+    title: 'HAPPYPIX FILM',
+    subtitle: 'FRAME 04 · 2026',
+  },
+  CollectorReel: {
+    background: { type: 'gradient', colors: ['#DFF2F2', '#B7DFDF'] },
+    accent: '#0E7490',
+    textColor: '#0B5D73',
+    ornament: 'frame',
+    slotShape: 'round',
+    title: 'COLLECTOR 2026',
+    subtitle: '',
+  },
+  KidsSplash: {
+    background: { type: 'gradient', colors: ['#DDEBFF', '#FFE9F2'] },
+    accent: '#2A6FBE',
+    textColor: '#2A6FBE',
+    ornament: 'dots',
+    slotShape: 'round',
+    title: 'Splash Time!',
+    subtitle: '',
+  },
+  CorporateGrid: {
+    background: { type: 'solid', colors: ['#FFFFFF'] },
+    accent: '#3871C1',
+    textColor: '#403952',
+    ornament: 'headerBand',
+    slotShape: 'round',
+    titleBand: true,
+    title: 'Team Offsite 2026',
+    subtitle: 'HappyPix · captured & printed on site',
+  },
+};
+
+function normalizeDesign(rawDesign, template) {
+  const designerPreset = (template.componentId && DESIGNER_COMPONENT_DESIGNS[template.componentId]) || null;
+  const fallback = {
+    background: designerPreset?.background || { type: 'solid', colors: ['#ffffff'] },
+    accent: designerPreset?.accent || template.accent || '#ff4f9a',
+    textColor: designerPreset?.textColor || '#251530',
+    ornament: designerPreset?.ornament || 'none',
+    slotShape: designerPreset?.slotShape || 'square',
+    titleBand: Boolean(designerPreset?.titleBand),
+    title: designerPreset?.title || template.name || '',
+    subtitle: designerPreset?.subtitle || '',
+    decorations: [],
   };
-  if (!design || typeof design !== 'object') return fallback;
+  const design = rawDesign && typeof rawDesign === 'object'
+    ? { ...designerPreset, ...rawDesign }
+    : (designerPreset ? { ...designerPreset } : null);
+  if (!design) return fallback;
 
   // Resolve background URL from design or template.assets
   let rawBg = design.background || design.bg;
@@ -162,7 +390,7 @@ function normalizeDesign(design, template) {
   let bgAssetId = null;
 
   if (typeof rawBg === 'string') {
-    if (rawBg.startsWith('http') || rawBg.startsWith('data:')) {
+    if (rawBg.startsWith('http') || rawBg.startsWith('data:') || rawBg.startsWith('/')) {
       bgUrl = rawBg;
     }
   } else if (rawBg && typeof rawBg === 'object') {
@@ -172,17 +400,15 @@ function normalizeDesign(design, template) {
 
   // If no URL directly on background object, resolve from template.assets or backend uploads
   if (!bgUrl && Array.isArray(template.assets) && template.assets.length > 0) {
-    const matchedAsset = (bgAssetId && template.assets.find(a => a.assetId === bgAssetId)) ||
-      template.assets.find(a => a.role === 'background' || a.type === 'background');
-    if (matchedAsset && matchedAsset.url) {
-      bgUrl = matchedAsset.url;
+    const matchedAsset = (bgAssetId && template.assets.find((a) => a.assetId === bgAssetId)) ||
+      template.assets.find((a) => a.role === 'background' || a.type === 'background');
+    if (matchedAsset) {
+      bgUrl = matchedAsset.url || null;
+      bgAssetId = bgAssetId || matchedAsset.assetId || null;
     }
   }
 
-  if (!bgUrl && bgAssetId && !bgAssetId.startsWith('temp-')) {
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-    bgUrl = `${backendUrl}/uploads/${bgAssetId.replace(/^(\/?uploads\/|\/)/, '')}`;
-  }
+  bgUrl = resolveAssetUrlForBooth(bgUrl, bgAssetId);
 
   let background;
   if (bgUrl) {
@@ -200,60 +426,169 @@ function normalizeDesign(design, template) {
   }
 
   // Resolve decorations with their asset URLs
-  const decorations = Array.isArray(design.decorations)
-    ? design.decorations.map((dec) => {
-        if (!dec.url && dec.assetId) {
-          const matched = Array.isArray(template.assets) && template.assets.find((a) => a.assetId === dec.assetId);
-          if (matched && matched.url) {
-            return { ...dec, url: matched.url };
-          }
-          if (!dec.assetId.startsWith('temp-')) {
-            const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-            return { ...dec, url: `${backendUrl}/uploads/${dec.assetId.replace(/^(\/?uploads\/|\/)/, '')}` };
-          }
+  const rawDecorations = Array.isArray(design.decorations) ? [...design.decorations] : [];
+  if (Array.isArray(template.assets)) {
+    for (const asset of template.assets) {
+      if (!asset || asset.role === 'background' || asset.type === 'background') continue;
+      if (asset.role === 'overlay' || asset.role === 'frame' || asset.type === 'overlay') {
+        const alreadyInDecs = rawDecorations.some((d) => (d.assetId && d.assetId === asset.assetId) || (d.url && d.url === asset.url));
+        if (!alreadyInDecs) {
+          rawDecorations.push({
+            assetId: asset.assetId,
+            url: asset.url,
+            type: 'decoration',
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            overlay: true,
+          });
         }
-        return dec;
-      })
-    : [];
+      }
+    }
+  }
+
+  const decorations = rawDecorations.map((dec) => {
+    let decUrl = dec.url || null;
+    const decAssetId = dec.assetId || null;
+    if (!decUrl && decAssetId && Array.isArray(template.assets)) {
+      const matched = template.assets.find((a) => a.assetId === decAssetId);
+      if (matched && matched.url) decUrl = matched.url;
+    }
+    const resolvedUrl = resolveAssetUrlForBooth(decUrl, decAssetId);
+    return {
+      ...dec,
+      ...(resolvedUrl ? { url: resolvedUrl } : {}),
+    };
+  });
 
   return {
     ...fallback,
     ...design,
     background,
+    bg: background,
     accent: design.accent || design.palette?.accent || design.palette?.primary || fallback.accent,
     textColor: design.textColor || design.palette?.text || fallback.textColor,
-    ornament: design.ornament || 'none',
-    slotShape: design.slotShape || 'square',
-    title: design.title || template.name || '',
-    subtitle: design.subtitle || '',
+    ornament: design.ornament || fallback.ornament || 'none',
+    slotShape: design.slotShape || fallback.slotShape || 'square',
+    titleBand: design.titleBand !== undefined ? Boolean(design.titleBand) : fallback.titleBand,
+    title: design.title || fallback.title || template.name || '',
+    subtitle: design.subtitle || design.tagline || fallback.subtitle || '',
     decorations,
     palette: design.palette || null,
     theme: design.theme || null,
   };
 }
 
-/** Bottom-15% branding footer, grid slots inside the photo area (CRM parity). */
+/** Bottom-15% branding footer, grid/strip slots inside the photo area (CRM parity). */
 function autoSlots(meta, template) {
   const { canvas, slots } = meta;
   const footer = Math.round(canvas.height * 0.15);
-  const width = canvas.width;
-  const height = canvas.height - footer;
-  const gap = Math.max(10, Math.round(width * 0.022));
-  const columns = slots <= 1 ? 1 : slots <= 4 ? 2 : 3;
-  const rows = Math.ceil(slots / columns);
-  const cellW = (width - gap * (columns - 1)) / columns;
-  const cellH = (height - gap * (rows - 1)) / rows;
-  const out = [];
-  for (let index = 0; index < slots; index += 1) {
-    out.push({
-      id: `slot-${index + 1}`,
-      x: Math.round((index % columns) * (cellW + gap)),
-      y: Math.round(Math.floor(index / columns) * (cellH + gap)),
-      width: Math.round(cellW),
-      height: Math.round(cellH),
-    });
+  const designerPreset = (template?.componentId && DESIGNER_COMPONENT_DESIGNS[template.componentId]) || null;
+  const hasTitleBand = Boolean(template?.design?.titleBand || designerPreset?.titleBand);
+  const padX = Math.round(Math.min(36, canvas.width * 0.04));
+  const topInset = hasTitleBand ? Math.round(canvas.height * 0.12) : Math.round(Math.min(36, canvas.height * 0.035));
+  const bottomInset = Math.round(Math.min(28, canvas.height * 0.025));
+
+  const areaX = padX;
+  const areaY = topInset;
+  const w = Math.max(100, canvas.width - padX * 2);
+  const h = Math.max(100, canvas.height - footer - topInset - bottomInset);
+  const g = Math.max(12, Math.round(w * 0.025));
+  const aspect = canvas.width / canvas.height;
+
+  const row = (cols, y, rh) => {
+    const cw = (w - g * (cols - 1)) / cols;
+    const out = [];
+    for (let i = 0; i < cols; i += 1) out.push({ x: areaX + i * (cw + g), y: areaY + y, w: cw, h: rh });
+    return out;
+  };
+  const col = (rows, x, cw) => {
+    const rh = (h - g * (rows - 1)) / rows;
+    const out = [];
+    for (let i = 0; i < rows; i += 1) out.push({ x: areaX + x, y: areaY + i * (rh + g), w: cw, h: rh });
+    return out;
+  };
+  const grid = (cols, rows) => {
+    const cw = (w - g * (cols - 1)) / cols;
+    const rh = (h - g * (rows - 1)) / rows;
+    const out = [];
+    for (let r = 0; r < rows; r += 1) {
+      for (let c = 0; c < cols; c += 1) {
+        out.push({ x: areaX + c * (cw + g), y: areaY + r * (rh + g), w: cw, h: rh });
+      }
+    }
+    return out;
+  };
+
+  let rects = [];
+  const n = Math.max(1, Number(slots) || 1);
+  if (n === 1) {
+    rects = [{ x: areaX, y: areaY, w, h }];
+  } else if (n === 2) {
+    rects = aspect >= 1 ? row(2, 0, h) : col(2, 0, w);
+  } else if (n === 3) {
+    if (aspect <= 0.55 || template?.componentId === 'RoyalWedding') {
+      rects = col(3, 0, w);
+    } else if (aspect >= 1.15) {
+      if (template?.componentId === 'KidsSplash') {
+        rects = row(3, 0, h);
+      } else {
+        const bw = Math.round((w - g) * 0.58);
+        const rh = (h - g) / 2;
+        rects = [
+          { x: areaX, y: areaY, w: bw, h },
+          { x: areaX + bw + g, y: areaY, w: w - bw - g, h: rh },
+          { x: areaX + bw + g, y: areaY + rh + g, w: w - bw - g, h: rh },
+        ];
+      }
+    } else {
+      const bh = Math.round((h - g) * 0.58);
+      const cw = (w - g) / 2;
+      rects = [
+        { x: areaX, y: areaY, w, h: bh },
+        { x: areaX, y: areaY + bh + g, w: cw, h: h - bh - g },
+        { x: areaX + cw + g, y: areaY + bh + g, w: cw, h: h - bh - g },
+      ];
+    }
+  } else if (n === 4) {
+    if (aspect <= 0.45) rects = col(4, 0, w);
+    else if (aspect >= 2.1) rects = row(4, 0, h);
+    else rects = grid(2, 2);
+  } else if (n === 5) {
+    if (aspect <= 0.45) rects = col(5, 0, w);
+    else if (aspect >= 2.1) rects = row(5, 0, h);
+    else {
+      const bh = Math.round((h - g) * 0.48);
+      const gh = h - bh - g;
+      const rh = (gh - g) / 2;
+      const cw = (w - g) / 2;
+      rects = [{ x: areaX, y: areaY, w, h: bh }];
+      for (let r = 0; r < 2; r += 1) {
+        for (let c = 0; c < 2; c += 1) {
+          rects.push({ x: areaX + c * (cw + g), y: areaY + bh + g + r * (rh + g), w: cw, h: rh });
+        }
+      }
+    }
+  } else if (n === 6) {
+    rects = aspect >= 1 ? grid(3, 2) : grid(2, 3);
+  } else if (n === 8) {
+    rects = aspect >= 1 ? grid(4, 2) : grid(2, 4);
+  } else if (n === 9) {
+    rects = grid(3, 3);
+  } else {
+    const columns = n <= 4 ? 2 : 3;
+    const rows = Math.ceil(n / columns);
+    rects = grid(columns, rows).slice(0, n);
   }
-  return out;
+
+  return rects.slice(0, n).map((r, index) => ({
+    id: `slot-${index + 1}`,
+    x: Math.round(r.x),
+    y: Math.round(r.y),
+    width: Math.round(r.w),
+    height: Math.round(r.h),
+  }));
 }
 
 /**
@@ -261,7 +596,7 @@ function autoSlots(meta, template) {
  * defaults — never from hard-coded platform fallbacks when the org has
  * configured something (issues #69–#71, #105, #106).
  */
-export function buildSettings({ organization = {}, defaults = null, event = null }) {
+export function buildSettings({ organization = {}, defaults = null, event = null, gallery = null }) {
   const orgName = organization.name || 'HappyPix';
   const payoutMode = defaults && defaults.payoutMode === 'upi' ? 'upi' : 'wallet';
   const upiId = (defaults && defaults.upiId) || organization.upiId || null;
@@ -304,6 +639,8 @@ export function buildSettings({ organization = {}, defaults = null, event = null
       ? Object.fromEntries(defaults.templatePrices)
       : (defaults?.templatePrices || {}),
     suggestedPrices: suggestedPriceMap(),
+    galleryEnabled: gallery ? gallery.galleryEnabled !== false : true,
+    websiteUrl: String(process.env.WEBSITE_URL || '').replace(/\/+$/, ''),
   };
 }
 
@@ -313,7 +650,7 @@ export function computeRevision(payload) {
     if (value instanceof Map) return Object.fromEntries(value);
     return value;
   });
-  return crypto.createHash('sha1').update(stable).digest('hex').slice(0, 20);
+  return crypto.createHash('sha1').update(`v3:${stable}`).digest('hex').slice(0, 20);
 }
 
 async function loadDefaults(organizationId) {
@@ -355,7 +692,7 @@ export async function buildBoothSnapshot({ device, organization, event = null })
   const samplePhotos = event ? await recentSamplePhotos(event, organization, gallery) : [];
 
   const branding = buildBranding(organization, event);
-  const settings = buildSettings({ organization, defaults, event });
+  const settings = buildSettings({ organization, defaults, event, gallery });
 
   const orgTemplatePrices = defaults?.templatePrices instanceof Map
     ? Object.fromEntries(defaults.templatePrices)
@@ -377,8 +714,10 @@ export async function buildBoothSnapshot({ device, organization, event = null })
       price = Number(eventTemplatePrices[t.id]);
     } else if (orgTemplatePrices[t.id] != null && !isNaN(Number(orgTemplatePrices[t.id]))) {
       price = Number(orgTemplatePrices[t.id]);
-    } else if (t.layout?.familyId && t.layout?.slots) {
-      const key = `${t.layout.familyId}:${t.layout.slots}`;
+    } else if (t.price != null && !isNaN(Number(t.price)) && Number(t.price) > 0) {
+      price = Number(t.price);
+    } else {
+      const key = resolveTemplateLayoutPriceKey(t, t.layout?.id);
       price = settings.layoutPrices[key] ?? null;
     }
     return {

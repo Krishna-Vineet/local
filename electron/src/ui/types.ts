@@ -89,6 +89,7 @@ export interface BoothSettings {
   paymentDisplayName: string
   currency: 'INR'
   maximumPrints: number
+  websiteUrl?: string
 }
 
 export interface Installation {

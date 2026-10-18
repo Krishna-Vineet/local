@@ -23,9 +23,7 @@ export function newDownloadId() {
 
 /** Public website URL for a download id (no trailing-slash surprises). */
 export function downloadUrlFor(downloadId) {
-  const base = String(
-    process.env.WEBSITE_URL || process.env.PUBLIC_SHARE_BASE || 'https://happypix.in',
-  ).replace(/\/+$/, '');
+  const base = String(process.env.WEBSITE_URL || '').replace(/\/+$/, '');
   return `${base}/download/${encodeURIComponent(downloadId)}`;
 }
 

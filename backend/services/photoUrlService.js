@@ -42,7 +42,11 @@ function s3KeyFor(photo = {}) {
 function looksLikeOurS3(photo = {}, key) {
   if (!key || !process.env.S3_BUCKET_NAME) return false;
   const url = String(photo.compositeUrl || photo.url || '');
+  if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1') || url.startsWith('/uploads/') || url.includes('/uploads/')) {
+    return false;
+  }
   if (url.includes('amazonaws.com')) return url.includes(process.env.S3_BUCKET_NAME);
+  if (url.startsWith('http://') || url.startsWith('https://')) return false;
   return Boolean(photo.s3Key); // key stored but URL built elsewhere
 }
 

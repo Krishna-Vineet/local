@@ -87,7 +87,7 @@ export async function saveGallerySettings(patch = {}, actor = null) {
       },
       $setOnInsert: { organizationId: null },
     },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
   );
 
   cache = { at: 0, value: null };

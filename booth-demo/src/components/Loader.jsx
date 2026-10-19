@@ -1,10 +1,14 @@
 import React from 'react'
-export default function Loader({ text="Loading magic…", sub="Please wait" }) {
+
+export default function Loader({ text = 'One moment…', sub }){
   return (
-    <div className="loader-overlay">
-      <div className="loader-ring" />
+    <div className="loader-overlay" role="status" aria-live="polite">
+      <div className="loader-mark" aria-hidden="true">
+        <span className="loader-ring" />
+        <span className="loader-shutter" />
+      </div>
       <div className="loader-text">{text}</div>
-      <div className="loader-sub">{sub}</div>
+      {sub && <div className="loader-sub">{sub}</div>}
     </div>
   )
 }

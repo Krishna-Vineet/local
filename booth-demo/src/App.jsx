@@ -1,8 +1,7 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { BoothProvider } from './context/BoothContext'
-import Landing from './pages/Landing'
-import Config from './pages/Config'
+import Setup from './pages/Setup'
 import Start from './pages/booth/Start'
 import Orientation from './pages/booth/Orientation'
 import Templates from './pages/booth/Templates'
@@ -18,8 +17,9 @@ export default function App(){
     <BoothProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Landing/>} />
-          <Route path="/experience" element={<Config/>} />
+          <Route path="/" element={<Setup/>} />
+          <Route path="/experience" element={<Navigate to="/" replace />} />
+          <Route path="/setup" element={<Navigate to="/" replace />} />
           <Route path="/booth/start" element={<Start/>} />
           <Route path="/booth/orientation" element={<Orientation/>} />
           <Route path="/booth/templates" element={<Templates/>} />

@@ -9,10 +9,10 @@ export const useBooth = () => {
 
 export function BoothProvider({ children }) {
   const [config, setConfig] = useState({
-    orgName: 'HappyPix Demo',
+    orgName: '',
     orgLogo: null,
     orgLogoUrl: null,
-    eventName: 'Annual Gala 2026',
+    eventName: '',
     eventType: 'party',
     sponsorLogos: [], // urls
   })

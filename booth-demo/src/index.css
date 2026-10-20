@@ -788,6 +788,7 @@ input, button, select, textarea { font-family:inherit; }
   background:#14101f; border:1px solid #2c2440; border-radius:7px;
   padding:5px 8px; font-size:13px;
 }
+.sticker-chip.is-selected { background:#1e1338; border-color:#7c3aed; box-shadow:0 0 0 1px rgba(124,58,237,.35); }
 .sticker-chip-x { font-size:10px; color:#8b7fb8; }
 .customize-actions { display:flex; gap:8px; margin-top:12px; }
 .decor-list { display:flex; flex-direction:column; gap:6px; }

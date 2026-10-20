@@ -1,8 +1,5 @@
-import React from 'react'
+import React, { useRef, useState, useCallback } from 'react'
 
-// Web replica of the booth's print template renderer.
-// Draws the card chrome (brand row, photo slots, caption, accent band)
-// and composes captured photos or the event's sample frames.
 export default function TemplateCanvas({
   template,
   photos = [],
@@ -11,6 +8,7 @@ export default function TemplateCanvas({
   maxWidth,
   filterId = 'original',
   stickers = [],
+  onStickersChange,
   subtitle,
   orgName = '',
   orgLogo = null,
@@ -38,9 +36,46 @@ export default function TemplateCanvas({
   const darkCard = isDark(p.bg)
   const compact = h < 190 || w < 120
   const ornament = decor || template.decor
+  const canvasRef = useRef(null)
+  const [dragId, setDragId] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
+
+  const beginDrag = useCallback((e, st) => {
+    if(!onStickersChange) return
+    e.preventDefault()
+    e.stopPropagation()
+    setSelectedId(st.id)
+    setDragId(st.id)
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if(!rect) return
+    const startX = e.clientX
+    const startY = e.clientY
+    const origX = st.x
+    const origY = st.y
+
+    const onMove = (ev) => {
+      const r = canvasRef.current?.getBoundingClientRect()
+      if(!r) return
+      const dxPct = ((ev.clientX - startX) / r.width) * 100
+      const dyPct = ((ev.clientY - startY) / r.height) * 100
+      const nx = Math.max(2, Math.min(96, origX + dxPct))
+      const ny = Math.max(2, Math.min(94, origY + dyPct))
+      onStickersChange(stickers.map(sx => sx.id === st.id ? { ...sx, x: nx, y: ny } : sx))
+    }
+    const onUp = () => {
+      setDragId(null)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [onStickersChange, stickers])
 
   return (
-    <div style={{
+    <div
+      ref={canvasRef}
+      onPointerDownCapture={(e)=> { if(e.target === canvasRef.current) setSelectedId(null)}}
+      style={{
       width:w, height:h,
       background:p.bg,
       borderRadius:Math.round(4 * s),
@@ -50,8 +85,9 @@ export default function TemplateCanvas({
       boxShadow:'0 14px 34px rgba(0,0,0,0.45)',
       border: darkCard ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(0,0,0,0.06)',
       color:p.ink,
+      touchAction:'none',
+      userSelect:'none'
     }}>
-      {/* brand row */}
       {!compact && <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:Math.round(6*s), paddingBottom:Math.round(7*s) }}>
         <div style={{ display:'flex', alignItems:'center', gap:Math.round(5*s), minWidth:0 }}>
           {orgLogo
@@ -66,7 +102,6 @@ export default function TemplateCanvas({
         }}>{orgName || 'PHOTOBOOTH'}</span>
       </div>}
 
-      {/* photos */}
       <div style={{ flex:1, position:'relative', minHeight:0 }}>
         {template.slotLayout.map((slot, i)=>(
           <div key={i} style={{
@@ -92,24 +127,39 @@ export default function TemplateCanvas({
           </div>
         ))}
 
-        {/* ornaments */}
         {ornament === 'hearts' && <Ornament s={s} color={p.accent} kind="hearts" />}
         {ornament === 'stars' && <Ornament s={s} color={p.accent} kind="stars" />}
         {ornament === 'confetti' && <Ornament s={s} color={p.accent2} kind="confetti" />}
         {ornament === 'bubbles' && <Ornament s={s} color={p.accent} kind="bubbles" />}
 
-        {stickers.map(st=>(
-          <span key={st.id} style={{
-            position:'absolute', left:`${st.x}%`, top:`${st.y}%`,
-            fontSize:(st.size || 20) * s,
-            transform:`rotate(${st.rotation || 0}deg)`,
-            pointerEvents:'none', lineHeight:1,
-            filter:'drop-shadow(0 2px 3px rgba(0,0,0,0.45))',
-          }}>{st.emoji}</span>
-        ))}
+        {stickers.map(st=>{
+          const isSelected = selectedId === st.id
+          const isDragging = dragId === st.id
+          return (
+            <span
+              key={st.id}
+              onPointerDown={(e)=> beginDrag(e, st)}
+              onClick={(e)=> { e.stopPropagation(); setSelectedId(st.id)}}
+              style={{
+                position:'absolute', left:`${st.x}%`, top:`${st.y}%`,
+                fontSize:(st.size || 20) * s,
+                transform:`translate(-50%,-50%) rotate(${st.rotation || 0}deg)`,
+                lineHeight:1,
+                cursor: onStickersChange ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                filter: isSelected ? 'drop-shadow(0 2px 6px rgba(0,0,0,0.55)) drop-shadow(0 0 0 rgba(139,92,246,0.6))' : 'drop-shadow(0 2px 3px rgba(0,0,0,0.45))',
+                transition: isDragging ? 'none' : 'transform 0.12s ease',
+                padding: isSelected ? `${2*s}px` : 0,
+                borderRadius: 6,
+                boxShadow: isSelected ? `0 0 0 ${Math.max(1, s*1.2)}px rgba(139,92,246,0.9)` : 'none',
+                background: isSelected ? 'rgba(139,92,246,0.08)' : 'transparent',
+                touchAction:'none',
+                zIndex: isSelected ? 10 : 2,
+              }}
+            >{st.emoji}</span>
+          )
+        })}
       </div>
 
-      {/* event caption */}
       {!compact && <div style={{
         paddingTop:Math.round(8*s), paddingBottom:Math.round(6*s),
         textAlign:'center',
@@ -123,7 +173,6 @@ export default function TemplateCanvas({
         overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
       }}>{title}</div>}
 
-      {/* accent band */}
       <div style={{
         borderRadius:Math.round(2.5*s),
         padding:`${Math.round(4*s)}px ${Math.round(7*s)}px`,
@@ -206,12 +255,12 @@ function isDark(hex){
 
 function getFilterStyle(id){
   switch(id){
-    case 'bw': return 'grayscale(1) contrast(1.12)'
-    case 'warm': return 'sepia(0.32) saturate(1.28) hue-rotate(-8deg) brightness(1.04)'
-    case 'cool': return 'saturate(1.18) hue-rotate(10deg) brightness(1.04) contrast(1.04)'
-    case 'vintage': return 'sepia(0.55) contrast(1.08) brightness(0.98) saturate(1.18)'
-    case 'soft': return 'saturate(1.1) brightness(1.07) contrast(0.94) sepia(0.1)'
-    case 'party': return 'saturate(1.55) contrast(1.12) brightness(1.03)'
+    case 'bw': return 'grayscale(1) contrast(1.15) brightness(0.98)'
+    case 'warm': return 'sepia(0.36) saturate(1.32) hue-rotate(-9deg) brightness(1.06) contrast(1.02)'
+    case 'cool': return 'saturate(1.16) hue-rotate(12deg) brightness(1.05) contrast(1.05) sepia(0.05)'
+    case 'vintage': return 'sepia(0.58) contrast(1.1) brightness(0.96) saturate(1.2) hue-rotate(-3deg)'
+    case 'soft': return 'saturate(1.08) brightness(1.09) contrast(0.93) sepia(0.12) blur(0px)'
+    case 'party': return 'saturate(1.62) contrast(1.14) brightness(1.05) hue-rotate(-2deg)'
     default: return 'none'
   }
 }

@@ -97,6 +97,7 @@ export default function Prints(){
             maxWidth={296}
             photos={(EVENT_SAMPLES[template.category] || []).slice(0, template.slots)}
             orgName={config.orgName}
+            orgLogo={config.orgLogoUrl}
             eventName={config.eventName}
           />
           <div className="prints-preview-meta">{template.name} · {template.printSize} · {template.slots} shot{template.slots===1?'':'s'}</div>

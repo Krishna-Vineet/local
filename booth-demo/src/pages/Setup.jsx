@@ -25,6 +25,7 @@ export default function Setup(){
   const [sponsors, setSponsors] = useState(config.sponsorLogos || [])
   const [menuOpen, setMenuOpen] = useState(false)
   const [error, setError] = useState('')
+  const [pendingSponsorIdx, setPendingSponsorIdx] = useState(null)
   const menuRef = useRef(null)
   const sponsorInput = useRef(null)
 
@@ -44,11 +45,57 @@ export default function Setup(){
     const file = e.target.files?.[0]
     if(!file) return
     setOrgLogo(URL.createObjectURL(file))
+    e.target.value = ''
+  }
+  function handleSponsorSlotClick(idx){
+    setPendingSponsorIdx(idx)
+    sponsorInput.current?.click()
   }
   function pickSponsors(e){
     const files = Array.from(e.target.files || [])
-    if(!files.length) return
-    setSponsors(files.slice(0,3).map(f=>URL.createObjectURL(f)))
+    if(!files.length) {
+      setPendingSponsorIdx(null)
+      return
+    }
+    const urls = files.map(f=>URL.createObjectURL(f))
+    setSponsors(prev=>{
+      const next = [...prev]
+      // ensure we work with a stable 3-slot model but keep compact array for display
+      // If user clicked a specific slot
+      if(pendingSponsorIdx !== null){
+        const target = pendingSponsorIdx
+        // If target is within current length, replace it
+        // If target is at the end (e.g. empty slot), append / insert
+        if(target < next.length){
+          // single file replaces that slot
+          if(urls.length === 1) next[target] = urls[0]
+          else {
+            // multiple files from explicit slot: replace target and fill forward
+            let c = 0
+            for(let i=target; i<3 && c < urls.length; i++){
+              if(i < next.length) next[i] = urls[c++]
+              else { next.push(urls[c++]) }
+            }
+          }
+        } else {
+          // target beyond length => append in order filling gaps
+          // fill any undefined holes first, then push
+          for(const u of urls){
+            if(next.length < 3) next.push(u)
+            else break
+          }
+        }
+        return next.slice(0,3)
+      }
+      // No specific target: fill empty slots sequentially (up to 3)
+      for(const u of urls){
+        if(next.length < 3) next.push(u)
+        else break
+      }
+      return next.slice(0,3)
+    })
+    setPendingSponsorIdx(null)
+    e.target.value = ''
   }
   function removeSponsor(e, i){
     e.stopPropagation()
@@ -170,7 +217,7 @@ export default function Setup(){
 
               <div className="field">
                 <div className="field-label-row">
-                  <span className="field-label">Template logos</span>
+                  <span className="field-label">Sponsor logos</span>
                   <span className="field-optional">Optional · up to 3</span>
                 </div>
                 <div className="sponsor-row">
@@ -179,14 +226,14 @@ export default function Setup(){
                       key={i}
                       type="button"
                       className={`sponsor-slot ${sponsors[i] ? 'has-logo' : ''}`}
-                      onClick={()=>sponsorInput.current?.click()}
+                      onClick={()=>handleSponsorSlotClick(i)}
                     >
                       {sponsors[i]
-                        ? <><img src={sponsors[i]} alt={`Template logo ${i+1}`} /><span className="sponsor-remove" onClick={e=>removeSponsor(e,i)}>×</span></>
+                        ? <><img src={sponsors[i]} alt={`Sponsor logo ${i+1}`} /><span className="sponsor-remove" onClick={e=>removeSponsor(e,i)}>×</span></>
                         : <span className="sponsor-plus">+</span>}
                     </button>
                   ))}
-                  <span className="field-help">Shown in the print header alongside your organisation.</span>
+                  <span className="field-help">Shown in the print header alongside your organisation. Tap each + to add a different logo.</span>
                 </div>
                 <input ref={sponsorInput} type="file" accept="image/*" multiple onChange={pickSponsors} hidden />
               </div>
@@ -215,6 +262,7 @@ export default function Setup(){
                 orgName={orgName.trim() || 'Your organisation'}
                 eventName={eventName.trim() || 'Your event name'}
                 orgLogo={orgLogo}
+                sponsorLogos={sponsors}
                 showSlotNumbers={false}
               />
             </div>

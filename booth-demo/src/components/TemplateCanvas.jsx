@@ -15,6 +15,8 @@ export default function TemplateCanvas({
   eventName = '',
   showSlotNumbers = false,
   decor,
+  sponsorLogo = null,
+  sponsorLogos = null,
 }){
   if(!template) return null
   const p = template.palette || { bg:'#fff', ink:'#16161a', soft:'#8e8e96', accent:'#8b5cf6', accent2:'#ec4899', band:'gradient' }
@@ -35,10 +37,15 @@ export default function TemplateCanvas({
   })
   const darkCard = isDark(p.bg)
   const compact = h < 190 || w < 120
-  const ornament = decor || template.decor
+  // decor: explicit prop overrides template.decor. If decor is null/undefined, fallback to template.decor
+  // but if decor === 'none', we want ornament = 'none' (meaning clean)
+  const ornament = (decor !== null && decor !== undefined) ? decor : template.decor
   const canvasRef = useRef(null)
   const [dragId, setDragId] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
+
+  // Resolve sponsor display: single sponsorLogo takes priority, else sponsorLogos array, else none
+  const sponsorsToShow = sponsorLogo ? [sponsorLogo] : (Array.isArray(sponsorLogos) ? sponsorLogos.filter(Boolean).slice(0,3) : [])
 
   const beginDrag = useCallback((e, st) => {
     if(!onStickersChange) return
@@ -95,11 +102,20 @@ export default function TemplateCanvas({
             : <LogoBars s={s} color={p.accent} />}
           <span style={{ fontSize:Math.max(4.6, 5.6*s), fontWeight:800, letterSpacing:1.07*s, color:p.accent, whiteSpace:'nowrap' }}>HAPPYPIX</span>
         </div>
-        <span style={{
-          fontSize:Math.max(4.4, 5.2*s), fontWeight:700, letterSpacing:0.75*s,
-          color:p.soft, textTransform:'uppercase', whiteSpace:'nowrap',
-          overflow:'hidden', textOverflow:'ellipsis', maxWidth:'58%',
-        }}>{orgName || 'PHOTOBOOTH'}</span>
+        <div style={{ display:'flex', alignItems:'center', gap:Math.round(4*s), maxWidth:'58%', minWidth:0, justifyContent:'flex-end' }}>
+          {sponsorsToShow.length>0 && (
+            <div style={{ display:'flex', alignItems:'center', gap:Math.round(3*s), flexShrink:0 }}>
+              {sponsorsToShow.map((url, idx)=>(
+                <img key={idx} src={url} alt={`Sponsor logo ${idx+1}`} style={{ height:Math.round(12*s), maxWidth:Math.round(32*s), objectFit:'contain', background:'#fff', borderRadius:Math.round(2*s), padding:Math.round(1.2*s), border:'1px solid rgba(0,0,0,0.08)' }} />
+              ))}
+            </div>
+          )}
+          <span style={{
+            fontSize:Math.max(4.4, 5.2*s), fontWeight:700, letterSpacing:0.75*s,
+            color:p.soft, textTransform:'uppercase', whiteSpace:'nowrap',
+            overflow:'hidden', textOverflow:'ellipsis',
+          }}>{orgName || 'PHOTOBOOTH'}</span>
+        </div>
       </div>}
 
       <div style={{ flex:1, position:'relative', minHeight:0 }}>
@@ -127,10 +143,10 @@ export default function TemplateCanvas({
           </div>
         ))}
 
-        {ornament === 'hearts' && <Ornament s={s} color={p.accent} kind="hearts" />}
-        {ornament === 'stars' && <Ornament s={s} color={p.accent} kind="stars" />}
-        {ornament === 'confetti' && <Ornament s={s} color={p.accent2} kind="confetti" />}
-        {ornament === 'bubbles' && <Ornament s={s} color={p.accent} kind="bubbles" />}
+        {ornament !== 'none' && ornament === 'hearts' && <Ornament s={s} color={p.accent} kind="hearts" />}
+        {ornament !== 'none' && ornament === 'stars' && <Ornament s={s} color={p.accent} kind="stars" />}
+        {ornament !== 'none' && ornament === 'confetti' && <Ornament s={s} color={p.accent2} kind="confetti" />}
+        {ornament !== 'none' && ornament === 'bubbles' && <Ornament s={s} color={p.accent} kind="bubbles" />}
 
         {stickers.map(st=>{
           const isSelected = selectedId === st.id
@@ -216,30 +232,35 @@ function Placeholder({ s, ink }){
 }
 
 function Ornament({ s, color, kind }){
-  const base = { position:'absolute', pointerEvents:'none', color, opacity:0.5 }
+  const base = { position:'absolute', pointerEvents:'none', color, opacity:0.72 }
   if(kind === 'hearts') return (
     <>
-      <span style={{ ...base, top:5*s, right:7*s, fontSize:9*s }}>♡</span>
-      <span style={{ ...base, bottom:7*s, left:7*s, fontSize:6.5*s, opacity:0.35 }}>♡</span>
+      <span style={{ ...base, top:4*s, right:7*s, fontSize:11*s, lineHeight:1 }}>♡</span>
+      <span style={{ ...base, bottom:6*s, left:7*s, fontSize:9*s, opacity:0.55, lineHeight:1 }}>♥</span>
+      <span style={{ ...base, top:18*s, right:18*s, fontSize:7*s, opacity:0.45 }}>♡</span>
     </>
   )
   if(kind === 'stars') return (
     <>
-      <span style={{ ...base, top:4*s, left:6*s, fontSize:8*s }}>✦</span>
-      <span style={{ ...base, bottom:8*s, right:8*s, fontSize:6.5*s, opacity:0.35 }}>✧</span>
+      <span style={{ ...base, top:3*s, left:6*s, fontSize:11*s, lineHeight:1 }}>✦</span>
+      <span style={{ ...base, bottom:7*s, right:9*s, fontSize:9*s, opacity:0.6, lineHeight:1 }}>✧</span>
+      <span style={{ ...base, top:14*s, right:10*s, fontSize:6*s, opacity:0.5 }}>✦</span>
     </>
   )
   if(kind === 'bubbles') return (
     <>
-      <span style={{ ...base, top:6*s, right:9*s, width:5*s, height:5*s, border:`1px solid ${color}`, borderRadius:999, opacity:0.45 }} />
-      <span style={{ ...base, bottom:9*s, left:8*s, width:3.5*s, height:3.5*s, border:`1px solid ${color}`, borderRadius:999, opacity:0.4 }} />
+      <span style={{ ...base, top:5*s, right:9*s, width:7*s, height:7*s, border:`1.2px solid ${color}`, borderRadius:999, opacity:0.65, display:'block' }} />
+      <span style={{ ...base, bottom:9*s, left:10*s, width:5*s, height:5*s, border:`1.2px solid ${color}`, borderRadius:999, opacity:0.55, display:'block' }} />
+      <span style={{ ...base, top:22*s, left:12*s, width:3.5*s, height:3.5*s, border:`1px solid ${color}`, borderRadius:999, opacity:0.5, display:'block' }} />
     </>
   )
+  // confetti
   return (
     <>
-      <span style={{ ...base, top:5*s, left:6*s, width:3*s, height:3*s, background:color, borderRadius:1*s, opacity:0.55 }} />
-      <span style={{ ...base, bottom:8*s, right:7*s, width:2.4*s, height:2.4*s, background:color, borderRadius:1*s, opacity:0.45 }} />
-      <span style={{ ...base, bottom:14*s, right:14*s, width:1.8*s, height:1.8*s, background:color, borderRadius:1*s, opacity:0.4 }} />
+      <span style={{ ...base, top:4*s, left:7*s, width:4*s, height:4*s, background:color, borderRadius:1.2*s, opacity:0.75, display:'block', transform:'rotate(14deg)' }} />
+      <span style={{ ...base, bottom:7*s, right:8*s, width:3.2*s, height:3.2*s, background:color, borderRadius:1.2*s, opacity:0.65, display:'block', transform:'rotate(-8deg)' }} />
+      <span style={{ ...base, bottom:15*s, right:15*s, width:2.6*s, height:2.6*s, background:color, borderRadius:1*s, opacity:0.55, display:'block' }} />
+      <span style={{ ...base, top:16*s, left:14*s, width:2.2*s, height:2.2*s, background:color, borderRadius:1*s, opacity:0.5, display:'block' }} />
     </>
   )
 }

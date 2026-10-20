@@ -128,6 +128,7 @@ export default function Photos(){
             height={250}
             maxWidth={286}
             orgName={config.orgName}
+            orgLogo={config.orgLogoUrl}
             eventName={config.eventName}
             showSlotNumbers
           />

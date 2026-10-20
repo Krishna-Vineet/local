@@ -142,6 +142,7 @@ export default function Payment(){
               maxWidth={236}
               photos={(EVENT_SAMPLES[template?.category] || []).slice(0, template?.slots || 2)}
               orgName={config.orgName}
+              orgLogo={config.orgLogoUrl}
               eventName={config.eventName}
             />
             <div className="pay-order-meta" style={{ marginTop:10 }}>

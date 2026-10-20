@@ -21,10 +21,10 @@ export function BoothProvider({ children }) {
   const [couponApplied, setCouponApplied] = useState(false)
   const [photos, setPhotos] = useState([]) // captured
   const [selectedPhotos, setSelectedPhotos] = useState([]) // chosen for template
-  const [customization, setCustomization] = useState({ filter:'original', stickers:[], logo:null, subtitle:'' })
+  const [customization, setCustomization] = useState({ filter:'original', stickers:[], logo:null, subtitle:'', decor:null, sponsorLogo:null })
 
   function fresh(){ return { orientation:null, template:null, prints:2, digitalCopy:true, quote:null } }
-  const resetSession = useCallback(()=>{ setSession(fresh()); setPhotos([]); setSelectedPhotos([]); setCustomization({filter:'original', stickers:[], logo:null, subtitle:''}); setCoupon(''); setCouponApplied(false)},[])
+  const resetSession = useCallback(()=>{ setSession(fresh()); setPhotos([]); setSelectedPhotos([]); setCustomization({filter:'original', stickers:[], logo:null, subtitle:'', decor:null, sponsorLogo:null}); setCoupon(''); setCouponApplied(false)},[])
 
   const value = { config, setConfig, session, setSession, photos, setPhotos, selectedPhotos, setSelectedPhotos, customization, setCustomization, coupon, setCoupon, couponApplied, setCouponApplied, resetSession }
   return <BoothContext.Provider value={value}>{children}</BoothContext.Provider>

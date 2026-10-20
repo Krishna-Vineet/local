@@ -82,6 +82,9 @@ export default function Customize(){
   }
   if(printing) return <Loader text="Sending to the printer…" sub="Rendering your final artwork" />
 
+  // active decor resolves to customization choice if set, else template default
+  const activeDecor = (customization.decor !== null && customization.decor !== undefined) ? customization.decor : template.decor
+
   return (
     <div className="booth-container">
       <BoothHeader
@@ -182,6 +185,55 @@ export default function Customize(){
                   <button className="btn-ghost" onClick={()=>{ setCaption(''); update({ subtitle:'' }) }}>Reset</button>
                 </div>
                 <div className="panel-hint">Leave it empty to keep the template’s original line.</div>
+
+                {/* Sponsor logo selector (optional, single choice) */}
+                <div style={{ marginTop:18, paddingTop:14, borderTop:'1px solid #1a1a24' }}>
+                  <div className="field-label" style={{ marginBottom:2 }}>Sponsor logo <span style={{ fontWeight:500, color:'#6b7280', textTransform:'none', letterSpacing:0 }}>— optional, pick one</span></div>
+                  {config.sponsorLogos && config.sponsorLogos.length > 0 ? (
+                    <>
+                      <div style={{ display:'flex', gap:8, marginTop:8, flexWrap:'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={()=>update({ sponsorLogo: null })}
+                          style={{
+                            minWidth:62, height:48, padding:'0 10px', borderRadius:8,
+                            background: !customization.sponsorLogo ? '#1e1338' : '#12121c',
+                            border: `1px solid ${!customization.sponsorLogo ? '#7c3aed' : '#23232f'}`,
+                            color: !customization.sponsorLogo ? '#d4d4d8' : '#8b8b99',
+                            fontSize:11, fontWeight:700, display:'grid', placeItems:'center'
+                          }}
+                        >
+                          None
+                        </button>
+                        {config.sponsorLogos.slice(0,3).map((url, idx)=>(
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={()=>update({ sponsorLogo: customization.sponsorLogo === url ? null : url })}
+                            title={`Sponsor logo ${idx+1}`}
+                            style={{
+                              width:62, height:48, borderRadius:8, overflow:'hidden', padding:4,
+                              background: customization.sponsorLogo === url ? '#1e1338' : '#0f0f16',
+                              border: `1.5px solid ${customization.sponsorLogo === url ? '#7c3aed' : '#23232f'}`,
+                              display:'grid', placeItems:'center',
+                              position:'relative'
+                            }}
+                          >
+                            <img src={url} alt={`Sponsor logo ${idx+1}`} style={{ maxWidth:'100%', maxHeight:'100%', objectFit:'contain' }} />
+                            {customization.sponsorLogo === url && (
+                              <span style={{ position:'absolute', top:2, right:2, width:14, height:14, borderRadius:999, background:'#7c3aed', color:'#fff', fontSize:9, display:'grid', placeItems:'center' }}>✓</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="panel-hint" style={{ marginTop:8 }}>Only one sponsor logo appears on the print, in the header next to your organisation. Pick “None” for no sponsor mark.</div>
+                    </>
+                  ) : (
+                    <div style={{ marginTop:8, fontSize:11, color:'#6f6f80', background:'#0a0a0f', border:'1px solid #1c1c24', borderRadius:8, padding:'9px 11px' }}>
+                      No sponsor logos were added in setup. Go back to the setup screen to add up to 3 sponsor logos — they’ll appear here to choose from.
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -190,13 +242,14 @@ export default function Customize(){
                 {DECOR.map(d=>(
                   <button
                     key={d.id}
-                    className={`decor-row ${(customization.decor || template.decor) === d.id ? 'is-active' : ''}`}
+                    className={`decor-row ${activeDecor === d.id ? 'is-active' : ''}`}
                     onClick={()=>update({ decor:d.id })}
                   >
                     <span className="decor-label">{d.label}</span>
                     <span className="decor-hint">{d.hint}</span>
                   </button>
                 ))}
+                <div className="panel-hint" style={{ marginTop:6 }}>Decor sits on the photo area — check the live preview to see hearts, stars, bubbles or confetti.</div>
               </div>
             )}
           </div>
@@ -219,13 +272,19 @@ export default function Customize(){
             orgName={config.orgName}
             orgLogo={config.orgLogoUrl}
             eventName={config.eventName}
+            sponsorLogo={customization.sponsorLogo}
+            sponsorLogos={customization.sponsorLogo ? undefined : undefined}
           />
           <div className="customize-meta">
             <span>{template.name}</span>
             <span className="dot">·</span>
             <span>{template.printSize}</span>
             <span style={{ color:'#71717a', marginLeft:6 }}>Filter: {customization.filter}</span>
+            {customization.sponsorLogo && <span style={{ color:'#9ca3af', marginLeft:6 }}>· Sponsor</span>}
           </div>
+          {activeDecor !== 'none' && (
+            <div style={{ marginTop:6, fontSize:10.5, color:'#6f6f80' }}>Decor: {DECOR.find(d=>d.id===activeDecor)?.label || activeDecor}</div>
+          )}
         </section>
       </div>
 

@@ -471,3 +471,47 @@
 /* Active slot highlight for photo selection */
 .template-slot.is-active { border-color: var(--violet) !important; box-shadow: 0 0 0 3px rgba(124,58,237,.28), 0 3px 10px rgba(0,0,0,.16); }
 .template-slot.is-active:after { content: 'Slot ' attr(data-slot); position: absolute; top: -18px; left: 50%; transform: translateX(-50%); background: var(--violet); color: #fff; font-size: 8px; font-weight: 900; letter-spacing: .08em; padding: 2px 6px; border-radius: 999px; white-space: nowrap; }
+
+/* Issue modal — electron parity with Android OrderSuccessScreen */
+.issue-modal-overlay {
+  position: fixed; inset: 0; z-index: 1200;
+  display: grid; place-items: center;
+  padding: 20px;
+  background: rgba(10, 8, 16, 0.88);
+  backdrop-filter: blur(8px);
+}
+.issue-modal-card {
+  width: min(100%, 560px); max-height: 90vh; overflow: auto;
+  background: #12121b;
+  border: 1.5px solid #28283a;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 30px 90px rgba(0,0,0,.5);
+  color: #fff;
+}
+.issue-modal-header { display: flex; justify-content: space-between; align-items: center; }
+.issue-modal-header h2 { margin: 0; font-family: 'Fredoka Variable'; font-size: 19px; font-weight: 900; color: #fff; }
+.issue-modal-close { width: 36px; height: 36px; border-radius: 50%; border: 1px solid #2a2a3c; background: #181824; color: #a1a1aa; cursor: pointer; display: grid; place-items: center; }
+.issue-modal-sub { margin: 6px 0 16px; color: #71717a; font-size: 12px; }
+.issue-cat-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.cat-chip { min-width: 120px; flex: 1 1 45%; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a2a3c; background: #181824; color: #a1a1aa; text-align: left; cursor: pointer; transition: border .15s, background .15s; }
+.cat-chip b { display: block; font-size: 12px; font-weight: 800; color: #a1a1aa; }
+.cat-chip small { display: block; font-size: 11px; color: #71717a; margin-top: 2px; }
+.cat-chip.active { border-color: #8b5cf6; background: rgba(139,92,246,.18); }
+.cat-chip.active b { color: #fff; }
+.issue-label { display: grid; gap: 6px; margin-top: 10px; color: #8b5cf6; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.issue-label input, .issue-label textarea {
+  width: 100%; padding: 11px 12px; border-radius: 12px; border: 1.5px solid #2a2a3c; background: #181824; color: #fff; font-size: 13px; font-family: inherit; outline: none;
+}
+.issue-label textarea { resize: vertical; min-height: 70px; }
+.issue-meta { margin-top: 10px; background: rgba(255,255,255,.04); border-radius: 8px; padding: 8px; text-align: center; color: #52525b; font-size: 10px; }
+.issue-error { margin-top: 10px; color: #fda4af; font-size: 12px; text-align: center; }
+.ticket-success { text-align: center; padding: 18px 0; }
+.ticket-success-circle { width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 50%; background: #22c55e; display: grid; place-items: center; color: #fff; }
+.ticket-success h3 { margin: 6px 0; font-size: 18px; font-weight: 900; }
+.ticket-ref { color: #a78bfa; font-weight: 800; font-size: 13px; }
+.raise-issue-btn {
+  margin-top: 12px; width: 100%;
+  padding: 10px 12px; border: none; background: transparent; color: #f59e0b; font-size: 12px; font-weight: 700; cursor: pointer; text-align: center; text-decoration: underline; text-underline-offset: 3px;
+}
+.retry-print-btn { width: 100%; margin-top: 10px; }

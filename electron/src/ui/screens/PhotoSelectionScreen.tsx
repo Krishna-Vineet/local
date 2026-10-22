@@ -106,7 +106,7 @@ export function PhotoSelectionScreen({ template, photos, initial, secondsLeft, o
                 <button key={(photo as any).id || index} className={`${isAssigned ? 'is-selected' : ''} ${transitioning ? 'is-disabled' : ''}`} onClick={() => handlePhotoTap(photo)} disabled={transitioning}>
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   <img src={(photo as any).dataUrl || (photo as any).uri} alt={`Captured option ${index + 1}`}/>
-                  {isAssigned && <i>Slot {assignedIndex + 1}</i>}
+                  {isAssigned && <i>{assignedIndex + 1}</i>}
                 </button>
               )
             })}

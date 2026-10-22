@@ -263,7 +263,7 @@
 /* --- Header overflow fix: logomark + brandmark + org logo/name --- */
 .brand { gap: 8px; max-width: 100%; }
 .brand img { width: clamp(92px, 9vw, 150px); height: auto; object-fit: contain; flex-shrink: 0; }
-.brand--compact img { width: clamp(84px, 8vw, 136px); }
+.brand--compact img { width: clamp(40px, 4vw, 136px); }
 .booth-header {
   display: flex;
   flex-wrap: nowrap;
@@ -294,8 +294,8 @@
   overflow: hidden;
 }
 .org-brand-logo {
-  width: 28px;
-  height: 28px;
+  width: 15px;
+  height: 15px;
   object-fit: contain;
   border-radius: 6px;
   background: #fff;
@@ -308,7 +308,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: clamp(11px, 1vw, 13px);
+  font-size: clamp(18px, 2vw, 13px);
   font-weight: 800;
   color: var(--ink);
   letter-spacing: -.01em;

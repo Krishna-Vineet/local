@@ -37,21 +37,29 @@ export function OrientationScreen({ value, onChange, onNext, onBack, secondsLeft
   onNext: () => void
   onBack: () => void
 } & TimedProps) {
+  const [transitioning, setTransitioning] = useState(false)
+  const handleNext = () => {
+    if (!value || transitioning) return
+    setTransitioning(true)
+    sound.click()
+    window.setTimeout(() => onNext(), 300)
+  }
   return (
-    <ScreenShell screen="orientation" secondsLeft={secondsLeft} title="How should your print look?" subtitle="Choose the direction that fits your moment best.">
-      <div className="orientation-grid">
+    <ScreenShell screen="orientation" secondsLeft={transitioning ? undefined : secondsLeft} title="How should your print look?" subtitle="Choose the direction that fits your moment best.">
+      <div className={`orientation-grid ${transitioning ? 'is-transitioning' : ''}`}>
         {(['portrait', 'landscape'] as Orientation[]).map((orientation) => {
           const selected = value === orientation
           return (
-            <button key={orientation} className={`orientation-card ${selected ? 'is-selected' : ''}`} onClick={() => { sound.select(); onChange(orientation) }}>
+            <button key={orientation} className={`orientation-card ${selected ? 'is-selected' : ''}`} disabled={transitioning} onClick={() => { sound.select(); onChange(orientation) }}>
               <div className={`paper-shape paper-shape--${orientation}`}><span/><span/><small>HAPPYPIX</small></div>
               <div><h2>{orientation === 'portrait' ? 'Vertical' : 'Horizontal'}</h2><p>{orientation === 'portrait' ? 'Portraits, reels & classic strips' : 'Wide moments, groups & grids'}</p></div>
               <span className="select-check"><Icon name="check"/></span>
             </button>
           )
         })}
+        {transitioning && <div className="transition-overlay"><span><span className="loader" style={{ width: 16, height: 16, borderWidth: 2 }}/> Loading templates…</span></div>}
       </div>
-      <div className="screen-actions"><BackButton onClick={onBack}/><NextButton onClick={onNext} disabled={!value}>See templates</NextButton></div>
+      <div className="screen-actions"><BackButton onClick={onBack} disabled={transitioning}/><NextButton onClick={handleNext} disabled={!value || transitioning}>See templates</NextButton></div>
     </ScreenShell>
   )
 }
@@ -68,36 +76,45 @@ export function TemplateScreen({ event, session, onSelect, onNext, onBack, secon
   const counts = useMemo(() => [...new Set(available.map((item) => item.layout.slots))].sort((a, b) => a - b), [available])
   const [size, setSize] = useState<string>('all')
   const [count, setCount] = useState<number | 'all'>('all')
+  const [transitioning, setTransitioning] = useState(false)
   const filtered = available.filter((item) => (size === 'all' || item.layout.printSize === size) && (count === 'all' || item.layout.slots === count))
 
+  const handleNext = () => {
+    if (!session.template || transitioning) return
+    setTransitioning(true)
+    sound.click()
+    window.setTimeout(() => onNext(), 300)
+  }
+
   return (
-    <ScreenShell screen="templates" secondsLeft={secondsLeft} title="Pick your favourite look" subtitle="Filter by final print size and number of photos, then choose one design.">
+    <ScreenShell screen="templates" secondsLeft={transitioning ? undefined : secondsLeft} title="Pick your favourite look" subtitle="Filter by final print size and number of photos, then choose one design.">
       <div className="template-filters">
-        <div><span>Print size</span><button className={size === 'all' ? 'active' : ''} onClick={() => setSize('all')}>All</button>{sizes.map((item) => <button key={item} className={size === item ? 'active' : ''} onClick={() => setSize(item)}>{item}</button>)}</div>
-        <div><span>Photos</span><button className={count === 'all' ? 'active' : ''} onClick={() => setCount('all')}>All</button>{counts.map((item) => <button key={item} className={count === item ? 'active' : ''} onClick={() => setCount(item)}>{item}</button>)}</div>
+        <div><span>Print size</span><button className={size === 'all' ? 'active' : ''} onClick={() => setSize('all')} disabled={transitioning}>All</button>{sizes.map((item) => <button key={item} className={size === item ? 'active' : ''} onClick={() => setSize(item)} disabled={transitioning}>{item}</button>)}</div>
+        <div><span>Photos</span><button className={count === 'all' ? 'active' : ''} onClick={() => setCount('all')} disabled={transitioning}>All</button>{counts.map((item) => <button key={item} className={count === item ? 'active' : ''} onClick={() => setCount(item)} disabled={transitioning}>{item}</button>)}</div>
       </div>
-      <div className="template-carousel">
+      <div className={`template-carousel ${transitioning ? 'is-transitioning' : ''}`}>
         {filtered.map((item) => {
           const selected = session.template?.id === item.id
           const isLandscape = item.layout.orientation === 'landscape'
+          const price = templatePrice(item as any, event as any)
           return (
-            // eslint-disable-next-line jsx-a11y/no-static-element-interactions
             <div
               key={item.id}
               role="button"
-              tabIndex={0}
-              className={`template-card ${selected ? 'is-selected' : ''} ${isLandscape ? 'is-landscape' : ''}`}
-              onClick={() => { sound.select(); onSelect(item) }}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { sound.select(); onSelect(item) } }}
+              tabIndex={transitioning ? -1 : 0}
+              className={`template-card ${selected ? 'is-selected' : ''} ${isLandscape ? 'is-landscape' : ''} ${transitioning ? 'is-disabled' : ''}`}
+              onClick={() => { if (transitioning) return; sound.select(); onSelect(item) }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { if (transitioning) return; sound.select(); onSelect(item) } }}
             >
               <div className="template-card-preview"><TemplateCanvas template={item}/>{selected && <span className="selected-badge"><Icon name="check"/>Selected</span>}</div>
-              <div className="template-card-copy"><div><h2>{item.name}</h2><p>{item.layout.label} · {item.category}</p></div><Pill tone="pink">{templatePrice(item, event.layoutPrices) === 0 ? 'Free' : `₹${templatePrice(item, event.layoutPrices)}`}</Pill></div>
+              <div className="template-card-copy"><div><h2>{item.name}</h2><p>{item.layout.label} · {item.category}</p></div><Pill tone="pink">{price === 0 ? 'Free' : `₹${price}`}</Pill></div>
             </div>
           )
         })}
         {filtered.length === 0 && <div className="empty-filter"><Icon name="image" size={38}/><h3>No templates in this combination</h3><p>Try another print size or photo count.</p></div>}
+        {transitioning && <div className="transition-overlay"><span><span className="loader" style={{ width: 16, height: 16, borderWidth: 2 }}/> Preparing next step…</span></div>}
       </div>
-      <div className="screen-actions"><BackButton onClick={onBack}/><NextButton onClick={onNext} disabled={!session.template}>Choose this template</NextButton></div>
+      <div className="screen-actions"><BackButton onClick={onBack} disabled={transitioning}/><NextButton onClick={handleNext} disabled={!session.template || transitioning}>Choose this template</NextButton></div>
     </ScreenShell>
   )
 }
@@ -110,12 +127,19 @@ export function PrintCountScreen({ event, session, maximumPrints, onUpdate, onNe
   onNext: () => void
   onBack: () => void
 } & TimedProps) {
+  const [transitioning, setTransitioning] = useState(false)
   if (!session.template) return null
-  const unit = templatePrice(session.template, event.layoutPrices)
+  const unit = templatePrice(session.template as any, event as any)
   const choices = [1, 2, 4, 6, 8, 10].filter((item) => item <= maximumPrints)
+  const handleNext = () => {
+    if (transitioning) return
+    setTransitioning(true)
+    sound.click()
+    window.setTimeout(() => onNext(), 320)
+  }
   return (
-    <ScreenShell screen="prints" secondsLeft={secondsLeft} title="Almost ready" subtitle="Choose how many copies you want. Every copy uses the selected event price.">
-      <div className="print-details-grid">
+    <ScreenShell screen="prints" secondsLeft={transitioning ? undefined : secondsLeft} title="Almost ready" subtitle="Choose how many copies you want. Every copy uses the selected event price.">
+      <div className={`print-details-grid ${transitioning ? 'is-transitioning' : ''}`}>
         <section className="print-option-panel">
           <span className="section-kicker">NUMBER OF PRINTS</span>
           <div className="count-options">{choices.map((item) => <button key={item} className={session.prints === item ? 'active' : ''} onClick={() => { sound.select(); onUpdate({ prints: item }) }}>{item}</button>)}</div>
@@ -127,8 +151,9 @@ export function PrintCountScreen({ event, session, maximumPrints, onUpdate, onNe
           <div className="price-math"><span>{session.prints} × {unit === 0 ? 'Free' : `₹${unit}`}</span><strong>{session.prints * unit === 0 ? 'Free' : `₹${session.prints * unit}`}</strong></div>
           <p>Final discount, if any, is calculated securely on the next screen.</p>
         </section>
+        {transitioning && <div className="transition-overlay"><span><span className="loader" style={{ width: 16, height: 16, borderWidth: 2 }}/> Checking price…</span></div>}
       </div>
-      <div className="screen-actions"><BackButton onClick={onBack}/><PrimaryButton onClick={onNext}>Continue to payment<Icon name="arrow-right"/></PrimaryButton></div>
+      <div className="screen-actions"><BackButton onClick={onBack} disabled={transitioning}/><PrimaryButton onClick={handleNext} disabled={transitioning}>Continue to payment<Icon name="arrow-right"/></PrimaryButton></div>
     </ScreenShell>
   )
 }

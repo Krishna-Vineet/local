@@ -1,11 +1,5 @@
 import type { BoothTemplate, CapturedPhoto, Customization } from '../types'
 
-// Renders the final print image (the same composition the guest sees in
-// TemplateCanvas) to a PNG data URL at the layout's print resolution.
-// This composite is what gets printed AND what is sent to the backend
-// as the session's final image — the org gallery and the guest
-// download page lead with it.
-
 const FILTER_CSS: Record<string, string> = {
   original: 'none',
   warm: 'sepia(0.25) saturate(1.35) hue-rotate(5deg) contrast(1.05)',
@@ -51,7 +45,6 @@ export async function renderCompositeDataUrl(input: {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas is not available on this device.');
 
-  // Background: image, gradient, or solid (same rules as TemplateCanvas).
   const colors = design.background.colors.length ? design.background.colors : ['#ffffff'];
   if (design.background.type === 'image' && design.background.url) {
     const bg = await loadImage(design.background.url).catch(() => null);
@@ -67,7 +60,49 @@ export async function renderCompositeDataUrl(input: {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  // Photos into their print slots, cover-fit, with the chosen filter.
+  // Ornament / decor overlay — subtle but visible so CRM composite matches preview
+  const rawDecor = (customization as any).decor
+  const rawOrnament = (customization as any).ornament
+  let ornament: string | undefined
+  if (rawOrnament === 'none' || rawDecor === 'none') ornament = 'none'
+  else if (rawOrnament) ornament = rawOrnament
+  else if (rawDecor) ornament = rawDecor
+  else ornament = (design as any).decor || design.ornament
+  if (ornament && ornament !== 'none') {
+    ctx.save()
+    ctx.globalAlpha = 0.32
+    if (ornament === 'bubbles') {
+      ctx.fillStyle = 'rgba(255,255,255,.9)'
+      for (let i = 0; i < 18; i++) {
+        const x = (i * 97 % canvas.width)
+        const y = (i * 53 % canvas.height)
+        const r = 8 + (i % 3) * 6
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill()
+      }
+    } else if (ornament === 'hearts') {
+      ctx.fillStyle = 'rgba(255,255,255,.85)'
+      ctx.font = `${Math.round(canvas.width*0.04)}px serif`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      const hearts = ['♡','♥','♡','♥']
+      for (let i=0;i<8;i++) ctx.fillText(hearts[i%4], (i*0.13)*canvas.width+20, (i%2?0.2:0.08)*canvas.height+40)
+    } else if (ornament === 'stars') {
+      ctx.fillStyle = 'rgba(255,255,255,.9)'
+      ctx.font = `${Math.round(canvas.width*0.035)}px serif`
+      for (let i=0;i<10;i++) ctx.fillText('✦', (i*0.11)*canvas.width+10, (i%3*0.06+0.06)*canvas.height)
+    } else if (ornament === 'confetti') {
+      const cols = ['#ffd552','#ff6b8a','#7ec8a0','#8b5cf6']
+      for (let i=0;i<24;i++) {
+        ctx.fillStyle = cols[i%4]
+        ctx.globalAlpha = 0.5
+        const x = (i*73 % canvas.width)
+        const y = (i*41 % canvas.height)
+        ctx.fillRect(x, y, 14, 6)
+      }
+      ctx.globalAlpha = 0.32
+    }
+    ctx.restore()
+  }
+
   const filter = FILTER_CSS[customization.filter] || 'none';
   for (let i = 0; i < layout.photoSlots.length; i += 1) {
     const slot = layout.photoSlots[i];
@@ -84,7 +119,6 @@ export async function renderCompositeDataUrl(input: {
     ctx.filter = 'none';
   }
 
-  // Stickers (emoji at percentage positions, like the preview).
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const sticker of customization.stickers) {
@@ -93,32 +127,43 @@ export async function renderCompositeDataUrl(input: {
     ctx.fillText(sticker.emoji, (sticker.x / 100) * canvas.width, (sticker.y / 100) * canvas.height);
   }
 
-  // Branding footer: logo + title/subtitle in the reserved bottom band.
-  const footerH = Math.round(canvas.height * 0.1);
+  const footerH = Math.round(canvas.height * 0.11);
   const footerY = canvas.height - footerH;
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillStyle = 'rgba(255,255,255,0.96)';
   ctx.fillRect(0, footerY, canvas.width, footerH);
+
+  // Sponsor logos in footer (up to 3) — matches TemplateCanvas
+  const logos: string[] = []
+  const custom: any = customization
+  if (Array.isArray(custom.sponsorLogos) && custom.sponsorLogos.length) logos.push(...custom.sponsorLogos.filter(Boolean))
+  if (custom.sponsorLogo && !logos.includes(custom.sponsorLogo)) logos.push(custom.sponsorLogo)
+  if (customization.logo && !logos.includes(customization.logo)) logos.push(customization.logo)
+  const templateLogos: string[] = Array.isArray((template as any).sponsorLogos) ? (template as any).sponsorLogos : []
+  const headerLogos = logos.length ? logos.slice(0, 3) : templateLogos.slice(0, 3)
+  let logoX = 18
+  for (const src of headerLogos) {
+    const logo = await loadImage(src).catch(() => null)
+    if (!logo) continue
+    const lh = footerH * 0.62
+    const lw = (logo.naturalWidth / logo.naturalHeight) * lh
+    if (logoX + lw > canvas.width * 0.42) break
+    ctx.drawImage(logo, logoX, footerY + (footerH - lh)/2, lw, lh)
+    logoX += lw + 10
+  }
+
   const title = customization.title || design.title || input.eventName || '';
   const subtitle = customization.subtitle || design.subtitle || '';
-  ctx.fillStyle = design.textColor || '#ffffff';
-  ctx.textAlign = 'left';
+  ctx.fillStyle = design.textColor || '#2a1630';
+  ctx.textAlign = 'right';
   if (title) {
-    ctx.font = `600 ${Math.round(footerH * 0.34)}px Georgia, serif`;
-    ctx.fillText(title, 48, footerY + footerH * 0.38);
+    ctx.font = `700 ${Math.round(footerH * 0.30)}px 'Fredoka Variable', Nunito, sans-serif`;
+    ctx.fillText(title, canvas.width - 18, footerY + footerH * 0.36, canvas.width * 0.52);
   }
   if (subtitle) {
-    ctx.font = `${Math.round(footerH * 0.24)}px Georgia, serif`;
-    ctx.globalAlpha = 0.85;
-    ctx.fillText(subtitle, 48, footerY + footerH * 0.72);
+    ctx.font = `${Math.round(footerH * 0.20)}px Nunito, sans-serif`;
+    ctx.globalAlpha = 0.72;
+    ctx.fillText(subtitle, canvas.width - 18, footerY + footerH * 0.70, canvas.width * 0.52);
     ctx.globalAlpha = 1;
-  }
-  if (customization.logo) {
-    const logo = await loadImage(customization.logo).catch(() => null);
-    if (logo) {
-      const lh = footerH * 0.62;
-      const lw = (logo.naturalWidth / logo.naturalHeight) * lh;
-      ctx.drawImage(logo, canvas.width - lw - 48, footerY + (footerH - lh) / 2, lw, lh);
-    }
   }
 
   return canvas.toDataURL('image/png');

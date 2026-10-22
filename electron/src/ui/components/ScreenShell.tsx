@@ -5,6 +5,16 @@ import { useBoothContext } from '../context/BoothContext'
 
 const FLOW = ['orientation', 'templates', 'prints', 'payment', 'camera', 'photos', 'customize']
 
+type ScreenShellProps = {
+  children: ReactNode
+  screen: string
+  secondsLeft?: number
+  online?: boolean
+  title?: string
+  subtitle?: string
+  className?: string
+}
+
 export function ScreenShell({
   children,
   screen,
@@ -13,41 +23,34 @@ export function ScreenShell({
   title,
   subtitle,
   className = '',
-}: {
-  children: ReactNode
-  screen: string
-  secondsLeft?: number
-  online?: boolean
-  title?: string
-  subtitle?: string
-  className?: string
-}) {
+}: ScreenShellProps) {
   const { orgName, orgLogoUrl } = useBoothContext()
   const step = FLOW.indexOf(screen)
   return (
     <main className={`screen-shell ${className}`}>
       <header className="booth-header">
-        <Brand compact />
-        {orgLogoUrl ? (
-          <div className="org-brand">
-            <img src={orgLogoUrl} alt={orgName} className="org-brand-logo"/>
-            <span className="org-brand-name">{orgName}</span>
+        <div className="header-left">
+          <Brand compact />
+          <span className="header-divider" aria-hidden="true" />
+          <div className="org-brand" title={orgName}>
+            {orgLogoUrl ? (
+              <img src={orgLogoUrl} alt={orgName} className="org-brand-logo" />
+            ) : null}
+            <span className="org-brand-name">{orgName || 'HappyPix Event'}</span>
           </div>
-        ) : (
-          <span className="org-brand-name-only">{orgName}</span>
-        )}
+        </div>
         {step >= 0 && (
           <div className="flow-progress" aria-label={`Step ${step + 1} of ${FLOW.length}`}>
-            {FLOW.map((item, index) => <span key={item} className={index <= step ? 'is-done' : ''}/>) }
+            {FLOW.map((item, index) => <span key={item} className={index <= step ? 'is-done' : ''} />)}
           </div>
         )}
         <div className="header-status">
           <span className={`connection-state ${online ? 'is-online' : 'is-offline'}`}>
-            <Icon name="wifi" size={16}/>{online ? 'Connected' : 'Offline'}
+            <Icon name="wifi" size={16} />{online ? 'Connected' : 'Offline'}
           </span>
           {secondsLeft !== undefined && (
             <span className={`timer-pill ${secondsLeft <= 10 ? 'is-urgent' : ''}`}>
-              <Icon name="clock" size={16}/>{secondsLeft}s
+              <Icon name="clock" size={16} />{secondsLeft}s
             </span>
           )}
         </div>

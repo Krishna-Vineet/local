@@ -49,8 +49,8 @@ export function TemplateCanvas({
   customization = emptyCustomization,
   interactiveSlot,
   onStickerMove,
-  onStickerDelete,
   className = '',
+  activeSlotIndex,
 }: {
   template: BoothTemplate
   photos?: CapturedPhoto[]
@@ -59,6 +59,7 @@ export function TemplateCanvas({
   onStickerMove?: (id: string, x: number, y: number) => void
   onStickerDelete?: (id: string) => void
   className?: string
+  activeSlotIndex?: number
 }) {
   const { layout, design } = template
   const frameRef = useRef<HTMLDivElement>(null)
@@ -69,23 +70,36 @@ export function TemplateCanvas({
       : design.background.colors[0]
   const aspect = layout.canvas.width / layout.canvas.height
   const Designer = template.componentId ? DESIGNER_REGISTRY[template.componentId] : undefined
-  const selectedLogo = customization.logo
+  const logos: string[] = []
+  // Support legacy single-logo + new sponsor multi-logo fields
+  const custom = customization as any
+  if (Array.isArray(custom.sponsorLogos) && custom.sponsorLogos.length) logos.push(...custom.sponsorLogos.filter(Boolean))
+  if (custom.sponsorLogo && !logos.includes(custom.sponsorLogo)) logos.push(custom.sponsorLogo)
+  if (customization.logo && !logos.includes(customization.logo)) logos.push(customization.logo)
+  const templateLogos: string[] = Array.isArray((template as any).sponsorLogos) ? (template as any).sponsorLogos : []
+  const headerLogos = logos.length ? logos.slice(0, 3) : templateLogos.slice(0, 3)
   const title = customization.title || design.title
   const subtitle = customization.subtitle || design.subtitle
-  const ornament = customization.ornament === 'none' ? design.ornament : customization.ornament
+  // Respect explicit 'none' to hide ornament; otherwise fallback to template decor/ornament
+  const rawDecor = (custom as any).decor
+  const rawOrnament = customization.ornament
+  let ornament: string | undefined
+  if (rawOrnament === 'none' || rawDecor === 'none') ornament = 'none'
+  else if (rawOrnament) ornament = rawOrnament
+  else if (rawDecor) ornament = rawDecor
+  else if ((design as any).decor) ornament = (design as any).decor
+  else ornament = design.ornament
 
-  // Drag support for stickers
   const handleStickerPointerDown = (sticker: PlacedSticker, e: React.PointerEvent<HTMLSpanElement>) => {
     if (!onStickerMove) return
     e.stopPropagation()
-    e.currentTarget.setPointerCapture(e.pointerId)
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     const frame = frameRef.current
     if (!frame) return
     const startX = e.clientX
     const startY = e.clientY
     const startStickerX = sticker.x
     const startStickerY = sticker.y
-
     const onMove = (me: PointerEvent) => {
       const rect = frame.getBoundingClientRect()
       const dx = ((me.clientX - startX) / rect.width) * 100
@@ -94,15 +108,17 @@ export function TemplateCanvas({
       const ny = Math.max(0, Math.min(100, startStickerY + dy))
       onStickerMove(sticker.id, nx, ny)
     }
-    e.currentTarget.addEventListener('pointermove', onMove as EventListener)
-    e.currentTarget.addEventListener('pointerup', () => {
-      e.currentTarget.removeEventListener('pointermove', onMove as EventListener)
+    const target = e.currentTarget as HTMLElement
+    const handler = onMove as EventListener
+    target.addEventListener('pointermove', handler)
+    target.addEventListener('pointerup', () => {
+      target.removeEventListener('pointermove', handler)
     }, { once: true })
   }
 
   const content = (
     <>
-      <div className={`ornament ornament--${ornament}`} aria-hidden="true"/>
+      {ornament && ornament !== 'none' && <div className={`ornament ornament--${ornament}`} aria-hidden="true"/>}
       {layout.photoSlots.map((slot, index) => {
         const photo = photos[index]
         const style: CSSProperties = {
@@ -112,14 +128,14 @@ export function TemplateCanvas({
           height: `${slot.height / layout.canvas.height * 100}%`,
           transform: slot.rotation ? `rotate(${slot.rotation}deg)` : undefined,
         }
-        // Only render as <button> when interactive - avoids nested button warning
         if (interactiveSlot) {
           return (
             <button
               type="button"
               key={slot.id}
-              className={`template-slot shape--${design.slotShape} filter--${customization.filter} is-interactive`}
+              className={`template-slot shape--${design.slotShape} filter--${customization.filter} is-interactive${activeSlotIndex === index ? ' is-active' : ''}`}
               style={style}
+              data-slot={index + 1}
               onClick={() => interactiveSlot(index)}
             >
               {photo ? <img src={photo.dataUrl} alt={`Selected photo ${index + 1}`}/> : <span><b>{index + 1}</b><small>PHOTO</small></span>}
@@ -129,8 +145,9 @@ export function TemplateCanvas({
         return (
           <div
             key={slot.id}
-            className={`template-slot shape--${design.slotShape} filter--${customization.filter}`}
+            className={`template-slot shape--${design.slotShape} filter--${customization.filter}${activeSlotIndex === index ? ' is-active' : ''}`}
             style={style}
+            data-slot={index + 1}
           >
             {photo ? <img src={photo.dataUrl} alt={`Selected photo ${index + 1}`}/> : <span><b>{index + 1}</b><small>PHOTO</small></span>}
           </div>
@@ -138,7 +155,9 @@ export function TemplateCanvas({
       })}
       <div className="template-footer" style={{ color: design.textColor }}>
         <div className="template-footer-logos">
-          {selectedLogo && <img src={selectedLogo} alt="Selected event logo"/>}
+          {headerLogos.map((src, i) => (
+            <img key={i} src={src} alt={`Sponsor ${i + 1}`} style={{ height: '70%', maxWidth: '30%', objectFit: 'contain', background: '#fff', borderRadius: 4, padding: 2, border: '1px solid rgba(0,0,0,.08)', marginRight: 6 }} />
+          ))}
         </div>
         <div className="template-footer-copy"><strong>{title}</strong><span>{subtitle}</span></div>
       </div>
@@ -155,14 +174,6 @@ export function TemplateCanvas({
           onPointerDown={(e) => handleStickerPointerDown(sticker, e)}
         >
           {sticker.emoji}
-          {onStickerDelete && (
-            <button
-              type="button"
-              className="sticker-delete"
-              onClick={(e) => { e.stopPropagation(); onStickerDelete(sticker.id) }}
-              title="Remove sticker"
-            >×</button>
-          )}
         </span>
       ))}
     </>

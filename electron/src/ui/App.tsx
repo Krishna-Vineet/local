@@ -64,6 +64,7 @@ function App() {
   const [refreshing, setRefreshing] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [outcome, setOutcome] = useState<PrintOutcome | null>(null)
+  const [isTransitioning, setIsTransitioning] = useState(false)
   const installationRef = useRef<Installation | null>(null)
   const snapshotRef = useRef<BoothSnapshot | null>(snapshot)
 
@@ -151,7 +152,6 @@ function App() {
         const serverCode = (reason as { code?: string | null }).code ?? null
         const serverStatus = (reason as { status?: number }).status
         if (serverCode === 'DEVICE_DELETED' || serverStatus === 410) {
-          // Removed in the CRM: this is the only path that forgets the device identity.
           await bridge.clearInstallation()
           await bridge.clearDeviceIdentity()
           installationRef.current = null
@@ -184,14 +184,32 @@ function App() {
   const resetGuestSession = useCallback(() => {
     setSession(freshSession())
     setOutcome(null)
+    setPrinting(false)
+    setIsTransitioning(false)
     const current = snapshotRef.current
     setScreen(current ? targetForSnapshot(current) : 'login')
   }, [])
 
+  // Transition helper: pause timer, navigate, restart timer on next screen
+  const goToScreen = useCallback((next: ScreenId) => {
+    setIsTransitioning(true)
+    window.setTimeout(() => {
+      setScreen(next)
+      setIsTransitioning(false)
+    }, 280)
+  }, [])
+
   const timerScreens: ScreenId[] = ['orientation', 'templates', 'prints', 'photos', 'customize']
-  const idleEnabled = timerScreens.includes(screen)
+  const idleEnabled = timerScreens.includes(screen) && !isTransitioning && !printing
   const timeoutSeconds = snapshot?.settings.boothTimeoutSec ?? 90
   const { secondsLeft, reset: resetTimer } = useIdleTimer(idleEnabled, timeoutSeconds, resetGuestSession)
+
+  // Reset timer whenever we arrive at a new timed screen (restart on next page)
+  useEffect(() => {
+    if (timerScreens.includes(screen)) {
+      resetTimer()
+    }
+  }, [screen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async (values: { email: string; password: string; locationLabel: string; coordinates?: GeolocationCoordinates }) => {
     setLoginBusy(true)
@@ -275,7 +293,7 @@ function App() {
 
   const paymentComplete = (quote: CheckoutQuote, payment: PaymentOrder | null) => {
     setSession((current) => ({ ...current, quote, payment }))
-    setScreen('camera')
+    goToScreen('camera')
   }
 
   const finishAndPrint = async () => {
@@ -284,10 +302,6 @@ function App() {
     let printResult: { success: boolean; jobId?: string | null; error?: string } = { success: false }
     let printError: string | null = null
 
-    // Render the finished print ONCE: the composite is what gets printed
-    // and what the backend stores as the session's final image (org
-    // gallery + guest download lead with it). Printing a raw frame or
-    // completing without it was the "gallery images don't show" bug.
     let compositeUrl: string | undefined
     try {
       compositeUrl = await renderCompositeDataUrl({
@@ -302,16 +316,25 @@ function App() {
 
     if (compositeUrl) {
       try {
-        printResult = await bridge.print({
+        // Guard against hanging printer IPC with timeout
+        const printPromise = bridge.print({
           copies: session.prints,
           layoutId: session.template.layout.id,
           templateName: session.template.name,
           bitmapDataUrl: compositeUrl,
         })
-        if (!printResult.success && !printError) printError = printResult.error || 'The printer did not accept this job.'
+        const timeout = new Promise<{ success: boolean; error: string }>((resolve) =>
+          window.setTimeout(() => resolve({ success: false, error: 'The printer did not respond in time. Your digital copy is still available.' }), 15000)
+        )
+        const raced: any = await Promise.race([printPromise, timeout])
+        printResult = raced
+        if (!printResult.success && !printError) printError = printResult.error || 'The printer did not accept this job. Your digital copy is still available via QR.'
       } catch (reason) {
-        printError = reason instanceof Error ? reason.message : 'The printer did not accept this job.'
+        printError = reason instanceof Error ? reason.message : 'The printer did not accept this job. Your digital copy is still available via QR.'
+        printResult = { success: false, error: printError }
       }
+    } else if (!printError) {
+      printError = 'The final print could not be prepared. Please ask the operator for help — your session is saved.'
     }
 
     let shareUrl: string | null = null
@@ -337,12 +360,10 @@ function App() {
         digitalCopy: session.digitalCopy,
         guestConsent: session.customization.guestConsent ?? true,
         compositeUrl,
-        // Send the actual finished photos — without them the backend stores
-        // nothing, the org gallery stays empty and no download can be made.
-        photos: session.selectedPhotos.map((photo) => photo.dataUrl).filter(Boolean),
+        photos: session.selectedPhotos.map((photo) => (photo as any).dataUrl).filter(Boolean),
         eventId: snapshot?.event?.id,
       })
-      shareUrl = completed.shareUrl
+      shareUrl = (completed as any).shareUrl ?? (completed as any).downloadUrl ?? null
     } catch (reason) {
       console.warn('[completeSession] Digital copy upload delayed/failed:', reason)
     }
@@ -351,10 +372,11 @@ function App() {
       shareUrl = guaranteedShareUrl
     }
 
+    // Surface printer failure: never stay on loading — always show outcome
     setOutcome({
       success: printResult.success,
       jobId: printResult.jobId ?? null,
-      error: printError,
+      error: printResult.success ? null : printError,
       shareUrl,
     })
     setPrinting(false)
@@ -368,30 +390,32 @@ function App() {
 
   const event = snapshot.event
   let content
+  // Helper to wrap screen transitions with pause
+  const withPause = (next: ScreenId) => goToScreen(next)
   switch (screen) {
     case 'start':
-      content = <StartScreen event={event} onStart={() => { setSession(freshSession()); setScreen('orientation') }}/>
+      content = <StartScreen event={event} onStart={() => { setSession(freshSession()); resetTimer(); setScreen('orientation') }}/>
       break
     case 'orientation':
-      content = <OrientationScreen value={session.orientation} secondsLeft={secondsLeft} onChange={(orientation) => setSession((current) => ({ ...current, orientation, template: null }))} onNext={() => setScreen('templates')} onBack={() => setScreen('start')}/>
+      content = <OrientationScreen value={session.orientation} secondsLeft={isTransitioning ? timeoutSeconds : secondsLeft} onChange={(orientation) => setSession((current) => ({ ...current, orientation, template: null }))} onNext={() => withPause('templates')} onBack={() => withPause('start')}/>
       break
     case 'templates':
-      content = <TemplateScreen event={event} session={session} secondsLeft={secondsLeft} onSelect={(template) => setSession((current) => ({ ...current, template }))} onNext={() => setScreen('prints')} onBack={() => setScreen('orientation')}/>
+      content = <TemplateScreen event={event} session={session} secondsLeft={isTransitioning ? timeoutSeconds : secondsLeft} onSelect={(template) => setSession((current) => ({ ...current, template }))} onNext={() => withPause('prints')} onBack={() => withPause('orientation')}/>
       break
     case 'prints':
-      content = <PrintCountScreen event={event} session={session} maximumPrints={snapshot.settings.maximumPrints} secondsLeft={secondsLeft} onUpdate={(value) => setSession((current) => ({ ...current, ...value }))} onNext={() => setScreen('payment')} onBack={() => setScreen('templates')}/>
+      content = <PrintCountScreen event={event} session={session} maximumPrints={snapshot.settings.maximumPrints} secondsLeft={isTransitioning ? timeoutSeconds : secondsLeft} onUpdate={(value) => setSession((current) => ({ ...current, ...value }))} onNext={() => withPause('payment')} onBack={() => withPause('templates')}/>
       break
     case 'payment':
-      content = <PaymentScreen secondsLeft={timeoutSeconds} onBack={() => setScreen('prints')} requestQuote={requestQuote} createPayment={createPayment} paymentStatus={paymentStatus} completeFree={completeFree} onComplete={paymentComplete}/>
+      content = <PaymentScreen secondsLeft={timeoutSeconds} onBack={() => withPause('prints')} requestQuote={requestQuote} createPayment={createPayment} paymentStatus={paymentStatus} completeFree={completeFree} onComplete={paymentComplete}/>
       break
     case 'camera':
-      content = session.template ? <CameraScreen template={session.template} onComplete={(photos) => { setSession((current) => ({ ...current, photos, selectedPhotos: photos.slice(0, current.template?.layout.slots ?? 1) })); setScreen('photos') }}/> : null
+      content = session.template ? <CameraScreen template={session.template} onComplete={(photos) => { setSession((current) => ({ ...current, photos, selectedPhotos: [] })); withPause('photos') }}/> : null
       break
     case 'photos':
-      content = session.template ? <PhotoSelectionScreen template={session.template} photos={session.photos} initial={session.selectedPhotos} secondsLeft={secondsLeft} onBack={() => setScreen('camera')} onComplete={(selectedPhotos) => { setSession((current) => ({ ...current, selectedPhotos })); setScreen('customize') }}/> : null
+      content = session.template ? <PhotoSelectionScreen template={session.template} photos={session.photos} initial={session.selectedPhotos} secondsLeft={isTransitioning ? timeoutSeconds : secondsLeft} onBack={() => withPause('camera')} onComplete={(selectedPhotos) => { setSession((current) => ({ ...current, selectedPhotos })); withPause('customize') }}/> : null
       break
     case 'customize':
-      content = session.template ? <CustomizeScreen event={event} template={session.template} photos={session.selectedPhotos} value={session.customization} secondsLeft={secondsLeft} printing={printing} onChange={(customization) => setSession((current) => ({ ...current, customization }))} onBack={() => setScreen('photos')} onFinish={() => void finishAndPrint()}/> : null
+      content = session.template ? <CustomizeScreen event={event} template={session.template} photos={session.selectedPhotos} value={session.customization} secondsLeft={isTransitioning || printing ? timeoutSeconds : secondsLeft} printing={printing} onChange={(customization) => setSession((current) => ({ ...current, customization }))} onBack={() => { if (!printing) withPause('photos') }} onFinish={() => void finishAndPrint()}/> : null
       break
     case 'success':
       content = outcome ? <SuccessScreen outcome={outcome} onDone={resetGuestSession}/> : null
@@ -406,7 +430,7 @@ function App() {
   return (
     <BoothProvider orgName={orgName} orgLogoUrl={orgLogoUrl}>
       {content}
-      {idleEnabled && <IdleWarning secondsLeft={secondsLeft} onContinue={resetTimer}/>}
+      {timerScreens.includes(screen) && <IdleWarning secondsLeft={isTransitioning || printing ? timeoutSeconds : secondsLeft} onContinue={resetTimer}/>}
       {!online && <div className="offline-banner">Working from the saved event. Payment needs a connection.</div>}
     </BoothProvider>
   )

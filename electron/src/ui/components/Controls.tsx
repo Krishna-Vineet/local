@@ -13,8 +13,8 @@ export function NextButton({ children = 'Next', ...props }: ButtonHTMLAttributes
   return <PrimaryButton {...props}>{children}<Icon name="arrow-right" size={20}/></PrimaryButton>
 }
 
-export function BackButton({ onClick, label = 'Back' }: { onClick: () => void; label?: string }) {
-  return <SecondaryButton onClick={onClick}><Icon name="arrow-left" size={20}/>{label}</SecondaryButton>
+export function BackButton({ onClick, label = 'Back', disabled }: { onClick: () => void; label?: string; disabled?: boolean }) {
+  return <SecondaryButton onClick={onClick} disabled={disabled}><Icon name="arrow-left" size={20}/>{label}</SecondaryButton>
 }
 
 export function Pill({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'success' | 'danger' | 'pink' }) {

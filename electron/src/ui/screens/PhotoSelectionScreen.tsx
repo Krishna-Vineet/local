@@ -6,6 +6,16 @@ import { Icon } from '../components/Icon'
 import { TemplateCanvas } from '../components/TemplateCanvas'
 import { sound } from '../services/sound'
 
+function photosEqual(a: CapturedPhoto | null, b: CapturedPhoto | null): boolean {
+  if (!a || !b) return false
+  const aid = (a as any).id
+  const bid = (b as any).id
+  if (aid && bid && aid === bid) return true
+  const ad = (a as any).dataUrl || (a as any).uri
+  const bd = (b as any).dataUrl || (b as any).uri
+  return !!ad && !!bd && ad === bd
+}
+
 export function PhotoSelectionScreen({ template, photos, initial, secondsLeft, onBack, onComplete }: {
   template: BoothTemplate
   photos: CapturedPhoto[]
@@ -16,7 +26,6 @@ export function PhotoSelectionScreen({ template, photos, initial, secondsLeft, o
 }) {
   const slots = template.layout.slots
 
-  // Empty initially per requirement; fill sequentially then highlight+slot-swap or slot-click-unselect
   const [selectedSlots, setSelectedSlots] = useState<(CapturedPhoto | null)[]>(() => {
     const empty: (CapturedPhoto | null)[] = Array.from({ length: slots }, () => null)
     if (initial.length > 0) {
@@ -33,18 +42,16 @@ export function PhotoSelectionScreen({ template, photos, initial, secondsLeft, o
 
   const handlePhotoTap = (photo: CapturedPhoto) => {
     if (transitioning) return
-    sound.select()
+    try { sound.select() } catch { void 0 }
     const newSlots = [...selectedSlots] as (CapturedPhoto | null)[]
-    const existingIndex = newSlots.findIndex((item) => item && (item as any).id === photo.id || (item as any).uri === (photo as any).uri)
+    const existingIndex = newSlots.findIndex((item) => photosEqual(item, photo))
 
     if (existingIndex >= 0) {
       if (existingIndex === activeSlotIndex) {
-        // Clicking photo already in active slot -> unselect it (slot-click-unselect)
         newSlots[activeSlotIndex] = null
         setSelectedSlots(newSlots)
         return
       }
-      // Swap with active slot
       const prevInActive = newSlots[activeSlotIndex]
       newSlots[activeSlotIndex] = photo
       newSlots[existingIndex] = prevInActive ?? null
@@ -54,10 +61,8 @@ export function PhotoSelectionScreen({ template, photos, initial, secondsLeft, o
       return
     }
 
-    // Sequential fill: place into active slot
     newSlots[activeSlotIndex] = photo
     setSelectedSlots(newSlots)
-    // Auto-advance to next empty slot
     const nextEmptyAfter = newSlots.findIndex((s, idx) => idx > activeSlotIndex && s === null)
     if (nextEmptyAfter >= 0) {
       setActiveSlotIndex(nextEmptyAfter)
@@ -69,9 +74,8 @@ export function PhotoSelectionScreen({ template, photos, initial, secondsLeft, o
 
   const handleSlotTap = (index: number) => {
     if (transitioning) return
-    sound.select()
+    try { sound.select() } catch { void 0 }
     if (activeSlotIndex === index && selectedSlots[index]) {
-      // Same active filled slot clicked -> unselect (slot-click-unselect)
       const newSlots = [...selectedSlots] as (CapturedPhoto | null)[]
       newSlots[index] = null
       setSelectedSlots(newSlots)
@@ -83,8 +87,7 @@ export function PhotoSelectionScreen({ template, photos, initial, secondsLeft, o
   const handleNext = () => {
     if (!isComplete || transitioning) return
     setTransitioning(true)
-    sound.success()
-    // Pause interactions; App timer will be paused via transitioning flag propagation if needed
+    try { sound.success() } catch { void 0 }
     window.setTimeout(() => {
       onComplete(selectedSlots.filter(Boolean) as CapturedPhoto[])
     }, 320)
@@ -97,7 +100,7 @@ export function PhotoSelectionScreen({ template, photos, initial, secondsLeft, o
           <div className="negative-rail"><span>KODAK PORTRA 400</span><span>{photos.length} EXPOSURES</span><span>HAPPYPIX</span></div>
           <div className="negative-track">
             {photos.map((photo, index) => {
-              const assignedIndex = selectedSlots.findIndex((item) => item && ((item as any).id === (photo as any).id || (item as any).uri === (photo as any).uri))
+              const assignedIndex = selectedSlots.findIndex((item) => photosEqual(item as any, photo as any))
               const isAssigned = assignedIndex >= 0
               return (
                 <button key={(photo as any).id || index} className={`${isAssigned ? 'is-selected' : ''} ${transitioning ? 'is-disabled' : ''}`} onClick={() => handlePhotoTap(photo)} disabled={transitioning}>
@@ -120,7 +123,7 @@ export function PhotoSelectionScreen({ template, photos, initial, secondsLeft, o
           {transitioning && <div className="transition-overlay"><span><span className="loader" style={{ width: 16, height: 16, borderWidth: 2 }} /> Moving to customisation…</span></div>}
         </section>
       </div>
-      <div className="screen-actions"><BackButton onClick={onBack} label="Retake photos"/><NextButton disabled={!isComplete || transitioning} onClick={handleNext}>Customize my print</NextButton></div>
+      <div className="screen-actions"><BackButton onClick={onBack} label="Retake photos" disabled={transitioning}/><NextButton disabled={!isComplete || transitioning} onClick={handleNext}>Customize my print</NextButton></div>
     </ScreenShell>
   )
 }

@@ -37,10 +37,17 @@ export interface QuoteInput {
   couponCode?: string
 }
 
+export interface CompleteSessionPhoto {
+  url: string
+  isComposite?: boolean
+  type?: string
+  slotIndex?: number
+}
+
 export interface CompleteSessionInput {
   sessionId: string
   digitalCopy: boolean
-  photos?: string[]
+  photos?: Array<string | CompleteSessionPhoto>
   compositeUrl?: string
   guestConsent?: boolean
   eventId?: string

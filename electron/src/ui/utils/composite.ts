@@ -14,6 +14,8 @@ const FILTER_CSS: Record<string, string> = {
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    // Allow AWS S3 / CDN images to be read into canvas without tainting
+    try { img.crossOrigin = 'anonymous' } catch { void 0 }
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('A photo could not be loaded for printing.'));
     img.src = src;

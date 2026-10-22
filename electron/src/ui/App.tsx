@@ -348,11 +348,9 @@ function App() {
       }
       return ''
     }
-    const websiteBase = resolveDownloadWebsiteBase(snapshot?.settings?.websiteUrl)
+    const websiteBase = resolveDownloadWebsiteBase(snapshot?.settings?.websiteUrl) || 'https://happypix.vercel.app'
     const guaranteedShareUrl = session.digitalCopy
-      ? (websiteBase
-          ? `${websiteBase}/download/${encodeURIComponent(session.id)}`
-          : `/download/${encodeURIComponent(session.id)}`)
+      ? `${websiteBase}/download/${encodeURIComponent(session.id)}`
       : null
     try {
       const completed = await boothApi.completeSession(installation, {
@@ -418,7 +416,7 @@ function App() {
       content = session.template ? <CustomizeScreen event={event} template={session.template} photos={session.selectedPhotos} value={session.customization} secondsLeft={isTransitioning || printing ? timeoutSeconds : secondsLeft} printing={printing} onChange={(customization) => setSession((current) => ({ ...current, customization }))} onBack={() => { if (!printing) withPause('photos') }} onFinish={() => void finishAndPrint()}/> : null
       break
     case 'success':
-      content = outcome ? <SuccessScreen outcome={outcome} onDone={resetGuestSession}/> : null
+      content = outcome ? <SuccessScreen outcome={outcome} session={session} installation={installation} snapshot={snapshot} onDone={resetGuestSession} onRetryPrint={() => void finishAndPrint()} /> : null
       break
     default:
       content = <StartScreen event={event} onStart={() => setScreen('orientation')}/>

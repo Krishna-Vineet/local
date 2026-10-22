@@ -1,0 +1,1243 @@
+openapi: 3.1.0
+info:
+  title: HappyPix API
+  version: 2.0.0
+  description: |
+    Main REST API for the HappyPix photo-booth platform (CRM + booth devices) and the public
+    website API. See `BACKEND_API_DATABASE.md` for narrative documentation, error codes and the
+    database schema.
+
+    ## Authentication
+    * `bearerAuth` — JWT issued by `POST /api/auth/login` (users).
+    * `deviceAuth` — device token issued **once** by `POST /api/booth/login` (booths).
+
+    ## Conventions
+    * Money in request/response bodies is rupees (integer); storage is paise.
+    * Timestamps are ISO 8601 UTC.
+    * Errors use `{ "error": { "code", "message", "details" } }`.
+  contact:
+    name: HappyPix Engineering
+    email: engineering@happypix.in
+  license:
+    name: Proprietary
+servers:
+  - url: https://happypix-v2-backend.vercel.app
+    description: Production main API
+  - url: http://localhost:5000
+    description: Local main API
+  - url: https://happypix.in
+    description: Production website API (paths under /api)
+
+tags:
+  - name: Auth
+  - name: Platform
+  - name: Organization
+  - name: Booth
+  - name: Payments
+  - name: Downloads
+  - name: Website
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ─────────────────────────────── AUTH ───────────────────────────────
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in a CRM user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: sana@sunsetweddings.com }
+                password: { type: string, format: password, minLength: 6 }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+                  permissions:
+                    type: array
+                    items: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user, org summary and effective permissions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+                  subscription: { $ref: '#/components/schemas/Subscription' }
+                  permissions:
+                    type: array
+                    items: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/password:
+    post:
+      tags: [Auth]
+      summary: Change password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, format: password }
+                newPassword: { type: string, format: password, minLength: 8 }
+      responses:
+        '200': { description: Password changed }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ──────────────────────────── PLATFORM ─────────────────────────────
+  /api/platform/dashboard:
+    get:
+      tags: [Platform]
+      summary: Platform KPIs (Owner / Platform Admin / Support Manager)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizations: { type: integer }
+                  activeSubscriptions: { type: integer }
+                  devicesOnline: { type: integer }
+                  sessionsToday: { type: integer }
+                  mrr: { type: number }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/platform/organizations:
+    get:
+      tags: [Platform]
+      summary: List tenant organizations
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 25, maximum: 100 } }
+        - { name: status, in: query, schema: { type: string, enum: [active, trial, expiring_soon, expired, suspended, banned] } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Organization' }
+                  total: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/platform/organizations/{id}/suspend:
+    post:
+      tags: [Platform]
+      summary: Suspend a tenant (booths lock on next heartbeat)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, example: Non-payment for 45 days }
+                notify: { type: boolean, default: true }
+      responses:
+        '200': { description: Suspended }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/platform/plans:
+    get:
+      tags: [Platform]
+      summary: Plan catalogue including add-ons and discount campaigns
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans: { type: array, items: { $ref: '#/components/schemas/Plan' } }
+    post:
+      tags: [Platform]
+      summary: Create a plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Plan' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/platform/audit:
+    get:
+      tags: [Platform]
+      summary: Platform audit log
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 25 } }
+        - { name: action, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AuditLog' } }
+                  total: { type: integer }
+
+  # ─────────────────────────── ORGANIZATION ──────────────────────────
+  /api/org/dashboard:
+    get:
+      tags: [Organization]
+      summary: Tenant dashboard KPIs
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events: { type: integer }
+                  sessions: { type: integer }
+                  prints: { type: integer }
+                  revenue: { type: number }
+                  devicesOnline: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/org/events:
+    get:
+      tags: [Organization]
+      summary: List events
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [upcoming, live, finished] } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 25 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Event' } }
+                  total: { type: integer }
+    post:
+      tags: [Organization]
+      summary: Create an event (clones org defaults pricing)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, startDate, endDate]
+              properties:
+                name: { type: string }
+                clientName: { type: string }
+                location: { type: string }
+                startDate: { type: string, format: date-time }
+                endDate: { type: string, format: date-time }
+                templateIds: { type: array, items: { type: string } }
+                filters: { type: array, items: { type: string } }
+                digitalCopy: { type: boolean, default: true }
+                layoutPrices:
+                  type: object
+                  additionalProperties: { type: number }
+                  example: { '46:3': 250, '57:2': 300 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '402':
+          description: Plan limit reached
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/org/events/{id}/pause:
+    post:
+      tags: [Organization]
+      summary: Pause booth operation for an event
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Paused }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/org/devices:
+    get:
+      tags: [Organization]
+      summary: List booth devices with telemetry
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Device' } }
+    post:
+      tags: [Organization]
+      summary: Register a device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceName]
+              properties:
+                deviceName: { type: string, example: Booth-02 }
+                location: { type: string }
+                deviceUuid: { type: string, format: uuid }
+      responses:
+        '201': { description: Created }
+        '402': { description: Device limit reached }
+
+  /api/org/gallery:
+    get:
+      tags: [Organization]
+      summary: Session-grouped gallery (composite-first)
+      parameters:
+        - { name: eventId, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 25 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sessionId: { type: string }
+                        eventId: { type: string }
+                        eventName: { type: string }
+                        capturedAt: { type: string, format: date-time }
+                        coverUrl: { type: string, description: compositeUrl when present, else the first frame }
+                        photoIds: { type: array, items: { type: string } }
+                        isComposite: { type: boolean }
+                  total: { type: integer }
+
+  /api/org/defaults:
+    get:
+      tags: [Organization]
+      summary: Organization defaults
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDefaults' }
+    put:
+      tags: [Organization]
+      summary: Update organization defaults
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationDefaults' }
+      responses:
+        '200': { description: Updated }
+        '402': { description: Organization not writable }
+
+  /api/org/coupons:
+    get:
+      tags: [Organization]
+      summary: List coupons
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Coupon' } }
+    post:
+      tags: [Organization]
+      summary: Create a coupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Coupon' }
+      responses:
+        '201': { description: Created }
+
+  # ─────────────────────────────── BOOTH ─────────────────────────────
+  /api/booth/login:
+    post:
+      tags: [Booth]
+      summary: Pair a booth device
+      description: |
+        Exchanges organization credentials + a persistent `deviceUuid` for a device token.
+        The raw token is returned **once**; only its SHA-256 hash is stored.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, deviceUuid]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+                deviceUuid: { type: string, format: uuid }
+                deviceName: { type: string, example: Booth-01 }
+                location: { type: string }
+                platform: { type: string, enum: [android, electron, win32, darwin] }
+                appVersion: { type: string, example: 0.1.0 }
+      responses:
+        '200':
+          description: Paired
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installation: { $ref: '#/components/schemas/Installation' }
+                  snapshot: { $ref: '#/components/schemas/Snapshot' }
+                  state: { type: string, example: ACTIVE }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '402': { description: Device limit reached }
+        '403': { description: Invalid credentials, deactivated account, or suspended/banned org }
+
+  /api/booth/bootstrap:
+    get:
+      tags: [Booth]
+      summary: Boot payload (state envelope + snapshot)
+      security: [{ deviceAuth: [] }]
+      responses:
+        '200':
+          description: Snapshot or a state envelope explaining why the booth is locked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum: [ACTIVE, SUSPENDED, BANNED, DEVICE_BLOCKED, DEVICE_DELETED, ORG_MISSING]
+                  message: { type: string }
+                  invalidateCache: { type: boolean }
+                  snapshot: { $ref: '#/components/schemas/Snapshot' }
+
+  /api/booth/revision:
+    get:
+      tags: [Booth]
+      summary: Cheap revision probe
+      security: [{ deviceAuth: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revision: { type: string, example: rev_a8f3b2 }
+                  serverTime: { type: string, format: date-time }
+
+  /api/booth/heartbeat:
+    post:
+      tags: [Booth]
+      summary: Device heartbeat with telemetry and revision check
+      security: [{ deviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                currentRevision: { type: string }
+                hardware: { $ref: '#/components/schemas/Hardware' }
+                counters:
+                  type: object
+                  properties:
+                    printsTotal: { type: integer }
+                    shutterCount: { type: integer }
+                appVersion: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state: { type: string, example: ACTIVE }
+                  changed: { type: boolean }
+                  revision: { type: string }
+                  invalidateCache: { type: boolean }
+                  serverTime: { type: string, format: date-time }
+
+  /api/booth/checkout/quote:
+    post:
+      tags: [Booth]
+      summary: Server-authoritative price for a session
+      security: [{ deviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                eventId: { type: string }
+                templateId: { type: string }
+                layoutId: { type: string, example: 46-v3 }
+                prints: { type: integer, minimum: 1, maximum: 50, default: 1 }
+                couponCode: { type: string }
+      responses:
+        '200':
+          description: Quote
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quoteId: { type: string }
+                  unitPrice: { type: number }
+                  prints: { type: integer }
+                  gross: { type: number }
+                  discount: { type: number }
+                  finalAmount: { type: number }
+                  couponCode: { type: string, nullable: true }
+                  couponMessage: { type: string, nullable: true }
+                  settlement: { type: string, enum: [upi, wallet] }
+                  currency: { type: string, example: INR }
+                  layoutId: { type: string }
+                  priceKey: { type: string, example: '46:3' }
+                  expiresAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { description: No event assigned or event not live }
+
+  /api/booth/payments:
+    post:
+      tags: [Booth, Payments]
+      summary: Create a payment and get a UPI QR / payment link
+      security: [{ deviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quote]
+              properties:
+                quote:
+                  type: object
+                  required: [finalAmount]
+                  properties:
+                    finalAmount: { type: number }
+                    eventId: { type: string }
+                    prints: { type: integer }
+                    templateId: { type: string }
+      responses:
+        '200':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentId: { type: string }
+                  gateway: { type: string, enum: [razorpay, cashfree] }
+                  amount: { type: number }
+                  currency: { type: string }
+                  qrData: { type: string, description: Raw UPI intent string for QR rendering }
+                  paymentLinkUrl: { type: string, nullable: true }
+                  expiresAt: { type: string, format: date-time }
+        '409': { description: Free checkout must use /checkout/free-complete }
+        '503': { description: Payment gateway unavailable }
+
+  /api/booth/payments/{id}:
+    get:
+      tags: [Booth, Payments]
+      summary: Poll payment status
+      security: [{ deviceAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentId: { type: string }
+                  status: { type: string, enum: [created, pending, paid, failed, refunded] }
+                  amount: { type: number }
+                  paidAt: { type: string, format: date-time, nullable: true }
+
+  /api/booth/checkout/free-complete:
+    post:
+      tags: [Booth, Payments]
+      summary: Complete a zero-value session
+      security: [{ deviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quote]
+              properties:
+                quote: { type: object }
+      responses:
+        '200': { description: Session unlocked }
+        '409': { description: Quote is not free }
+
+  /api/booth/sessions/upload-urls:
+    post:
+      tags: [Booth]
+      summary: Presigned S3 PUT URLs for a session
+      security: [{ deviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, files]
+              properties:
+                sessionId: { type: string }
+                files:
+                  type: array
+                  maxItems: 40
+                  items:
+                    type: object
+                    properties:
+                      kind: { type: string, enum: [photo, composite] }
+                      contentType: { type: string, example: image/jpeg }
+      responses:
+        '200':
+          description: Upload targets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploads:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string }
+                        key: { type: string }
+                        url: { type: string, format: uri }
+                  expiresIn: { type: integer, example: 900 }
+
+  /api/booth/sessions/complete:
+    post:
+      tags: [Booth]
+      summary: Persist photos + composite and create the 24-hour guest download
+      description: |
+        Idempotent per `sessionId`. Send the final composited frame as a photo entry with
+        `isComposite: true` (recommended) and/or as `compositeUrl`. Without it, a multi-slot
+        template's gallery cover and QR fall back to a single raw frame.
+      security: [{ deviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: string }
+                eventId: { type: string }
+                digitalCopy: { type: boolean, default: true }
+                guestConsent: { type: boolean }
+                compositeUrl: { type: string }
+                prints: { type: integer }
+                photos:
+                  type: array
+                  maxItems: 40
+                  items:
+                    oneOf:
+                      - type: string
+                        description: URL or data URL (server uploads data URLs)
+                      - type: object
+                        required: [url]
+                        properties:
+                          key: { type: string }
+                          url: { type: string }
+                          isComposite: { type: boolean }
+                          type: { type: string, enum: [photo, composite] }
+      responses:
+        '200':
+          description: Session stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  sessionId: { type: string }
+                  photoIds: { type: array, items: { type: string } }
+                  compositeUrl: { type: string, nullable: true }
+                  downloadId: { type: string, nullable: true }
+                  shareUrl: { type: string, nullable: true }
+                  expiresAt: { type: string, format: date-time, nullable: true }
+                  skipped: { type: array, items: { type: string } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { description: Payload too large }
+        '502': { description: Storage unavailable }
+
+  /api/booth/support:
+    post:
+      tags: [Booth]
+      summary: Guest raises an issue from the success screen
+      security: [{ deviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category: { type: string, enum: [printing, payment, quality, general] }
+                name: { type: string }
+                email: { type: string, format: email }
+                subject: { type: string }
+                message: { type: string }
+                sessionId: { type: string }
+                paymentReference: { type: string }
+      responses:
+        '201':
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  ticketId: { type: string }
+
+  # ───────────────────────────── DOWNLOADS ───────────────────────────
+  /api/downloads/{id}:
+    get:
+      tags: [Downloads]
+      summary: Guest download metadata (public)
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  downloadId: { type: string }
+                  eventName: { type: string }
+                  organizationName: { type: string }
+                  compositeUrl: { type: string, nullable: true }
+                  photoUrls: { type: array, items: { type: string } }
+                  expiresAt: { type: string, format: date-time }
+                  views: { type: integer }
+                  downloads: { type: integer }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { description: Download expired }
+
+  /api/downloads/{id}/file/{kind}:
+    get:
+      tags: [Downloads]
+      summary: Redirect to a presigned file
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: kind, in: path, required: true, schema: { type: string, example: composite } }
+      responses:
+        '302': { description: Redirect to S3 presigned URL }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { description: Download expired }
+
+  # ────────────────────────────── WEBSITE ────────────────────────────
+  /api/plans:
+    get:
+      tags: [Website]
+      summary: Public plan catalogue with effective (discounted) prices
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans: { type: array, items: { $ref: '#/components/schemas/Plan' } }
+                  addons: { type: array, items: { $ref: '#/components/schemas/Plan' } }
+                  gstRate: { type: number, example: 0.18 }
+
+  /api/checkout/order:
+    post:
+      tags: [Website]
+      summary: Create a subscription checkout order
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planKey, billingPeriod]
+              properties:
+                planKey: { type: string, enum: [basic, pro, premium] }
+                billingPeriod: { type: string, enum: [monthly, quarterly, semiannual, annual] }
+                name: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+                company: { type: string }
+      responses:
+        '200':
+          description: Razorpay order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orderId: { type: string }
+                  amount: { type: integer, description: Paise, GST included }
+                  currency: { type: string, example: INR }
+                  keyId: { type: string }
+                  prefill:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      email: { type: string }
+                      contact: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/checkout/verify:
+    post:
+      tags: [Website]
+      summary: Verify payment and provision the organization
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [razorpay_order_id, razorpay_payment_id, razorpay_signature]
+              properties:
+                razorpay_order_id: { type: string }
+                razorpay_payment_id: { type: string }
+                razorpay_signature: { type: string }
+      responses:
+        '200':
+          description: Provisioned; returns CRM redirect URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  organizationId: { type: string }
+                  crmUrl: { type: string }
+        '400': { description: Signature verification failed }
+
+  /api/leads:
+    post:
+      tags: [Website]
+      summary: Contact / demo request
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+                company: { type: string }
+                message: { type: string }
+      responses:
+        '201': { description: Lead stored }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT from POST /api/auth/login
+    deviceAuth:
+      type: http
+      scheme: bearer
+      description: Device token from POST /api/booth/login
+
+  responses:
+    BadRequest:
+      description: Validation or business rule failure
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or invalid credential
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Authenticated but not permitted
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found (tenant-scoped)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Too many requests
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: COUPON_INVALID }
+            message: { type: string, example: This coupon has expired. }
+            details: { type: object, additionalProperties: true }
+
+    User:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [OWNER, PLATFORM_ADMIN, SUPPORT_MANAGER, ORG_ADMIN, ORG_MANAGER]
+        organizationId: { type: string, nullable: true }
+        organization:
+          type: object
+          nullable: true
+          properties:
+            name: { type: string }
+            plan: { type: string }
+            status: { type: string }
+        status: { type: string, enum: [active, inactive, suspended] }
+
+    Organization:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        country: { type: string, example: IN }
+        plan: { type: string, example: pro }
+        planStatus:
+          type: string
+          enum: [trial, active, expiring_soon, expired, not_subscribed, suspended, banned]
+        planExpiresAt: { type: string, format: date-time, nullable: true }
+        devicesUsed: { type: integer }
+        eventsActive: { type: integer }
+
+    Subscription:
+      type: object
+      properties:
+        planKey: { type: string }
+        status: { type: string }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        limits:
+          type: object
+          properties:
+            devices: { type: integer }
+            events: { type: integer }
+            aiCredits: { type: integer }
+
+    Plan:
+      type: object
+      properties:
+        key: { type: string, example: pro }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number, nullable: true }
+        priceMonthly: { type: number, nullable: true }
+        priceQuarterly: { type: number, nullable: true }
+        priceSemiannual: { type: number, nullable: true }
+        priceAnnual: { type: number, nullable: true }
+        effectivePrice: { type: number, nullable: true }
+        discountAmount: { type: number }
+        devices: { type: integer }
+        events: { type: integer }
+        aiCredits: { type: integer }
+        kind: { type: string, enum: [plan, addon] }
+        active: { type: boolean }
+
+    Event:
+      type: object
+      properties:
+        _id: { type: string }
+        organizationId: { type: string }
+        name: { type: string }
+        clientName: { type: string }
+        location: { type: string }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time }
+        status: { type: string, enum: [upcoming, live, finished] }
+        paused: { type: boolean }
+        templateIds: { type: array, items: { type: string } }
+        filters: { type: array, items: { type: string } }
+        digitalCopy: { type: boolean }
+        layoutPrices:
+          type: object
+          additionalProperties: { type: number }
+        branding:
+          type: object
+          properties:
+            logoUrl: { type: string, nullable: true }
+            tagline: { type: string }
+            logos: { type: array, items: { type: string } }
+        shortCode: { type: string }
+
+    Device:
+      type: object
+      properties:
+        _id: { type: string }
+        deviceUuid: { type: string, format: uuid }
+        deviceName: { type: string }
+        location: { type: string }
+        status: { type: string, enum: [active, inactive, blocked] }
+        assignedEventId: { type: string, nullable: true }
+        lastSeenAt: { type: string, format: date-time, nullable: true }
+        platform: { type: string, nullable: true }
+        appVersion: { type: string, nullable: true }
+        online: { type: boolean }
+        telemetry: { $ref: '#/components/schemas/Hardware' }
+
+    OrganizationDefaults:
+      type: object
+      properties:
+        organizationId: { type: string }
+        name: { type: string }
+        logoUrl: { type: string, nullable: true }
+        boothTimeoutSec: { type: integer, minimum: 10, maximum: 86400, default: 60 }
+        qrTimeoutMinutes: { type: integer, minimum: 1, maximum: 30, default: 5 }
+        upiId: { type: string, nullable: true }
+        payoutMode: { type: string, enum: [upi, wallet] }
+        paymentDisplayName: { type: string, nullable: true }
+        layoutPrices:
+          type: object
+          additionalProperties: { type: number }
+          example: { '46:2': 200, '46:3': 250, '57:2': 300 }
+        filters: { type: array, items: { type: string } }
+        logos: { type: array, maxItems: 15, items: { type: string } }
+
+    Coupon:
+      type: object
+      properties:
+        _id: { type: string }
+        code: { type: string, example: MEHENDI10 }
+        type: { type: string, enum: [percentage, fixed] }
+        value: { type: number, example: 10 }
+        minSpend: { type: number }
+        maxDiscount: { type: number, nullable: true }
+        quantity: { type: integer }
+        usedCount: { type: integer }
+        validFrom: { type: string, format: date-time }
+        validUntil: { type: string, format: date-time }
+        status: { type: string, enum: [active, paused, expired] }
+
+    Installation:
+      type: object
+      properties:
+        deviceUuid: { type: string }
+        deviceToken: { type: string, description: Returned once; store securely }
+        deviceId: { type: string }
+        organizationId: { type: string }
+        pairedAt: { type: string, format: date-time }
+        locationLabel: { type: string }
+
+    Snapshot:
+      type: object
+      description: Everything a booth needs to run offline.
+      properties:
+        revision: { type: string, example: rev_a8f3b2 }
+        serverTime: { type: string, format: date-time }
+        event:
+          type: object
+          nullable: true
+          properties:
+            _id: { type: string }
+            name: { type: string }
+            startDate: { type: string, format: date-time }
+            endDate: { type: string, format: date-time }
+            demo: { type: boolean }
+        organization:
+          type: object
+          properties:
+            name: { type: string }
+            logoUrl: { type: string, nullable: true }
+            tagline: { type: string }
+        templates:
+          type: array
+          items:
+            type: object
+            properties:
+              _id: { type: string }
+              layoutId: { type: string }
+              name: { type: string }
+              orientation: { type: string, enum: [portrait, landscape] }
+              slots:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    x: { type: number }
+                    y: { type: number }
+                    w: { type: number }
+                    h: { type: number }
+              backgroundUrl: { type: string, nullable: true }
+              price: { type: number }
+        layoutPrices:
+          type: object
+          additionalProperties: { type: number }
+        filters: { type: array, items: { type: string } }
+        branding:
+          type: object
+          properties:
+            logoUrl: { type: string, nullable: true }
+            tagline: { type: string }
+            logos: { type: array, items: { type: string } }
+        settings:
+          type: object
+          properties:
+            boothTimeoutSec: { type: integer }
+            qrTimeoutMinutes: { type: integer }
+            digitalCopy: { type: boolean }
+            requireGuestConsent: { type: boolean }
+
+    Hardware:
+      type: object
+      properties:
+        camera:
+          type: object
+          properties:
+            connected: { type: boolean }
+            working: { type: boolean }
+            provider: { type: string, example: media-device }
+            model: { type: string, nullable: true }
+            batteryPct: { type: number, nullable: true }
+            shutterCount: { type: integer }
+            orientation: { type: string, nullable: true }
+            quality: { type: string, nullable: true }
+            live: { type: boolean }
+            error: { type: string, nullable: true }
+        printer:
+          type: object
+          properties:
+            connected: { type: boolean }
+            working: { type: boolean }
+            provider: { type: string, example: windows-driver-spooler }
+            model: { type: string, nullable: true }
+            status:
+              type: string
+              enum: [idle, printing, paper_end, ribbon_end, cover_open, paper_jam, offline]
+            statusCode: { type: integer, nullable: true }
+            paperRemaining: { type: integer, nullable: true }
+            ribbonPercent: { type: number, nullable: true }
+            initialMediaCount: { type: integer, nullable: true }
+            lifetimePrints: { type: integer, nullable: true }
+            printsTotal: { type: integer }
+            queueDepth: { type: integer }
+            orientation: { type: string, nullable: true }
+            quality: { type: string, nullable: true }
+            paperSize: { type: string, nullable: true }
+            isDefault: { type: boolean }
+            error: { type: string, nullable: true }
+        kioskScreen:
+          type: object
+          properties:
+            connected: { type: boolean }
+            external: { type: boolean }
+            displayCount: { type: integer }
+            width: { type: integer }
+            height: { type: integer }
+            scaleFactor: { type: number }
+
+    AuditLog:
+      type: object
+      properties:
+        _id: { type: string }
+        actorId: { type: string, nullable: true }
+        actorName: { type: string }
+        actorRole: { type: string }
+        organizationId: { type: string, nullable: true }
+        action: { type: string, example: device.paired }
+        entity: { type: string, example: device }
+        entityId: { type: string, nullable: true }
+        summary: { type: string }
+        ip: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }

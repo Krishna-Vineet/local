@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { fontSize, scale, verticalScale } from '../../../../packages/ui/src/index';
 
+import SoundManager from '../utils/SoundManager';
+
 export interface InactivityToastProps {
   visible?: boolean;
   secondsLeft?: number;
@@ -15,12 +17,18 @@ export const InactivityToast: React.FC<InactivityToastProps> = ({
 }) => {
   if (!visible) return null;
 
+  const handlePress = () => {
+    SoundManager.play('click');
+    onStayActive?.();
+  };
+
   return (
-    <View style={styles.toastContainer}>
+    <View style={styles.toastContainer} pointerEvents="box-none">
       <TouchableOpacity
         style={styles.toast}
-        onPress={onStayActive}
-        activeOpacity={0.9}
+        onPress={handlePress}
+        activeOpacity={0.8}
+        hitSlop={{ top: 16, bottom: 16, left: 24, right: 24 }}
       >
         <Text style={styles.toastText}>
           ⏳ {secondsLeft !== undefined ? `${secondsLeft}s left` : 'Session ending soon'} • Tap anywhere to keep going

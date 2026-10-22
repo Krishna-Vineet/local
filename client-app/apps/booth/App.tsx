@@ -106,9 +106,32 @@ function RootNavigator() {
   );
 }
 
-function App(): React.JSX.Element {
+function GlobalInteractionHandler({ children }: { children: React.ReactNode }) {
+  const { resetIdleTimer } = useBooth();
+  const lastResetRef = useRef(0);
+
+  const handleInteraction = () => {
+    const now = Date.now();
+    if (now - lastResetRef.current > 250) {
+      lastResetRef.current = now;
+      resetIdleTimer();
+    }
+    return false; // Passive listener: allow children to receive all gestures
+  };
+
+  return (
+    <View
+      style={{ flex: 1 }}
+      onStartShouldSetResponderCapture={handleInteraction}
+      onMoveShouldSetResponderCapture={handleInteraction}
+    >
+      {children}
+    </View>
+  );
+}
+
+export function App() {
   useEffect(() => {
-    // Intercept hardware back button on Android to prevent unhandled GO_BACK action
     const onHardwareBack = () => {
       if (navigationRef.isReady()) {
         if (navigationRef.canGoBack()) {
@@ -134,19 +157,21 @@ function App(): React.JSX.Element {
     <SafeAreaProvider>
       <ThemeProvider>
         <BoothProvider>
-          <NavigationContainer
-            ref={navigationRef}
-            onUnhandledAction={(action) => {
-              if (action.type === 'GO_BACK') {
-                // Safely handle unhandled GO_BACK when already at root of navigator
-                return;
-              }
-            }}
-          >
-            <StatusBar hidden />
-            <NavigationSync />
-            <RootNavigator />
-          </NavigationContainer>
+          <GlobalInteractionHandler>
+            <NavigationContainer
+              ref={navigationRef}
+              onUnhandledAction={(action) => {
+                if (action.type === 'GO_BACK') {
+                  // Safely handle unhandled GO_BACK when already at root of navigator
+                  return;
+                }
+              }}
+            >
+              <StatusBar hidden />
+              <NavigationSync />
+              <RootNavigator />
+            </NavigationContainer>
+          </GlobalInteractionHandler>
         </BoothProvider>
       </ThemeProvider>
     </SafeAreaProvider>

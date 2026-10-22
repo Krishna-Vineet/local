@@ -9,6 +9,7 @@ import PlatformDashboard from './pages/platform/PlatformDashboard.jsx'
 import PlatformRevenue from './pages/platform/PlatformRevenue.jsx'
 import Organizations from './pages/platform/Organizations.jsx'
 import PlatformSupport from './pages/platform/PlatformSupport.jsx'
+import WebsiteLeads from './pages/platform/WebsiteLeads.jsx'
 import SubscriptionPlans from './pages/platform/SubscriptionPlans.jsx'
 import Templates from './pages/platform/Templates.jsx'
 import TeamAndRoles from './pages/platform/TeamAndRoles.jsx'
@@ -34,6 +35,7 @@ const ROUTES = {
   '/platform/revenue': { comp: PlatformRevenue, perm: PERMS.PLATFORM_REVENUE_VIEW, scope: 'platform' },
   '/platform/organizations': { comp: Organizations, perm: PERMS.PLATFORM_ORGS_VIEW, scope: 'platform' },
   '/platform/support': { comp: PlatformSupport, perm: PERMS.PLATFORM_SUPPORT_VIEW, scope: 'platform' },
+  '/platform/leads': { comp: WebsiteLeads, perm: PERMS.PLATFORM_LEADS_MANAGE, scope: 'platform', roles: [ROLES.OWNER] },
   '/platform/plans': { comp: SubscriptionPlans, perm: PERMS.SUBSCRIPTION_PLANS_MANAGE, scope: 'platform' },
   '/platform/templates': { comp: Templates, perm: PERMS.GLOBAL_TEMPLATES_MANAGE, scope: 'platform' },
   // Issues #8/#9/#10/#11: Owner manages; Platform Admin + Support Manager get

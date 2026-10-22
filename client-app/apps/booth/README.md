@@ -16,7 +16,7 @@ This is the main React Native application for the **Happypix Booth**, located wi
 Create a `.env` file in the root of the `booth` app (`client-app/apps/booth/.env`) and add the necessary environment variables:
 
 ```env
-BOOTH_API_URL=https://happypixbackend.vercel.app
+BOOTH_API_URL=https://happypix-v2-backend.vercel.app
 BOOTH_DEVICE_TOKEN=your_device_token_here
 ```
 

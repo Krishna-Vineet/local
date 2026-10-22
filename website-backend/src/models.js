@@ -217,6 +217,9 @@ const websiteLeadSchema = new mongoose.Schema(
     message: { type: String, default: '' },
     type: { type: String, enum: ['contact', 'demo', 'hardware', 'support'], default: 'contact' },
     status: { type: String, enum: ['new', 'contacted', 'closed'], default: 'new' },
+    notes: { type: String, default: '' },
+    contactedAt: { type: Date, default: null },
+    closedAt: { type: Date, default: null },
   },
   { timestamps: true, collection: 'websiteleads' },
 );

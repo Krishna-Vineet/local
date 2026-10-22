@@ -47,6 +47,7 @@ import cronService        from './services/CronService.js';
 
 // Model imports
 import Photo from './models/Photo.js';
+import WebsiteLead from './models/WebsiteLead.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -74,7 +75,7 @@ const staticAllowedOrigins = [
   'https://booth.happypix.in',
   'https://happypix.vercel.app',
   'https://happypixcrm.vercel.app',
-  'https://happypixbackend.vercel.app',
+  'https://happypix-v2-backend.vercel.app',
 ];
 
 const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
@@ -254,6 +255,47 @@ app.use('/api/booth',         boothRoutes);          // New React+Vite Booth App
 
 app.use('/api/share',         photoShareRoutes);
 app.use('/api/downloads',     downloadRoutes);
+
+
+// Public Website Leads endpoint (matches website-backend POST /api/leads so
+// leads work whether the public website points to website-backend or backend).
+const leadsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again in a few minutes.' },
+});
+
+app.post('/api/leads', leadsLimiter, async (req, res) => {
+  try {
+    const { name, email, phone = '', company = '', message = '', type = 'contact' } = req.body || {};
+    if (!String(name || '').trim()) {
+      return res.status(400).json({ error: 'Your name is required.' });
+    }
+    const cleanEmail = String(email || '').toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: 'Enter a valid email address.' });
+    }
+    const lead = await WebsiteLead.create({
+      name: String(name).trim(),
+      email: cleanEmail,
+      phone: String(phone || '').trim(),
+      company: String(company || '').trim(),
+      message: String(message || '').slice(0, 4000),
+      type: ['demo', 'hardware', 'support'].includes(type) ? type : 'contact',
+    });
+    return res.status(201).json({
+      received: true,
+      id: String(lead._id),
+      message: 'Thank you — the HappyPix team will get back within one business day.',
+    });
+  } catch (error) {
+    console.error('leads failed:', error);
+    return res.status(500).json({ error: 'Could not send your message. Please try again.' });
+  }
+});
+
 
 // External / Vercel Cron Endpoint to expire trials and plans reliably on Serverless
 app.all('/api/cron/check-expirations', async (req, res) => {

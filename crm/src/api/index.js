@@ -50,6 +50,9 @@ export const api = {
     deleteTemplateLayout: (id) => request('DELETE', `platform/template-layouts/${id}`),
     gallerySettings: () => request('GET', 'platform/gallery-settings'),
     saveGallerySettings: (body) => request('PUT', 'platform/gallery-settings', body),
+    leads: (q = '') => request('GET', `platform/leads${q}`),
+    updateLead: (id, body) => request('PUT', `platform/leads/${id}`, body),
+    deleteLead: (id) => request('DELETE', `platform/leads/${id}`),
   },
   org: {
     dashboard: () => request('GET', 'org/dashboard'),

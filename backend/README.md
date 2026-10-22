@@ -4,7 +4,7 @@ The backend REST API for the HappyPix photo booth platform. Built with Node.js, 
 
 ## Live Environment
 
-- **Production API URL**: `https://happypixbackend.vercel.app`
+- **Production API URL**: `https://happypix-v2-backend.vercel.app`
 - **Frontend CRM URL**: `https://happypixfrontend.vercel.app`
 
 ## Getting Started

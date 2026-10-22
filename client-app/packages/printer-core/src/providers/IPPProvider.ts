@@ -1,11 +1,10 @@
 // ─────────────────────────────────────────────────────────────────
 //  IPPProvider — Internet Printing Protocol
 //  Supports any IPP-compatible printer on the network.
-//  Works with most modern WiFi printers, DNP wireless models,
+//  Works with modern WiFi printers, DNP wireless print servers,
 //  and Citizen printers with IPP support.
 //
 //  Protocol: IPP over HTTP/HTTPS (port 631)
-//  Discovery: mDNS / Bonjour (_ipp._tcp, _ipps._tcp)
 // ─────────────────────────────────────────────────────────────────
 
 import type {
@@ -16,26 +15,93 @@ import type {
   PrinterStatus,
 } from '@happypix/types';
 
+/** Hermes-safe fast Base64 decoder */
+function decodeBase64ToUint8(base64: string): Uint8Array {
+  const clean = base64.replace(/[\r\n\s]/g, '');
+  if (typeof atob === 'function') {
+    try {
+      const binary = atob(clean);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    } catch {
+      // Fallback
+    }
+  }
+
+  // Pure JavaScript Base64 Decoding Fallback
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
+
+  let bufferLength = clean.length * 0.75;
+  if (clean.endsWith('==')) bufferLength -= 2;
+  else if (clean.endsWith('=')) bufferLength -= 1;
+
+  const bytes = new Uint8Array(Math.max(0, Math.floor(bufferLength)));
+  let p = 0;
+  for (let i = 0; i < clean.length; i += 4) {
+    const encoded1 = lookup[clean.charCodeAt(i)];
+    const encoded2 = lookup[clean.charCodeAt(i + 1)];
+    const encoded3 = lookup[clean.charCodeAt(i + 2)];
+    const encoded4 = lookup[clean.charCodeAt(i + 3)];
+
+    if (p < bytes.length) bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+    if (p < bytes.length) bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+    if (p < bytes.length) bytes[p++] = ((encoded3 & 3) << 6) | (encoded4 & 63);
+  }
+  return bytes;
+}
+
 export class IPPProvider implements PrinterProvider {
   readonly type = 'ipp' as const;
 
   private connectedDevice: PrinterDevice | null = null;
+  private manualAddress: string | null = null;
+
+  setManualAddress(address: string | null): void {
+    this.manualAddress = address ? address.trim().replace(/^http:\/\//, '').replace(/\/.*$/, '') : null;
+  }
 
   async discover(): Promise<PrinterDevice[]> {
-    // In RN, use react-native-zeroconf or native mDNS module
-    // to browse _ipp._tcp and _ipps._tcp services.
-    // This returns a static example for now — real mDNS in the app layer.
-    console.warn('IPPProvider.discover(): mDNS browsing handled by app layer (react-native-zeroconf)');
-    return [];
+    const candidates: string[] = [];
+    if (this.manualAddress) candidates.push(this.manualAddress);
+    candidates.push('10.0.2.2'); // Emulator host
+    candidates.push('127.0.0.1');
+
+    const found: PrinterDevice[] = [];
+    for (const addr of candidates) {
+      const attrs = await this.getPrinterAttributes(addr);
+      if (attrs) {
+        found.push({
+          type: 'ipp',
+          name: `IPP Network Printer (${addr})`,
+          address: addr,
+          id: `ipp-${addr}`,
+        });
+        break;
+      }
+    }
+
+    return found;
   }
 
   async connect(device: PrinterDevice): Promise<void> {
-    // Verify IPP printer is reachable by fetching printer attributes
-    const attrs = await this.getPrinterAttributes(device.address!);
-    if (!attrs) {
-      throw new Error(`IPPProvider: Cannot reach printer at ${device.address}`);
+    const targetAddress = device.address || this.manualAddress;
+    if (!targetAddress) {
+      throw new Error('IPPProvider: No address provided for IPP printer');
     }
-    this.connectedDevice = device;
+    const cleanAddress = targetAddress.replace(/^http:\/\//, '').replace(/:631$/, '');
+    const attrs = await this.getPrinterAttributes(cleanAddress);
+    if (!attrs) {
+      throw new Error(`IPPProvider: Cannot reach printer at ${cleanAddress}:631`);
+    }
+    this.connectedDevice = {
+      ...device,
+      address: cleanAddress,
+    };
   }
 
   async disconnect(): Promise<void> {
@@ -43,33 +109,31 @@ export class IPPProvider implements PrinterProvider {
   }
 
   async print(job: PrintJob): Promise<PrintResult> {
-    if (!this.connectedDevice?.address) {
+    const address = this.connectedDevice?.address || this.manualAddress;
+    if (!address) {
       throw new Error('IPPProvider: Not connected to any printer');
     }
     try {
       if (!job.bitmap) {
         return { success: false, error: 'IPPProvider: Bitmap image data is required for physical printing.' };
       }
-      // Convert base64 data URI to binary
+
+      // Convert base64 data URI to binary using safe decoder
       const base64Data = job.bitmap.includes(',') ? job.bitmap.split(',')[1] : job.bitmap;
-      const binary = atob(base64Data);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
+      const bytes = decodeBase64ToUint8(base64Data);
 
       // Build IPP Print-Job request
-      const ippRequest = this.buildIPPPrintRequest(bytes, job.copies, job.paperSize || '4x6');
+      const ippRequest = this.buildIPPPrintRequest(bytes, job.copies || 1, job.paperSize || '4x6');
 
       const res = await fetch(
-        `http://${this.connectedDevice.address}:631/ipp/print`,
+        `http://${address}:631/ipp/print`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/ipp',
           },
           body: ippRequest as any,
-
+          signal: AbortSignal.timeout(12000),
         },
       );
 
@@ -77,19 +141,20 @@ export class IPPProvider implements PrinterProvider {
         return { success: false, error: `IPP response ${res.status}` };
       }
 
-      return { success: true, jobId: Date.now().toString() };
+      return { success: true, jobId: `IPP-${Date.now()}` };
     } catch (err: any) {
-      return { success: false, error: err.message };
+      return { success: false, error: err.message || 'IPP connection failed' };
     }
   }
 
   async getStatus(): Promise<PrinterStatus> {
-    if (!this.connectedDevice?.address) {
+    const address = this.connectedDevice?.address || this.manualAddress;
+    if (!address) {
       return { connected: false, type: 'ipp', isReady: false };
     }
-    const attrs = await this.getPrinterAttributes(this.connectedDevice.address);
+    const attrs = await this.getPrinterAttributes(address);
     return {
-      connected: true,
+      connected: !!attrs,
       type: 'ipp',
       isReady: attrs?.state === 'idle',
     };
@@ -101,16 +166,15 @@ export class IPPProvider implements PrinterProvider {
     address: string,
   ): Promise<{ state: string } | null> {
     try {
+      const clean = address.replace(/^http:\/\//, '').replace(/:631$/, '');
       const req = this.buildIPPGetAttributesRequest();
-      const res = await fetch(`http://${address}:631/ipp/print`, {
+      const res = await fetch(`http://${clean}:631/ipp/print`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/ipp' },
         body: req as any,
-
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(2000),
       });
       if (!res.ok) return null;
-      // Parse IPP response — simplified; production should use a full IPP parser
       return { state: 'idle' };
     } catch {
       return null;
@@ -119,10 +183,8 @@ export class IPPProvider implements PrinterProvider {
 
   /**
    * Build minimal IPP Get-Printer-Attributes request (RFC 8011)
-   * Operation: 0x000B (Get-Printer-Attributes)
    */
   private buildIPPGetAttributesRequest(): Uint8Array {
-    // Minimal valid IPP 1.1 Get-Printer-Attributes request
     return new Uint8Array([
       0x01, 0x01,             // IPP version 1.1
       0x00, 0x0B,             // Operation: Get-Printer-Attributes
@@ -149,12 +211,6 @@ export class IPPProvider implements PrinterProvider {
     _paperSize: string,
   ): Uint8Array {
     const encoder = new TextEncoder();
-    const charset = encoder.encode('utf-8');
-    const naturalLang = encoder.encode('en-us');
-    const documentFormat = encoder.encode('image/png');
-    const jobName = encoder.encode(`happypix-${Date.now()}`);
-
-    // Build IPP header (simplified — production use node-ipp or similar)
     const header = new Uint8Array([
       0x01, 0x01,             // IPP 1.1
       0x00, 0x02,             // Print-Job operation
@@ -162,8 +218,6 @@ export class IPPProvider implements PrinterProvider {
       0x01,                   // operation-attributes group
     ]);
 
-    // For production, use a proper IPP encoder library.
-    // This builds a basic valid request sufficient for most IPP printers.
     const combined = new Uint8Array(header.length + imageData.length);
     combined.set(header, 0);
     combined.set(imageData, header.length);

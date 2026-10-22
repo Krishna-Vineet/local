@@ -55,7 +55,7 @@ npm run transpile:electron
 Create `.env.local` inside `electron/`:
 
 ```env
-VITE_BOOTH_API_URL=https://happypixbackend.vercel.app
+VITE_BOOTH_API_URL=https://happypix-v2-backend.vercel.app
 ```
 
 The required production endpoints are documented in the root `BACKEND_CHANGES.md`, section

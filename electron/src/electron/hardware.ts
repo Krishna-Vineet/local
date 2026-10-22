@@ -5,6 +5,7 @@ import path from 'node:path'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { getCounters, incrementCounter } from './store.js'
+import { getDnpTelemetry } from './dnpTelemetry.js'
 
 const execAsync = promisify(exec)
 
@@ -62,6 +63,7 @@ export async function hardwareSnapshot() {
   const kioskDisplay = displays.find((display) => display.id !== primary.id) ?? primary
   const printers = await probePrinters()
   const defaultPrinter = process.env.HAPPYPIX_PRINTER_NAME || printers[0] || null
+  const dnp = await getDnpTelemetry(defaultPrinter || '')
 
   return {
     capturedAt: new Date().toISOString(),
@@ -73,13 +75,16 @@ export async function hardwareSnapshot() {
       shutterCount: counters.shutterCount,
     },
     printer: {
-      connected: printers.length > 0,
-      working: printers.length > 0,
+      connected: printers.length > 0 || dnp.connected,
+      working: printers.length > 0 || dnp.connected,
       provider: process.platform === 'win32' ? 'windows-driver-spooler' : 'cups-lp',
-      model: defaultPrinter || 'No printer detected',
+      model: dnp.connected ? (dnp.printerName || 'DNP DS-RX1HS') : (defaultPrinter || 'No printer detected'),
+      paperRemaining: dnp.paperRemaining,
+      ribbonPercent: dnp.ribbonPercent,
+      initialMediaCount: dnp.initialMediaCount,
       printsTotal: counters.printsTotal,
       queueDepth: 0,
-      error: printers.length > 0 ? null : 'No printer found in the OS print queue. Install the printer driver (DNP/Citizen/Canon) and try again.',
+      error: printers.length > 0 || dnp.connected ? dnp.error : 'No printer found in the OS print queue. Install the printer driver (DNP/Citizen/Canon) and try again.',
     },
     kioskScreen: {
       connected: displays.length > 0,

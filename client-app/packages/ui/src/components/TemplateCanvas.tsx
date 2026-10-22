@@ -433,7 +433,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
             pointerEvents="none"
             style={
               isFullFrame
-                ? [StyleSheet.absoluteFillObject, { zIndex: overlayFilter ? 25 : 5 }]
+                ? [StyleSheet.absoluteFill, { zIndex: overlayFilter ? 25 : 5 }]
                 : {
                     position: 'absolute',
                     left,
@@ -745,7 +745,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   slotImage: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: '100%',
     height: '100%',
   },

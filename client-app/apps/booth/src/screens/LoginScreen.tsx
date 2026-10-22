@@ -68,6 +68,7 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
         const devices = await printerManager.discover();
         if (!mounted) return;
         if (devices.length > 0) {
+          await printerManager.connect(devices[0]).catch(() => {});
           setPrinterName(devices[0].name || 'High-Speed Dye-Sub Printer');
           setPrinterStatus('ok');
         } else {

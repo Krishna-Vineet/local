@@ -26,16 +26,36 @@ export class PrinterManager {
     this.allProviders.set('citizen', new CitizenProvider());
   }
 
+  /**
+   * Configure DNP Print Bridge address (e.g. '192.168.1.50:9123')
+   */
+  setBridgeAddress(address: string | null): void {
+    const dnp = this.allProviders.get('dnp') as DNPProvider | undefined;
+    if (dnp) {
+      dnp.setBridgeAddress(address);
+    }
+  }
+
+  /**
+   * Configure a manual IP for IPP / Network printer
+   */
+  setManualIPPAddress(address: string | null): void {
+    const ipp = this.allProviders.get('ipp') as IPPProvider | undefined;
+    if (ipp) {
+      ipp.setManualAddress(address);
+    }
+  }
+
   // ── Discovery ────────────────────────────────────────────────────
 
   /**
    * Discover all available printers via all providers.
-   * In V1 (Android-first), IPP is the primary path.
+   * Checks DNP Print Bridge, IPP, and AirPrint.
    */
   async discover(): Promise<PrinterDevice[]> {
     const results: PrinterDevice[] = [];
 
-    // Try each provider (skip stubs that throw on discover)
+    // Try each provider
     for (const provider of this.allProviders.values()) {
       try {
         const devices = await provider.discover();
@@ -79,9 +99,15 @@ export class PrinterManager {
    */
   async print(job: PrintJob): Promise<PrintResult> {
     if (!this.activeProvider) {
-      throw new Error('PrinterManager: No printer connected. Call connect() first.');
+      // Auto-fallback: If no printer explicitly connected, try auto-connecting to discovered printer
+      const discovered = await this.discover();
+      if (discovered.length > 0) {
+        await this.connect(discovered[0]);
+      } else {
+        throw new Error('PrinterManager: No printer connected. Call connect() first.');
+      }
     }
-    return this.activeProvider.print(job);
+    return this.activeProvider!.print(job);
   }
 
   async getStatus(): Promise<PrinterStatus> {
@@ -93,6 +119,10 @@ export class PrinterManager {
 
   getActiveDevice(): PrinterDevice | null {
     return this.activeDevice;
+  }
+
+  getActiveProvider(): PrinterProvider | null {
+    return this.activeProvider;
   }
 
   isConnected(): boolean {

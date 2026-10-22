@@ -37,10 +37,10 @@ if (missing.length) {
 }
 
 let allowedOrigins = [
-  'https://happypix.in',
-  'https://www.happypix.in',
   'https://happypix.com.au',
   'https://www.happypix.com.au',
+  'https://happypix.vercel.app',
+  'https://happypixcrm.vercel.app',
 ];
 if (process.env.NODE_ENV !== 'production') {
   allowedOrigins.push('http://localhost:5174', 'http://localhost:5173', 'http://localhost:4174');

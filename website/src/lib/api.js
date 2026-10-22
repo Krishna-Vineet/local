@@ -3,7 +3,7 @@
 // No demo fallback: if the backend is unreachable, callers show a real
 // error/empty state instead of pretending plans or payments exist.
 
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+const API_BASE = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://happypixurl.vercel.app' : '')).replace(/\/+$/, '')
 export const CRM_URL = import.meta.env.VITE_CRM_URL || 'https://happypixcrm.vercel.app'
 
 async function request(path, options = {}) {

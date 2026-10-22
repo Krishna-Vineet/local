@@ -516,7 +516,11 @@ export function configureBoothApi(baseUrl: string | null) {
 }
 
 export function getBoothApi(): BoothApi {
-  const url = activeApiUrl || 'http://localhost:5000';
+  const isDev =
+    typeof (globalThis as any).__DEV__ !== 'undefined'
+      ? Boolean((globalThis as any).__DEV__)
+      : typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production';
+  const url = activeApiUrl || (isDev ? 'http://localhost:5000' : 'https://happypix-v2-backend.vercel.app');
   return new HttpBoothApi(url);
 }
 

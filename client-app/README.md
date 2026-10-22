@@ -25,7 +25,7 @@ client-app/
 ## 🌐 Server Details
 
 The app connects to the deployed backend server.
-- **Production Backend API**: `https://happypixbackend.vercel.app`
+- **Production Backend API**: `https://happypix-v2-backend.vercel.app`
 - **Production Frontend**: `https://happypixfrontend.vercel.app`
 
 ## 🚀 Getting Started
@@ -53,7 +53,7 @@ pnpm install
 Before running the application, set up the required environment variables. Create a `.env` file inside `apps/booth/`:
 
 ```env
-BOOTH_API_URL=https://happypixbackend.vercel.app
+BOOTH_API_URL=https://happypix-v2-backend.vercel.app
 BOOTH_DEVICE_TOKEN=your_device_token_here
 ```
 

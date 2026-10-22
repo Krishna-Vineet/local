@@ -31,6 +31,7 @@ import SubscriptionPlan from '../../models/SubscriptionPlan.js';
 import Template from '../../models/Template.js';
 import TemplateLayout from '../../models/TemplateLayout.js';
 import PlatformSupportRequest from '../../models/PlatformSupportRequest.js';
+import WebsiteLead from '../../models/WebsiteLead.js';
 import AuditLog from '../../models/AuditLog.js';
 import Payment from '../../models/Payment.js';
 
@@ -397,6 +398,8 @@ function planAdminView(plan, doc, organizations, subscriptions) {
     priceMonthly: plan.priceMonthly ?? plan.price ?? null,
     priceQuarterly: plan.priceQuarterly ?? null,
     priceSemiannual: plan.priceSemiannual ?? null,
+    priceQuarterly: plan.priceQuarterly ?? null,
+    priceSemiannual: plan.priceSemiannual ?? null,
     priceAnnual: plan.priceAnnual ?? null,
     billingNote: plan.billingNote || '',
     aiCredits: Number(plan.aiCredits) || 0,
@@ -458,6 +461,8 @@ router.post('/plans', requirePerm(PERMS.SUBSCRIPTION_PLANS_MANAGE), asyncRoute(a
     priceMonthly: req.body.priceMonthly === undefined ? price : Number(req.body.priceMonthly) || null,
     priceQuarterly: req.body.priceQuarterly === undefined ? null : Number(req.body.priceQuarterly) || null,
     priceSemiannual: req.body.priceSemiannual === undefined ? null : Number(req.body.priceSemiannual) || null,
+    priceQuarterly: req.body.priceQuarterly === undefined ? null : Number(req.body.priceQuarterly) || null,
+    priceSemiannual: req.body.priceSemiannual === undefined ? null : Number(req.body.priceSemiannual) || null,
     priceAnnual: req.body.priceAnnual === undefined ? null : Number(req.body.priceAnnual) || null,
     billingNote: String(req.body.billingNote || '').trim(),
     aiCredits: Math.max(0, Number(req.body.aiCredits) || 0),
@@ -498,8 +503,8 @@ router.put('/plans/:id', requirePerm(PERMS.SUBSCRIPTION_PLANS_MANAGE), asyncRout
   }
   if (req.body.active !== undefined) plan.active = !!req.body.active;
   if (req.body.kind !== undefined && ['plan', 'addon'].includes(req.body.kind)) plan.kind = req.body.kind;
-  for (const field of ['priceMonthly', 'priceQuarterly', 'priceSemiannual', 'priceAnnual']) {
-    if (req.body[field] !== undefined) {
+for (const field of ['priceMonthly', 'priceQuarterly', 'priceSemiannual', 'priceAnnual']) {
+      if (req.body[field] !== undefined) {
       const value = req.body[field] === null || req.body[field] === '' ? null : Number(req.body[field]);
       if (value !== null && (!Number.isFinite(value) || value < 0)) throw badRequest(`${field} must be a non-negative amount.`, 'BAD_PLAN_PRICE');
       plan[field] = value;
@@ -1084,5 +1089,139 @@ router.delete('/template-layouts/:id', requirePerm(PERMS.PLATFORM_TEMPLATE_LAYOU
   await writeAudit({ req, action: 'platform.template_layout.deleted', entity: 'template_layout', summary: `Deleted template layout ${layout.codeword || layout.name || 'Deleted'}` });
   res.json({ ok: true });
 }));
+
+
+// ─── WEBSITE LEADS (OWNER ONLY) ──────────────────────────────────────────────
+
+function leadView(doc) {
+  const plain = doc?.toObject ? doc.toObject() : doc;
+  return {
+    id: String(plain._id),
+    name: plain.name || '',
+    email: plain.email || '',
+    phone: plain.phone || '',
+    company: plain.company || '',
+    message: plain.message || '',
+    type: plain.type || 'contact',
+    status: plain.status || 'new',
+    notes: plain.notes || '',
+    contactedAt: plain.contactedAt || null,
+    closedAt: plain.closedAt || null,
+    createdAt: plain.createdAt || null,
+    updatedAt: plain.updatedAt || null,
+  };
+}
+
+router.get('/leads', requirePerm(PERMS.PLATFORM_LEADS_MANAGE), asyncRoute(async (req, res) => {
+  const query = {};
+  const validStatuses = ['new', 'contacted', 'closed'];
+  const validTypes = ['contact', 'demo', 'hardware', 'support'];
+
+  if (req.query.status && validStatuses.includes(req.query.status)) {
+    query.status = req.query.status;
+  }
+  if (req.query.type && validTypes.includes(req.query.type)) {
+    query.type = req.query.type;
+  }
+  if (req.query.q && String(req.query.q).trim()) {
+    const safePattern = String(req.query.q).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = { $regex: safePattern, $options: 'i' };
+    query.$or = [
+      { name: regex },
+      { email: regex },
+      { phone: regex },
+      { company: regex },
+      { message: regex },
+      { notes: regex },
+    ];
+  }
+
+  const [rows, allRows] = await Promise.all([
+    WebsiteLead.find(query).sort({ createdAt: -1 }).limit(500).lean(),
+    WebsiteLead.find({}).select('status type').lean(),
+  ]);
+
+  const counts = {
+    total: allRows.length,
+    new: 0,
+    contacted: 0,
+    closed: 0,
+    contact: 0,
+    demo: 0,
+    hardware: 0,
+    support: 0,
+  };
+  for (const r of allRows) {
+    const st = r.status || 'new';
+    const tp = r.type || 'contact';
+    if (counts[st] !== undefined) counts[st] += 1;
+    if (counts[tp] !== undefined) counts[tp] += 1;
+  }
+
+  res.json({
+    leads: rows.map(leadView),
+    counts,
+  });
+}));
+
+router.put('/leads/:id', requirePerm(PERMS.PLATFORM_LEADS_MANAGE), asyncRoute(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) throw notFound('Lead not found');
+  const lead = await WebsiteLead.findById(req.params.id);
+  if (!lead) throw notFound('Lead not found');
+
+  const validStatuses = ['new', 'contacted', 'closed'];
+  const validTypes = ['contact', 'demo', 'hardware', 'support'];
+  const { status, type, notes } = req.body || {};
+
+  if (status !== undefined) {
+    if (!validStatuses.includes(status)) throw badRequest('Invalid lead status');
+    const prevStatus = lead.status;
+    lead.status = status;
+    if (status === 'contacted' && prevStatus !== 'contacted' && !lead.contactedAt) {
+      lead.contactedAt = new Date();
+    }
+    if (status === 'closed' && prevStatus !== 'closed') {
+      lead.closedAt = new Date();
+    }
+    if (status === 'new') {
+      lead.closedAt = null;
+    }
+  }
+
+  if (type !== undefined) {
+    if (!validTypes.includes(type)) throw badRequest('Invalid lead type');
+    lead.type = type;
+  }
+
+  if (notes !== undefined) {
+    lead.notes = String(notes || '').slice(0, 4000);
+  }
+
+  await lead.save();
+  await writeAudit({
+    req,
+    action: 'platform.lead.updated',
+    entity: `lead:${lead.email}`,
+    summary: `Updated website lead ${lead.name} (${lead.email}) — status: ${lead.status}`,
+  });
+
+  res.json({ lead: leadView(lead) });
+}));
+
+router.delete('/leads/:id', requirePerm(PERMS.PLATFORM_LEADS_MANAGE), asyncRoute(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) throw notFound('Lead not found');
+  const lead = await WebsiteLead.findByIdAndDelete(req.params.id);
+  if (!lead) throw notFound('Lead not found');
+
+  await writeAudit({
+    req,
+    action: 'platform.lead.deleted',
+    entity: `lead:${lead.email}`,
+    summary: `Deleted website lead ${lead.name} (${lead.email})`,
+  });
+
+  res.json({ ok: true });
+}));
+
 
 export default router;

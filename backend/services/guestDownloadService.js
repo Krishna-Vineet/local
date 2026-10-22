@@ -23,7 +23,7 @@ export function newDownloadId() {
 
 /** Public website URL for a download id (no trailing-slash surprises). */
 export function downloadUrlFor(downloadId) {
-  const base = String(process.env.WEBSITE_URL || '').replace(/\/+$/, '');
+  const base = String(process.env.WEBSITE_URL || 'https://happypix.vercel.app').replace(/\/+$/, '');
   return `${base}/download/${encodeURIComponent(downloadId)}`;
 }
 

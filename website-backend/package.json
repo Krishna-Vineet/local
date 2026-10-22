@@ -9,7 +9,7 @@
     "dev": "node --watch src/server.js",
     "test": "node --test tests/*.test.js"
   },
-  "description": "Public backend for the HappyPix display website (happypix.in). Separate service, SAME MongoDB as backend/ — plans, organizations, users, subscriptions and guest downloads are shared collections.",
+  "description": "Public backend for the HappyPix display website (happypix.vercel.app). Separate service, SAME MongoDB as backend/ — plans, organizations, users, subscriptions and guest downloads are shared collections.",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1030.0",
     "@aws-sdk/s3-request-presigner": "^3.1030.0",

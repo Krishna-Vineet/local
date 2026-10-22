@@ -503,7 +503,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1b1b26',
   },
   photoCellImg: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: '100%',
     height: '100%',
   },

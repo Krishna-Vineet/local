@@ -32,7 +32,7 @@ import { InactivityToast } from '../components/InactivityToast';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Customize'>;
-type TabId = 'patterns' | 'filters' | 'stickers' | 'logos' | 'text';
+type TabId = 'filters' | 'stickers' | 'logos' | 'text';
 
 const ORNAMENTS: { id: OrnamentId; label: string; symbol: string; desc: string }[] = [
   { id: 'none', label: 'Clean', symbol: '○', desc: 'No background motifs' },
@@ -193,7 +193,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
   const galleryEnabled = snapshot?.settings?.galleryEnabled !== false;
   const requireGuestConsent = snapshot?.settings?.requireGuestConsent === true;
 
-  const [activeTab, setActiveTab] = useState<TabId>('patterns');
+  const [activeTab, setActiveTab] = useState<TabId>('filters');
   const [printing, setPrinting] = useState(false);
   const [guestConsent, setGuestConsent] = useState(
     requireGuestConsent
@@ -370,7 +370,6 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.tabBar}>
               {(
                 [
-                  ['patterns', 'Pattern'],
                   ['filters', 'Filter'],
                   ['stickers', 'Stickers'],
                   ['logos', 'Logos'],
@@ -383,6 +382,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                   onPress={() => {
                     SoundManager.play('click');
                     setActiveTab(id);
+                    resetIdleTimer();
                   }}
                 >
                   <Text style={[styles.tabBtnText, activeTab === id && styles.tabBtnTextActive]}>
@@ -398,29 +398,6 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
               contentContainerStyle={{ paddingBottom: 16 }}
               showsVerticalScrollIndicator={false}
             >
-              {/* PATTERNS & ORNAMENTS */}
-              {activeTab === 'patterns' && (
-                <View>
-                  <Text style={styles.kicker}>PRINT ORNAMENTS & PATTERNS</Text>
-                  <View style={styles.optionGrid}>
-                    {ORNAMENTS.map((item) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[
-                          styles.ornamentCard,
-                          customization.ornament === item.id && styles.ornamentCardActive,
-                        ]}
-                        onPress={() => update({ ornament: item.id })}
-                      >
-                        <Text style={styles.ornamentSymbol}>{item.symbol}</Text>
-                        <Text style={styles.ornamentLabel}>{item.label}</Text>
-                        <Text style={styles.ornamentDesc}>{item.desc}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
               {/* PHOTO FILTERS */}
               {activeTab === 'filters' && (
                 <View>

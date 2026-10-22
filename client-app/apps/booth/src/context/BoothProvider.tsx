@@ -747,7 +747,7 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
       return fromEnv.trim().replace(/\/+$/, '');
     }
-    return '';
+    return 'https://happypix.vercel.app';
   };
 
   const finishAndPrint = useCallback(async (): Promise<PrintOutcome> => {

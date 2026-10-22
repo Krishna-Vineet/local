@@ -4,6 +4,7 @@ import { clearDeviceIdentity, clearInstallation, getDeviceUuid, getInstallation,
 import { hardwareSnapshot, printJob, recordCapture, updateCameraReport, type CameraReport, type PrintRequest } from './hardware.js'
 import { getPreloadPath } from './pathResolver.js'
 import { isDev } from './util.js'
+import { startPrintServer, stopPrintServer } from './printServer.js'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -75,6 +76,7 @@ function registerIpc(): void {
 
 app.whenReady().then(() => {
   registerIpc()
+  startPrintServer()
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === 'media')
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media')
@@ -87,5 +89,7 @@ app.on('activate', () => {
 })
 
 app.on('window-all-closed', () => {
+  stopPrintServer()
   if (process.platform !== 'darwin') app.quit()
 })
+

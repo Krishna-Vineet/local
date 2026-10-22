@@ -53,7 +53,7 @@ Riya Studio (**suspended** — billing dispute), Glow Events (**banned** — fra
 ### Real backend
 
 ```bash
-VITE_API_URL=https://happypixbackend.vercel.app npm run dev
+VITE_API_URL=https://happypix-v2-backend.vercel.app npm run dev
 # Live Frontend URL: https://happypixfrontend.vercel.app
 ```
 

@@ -574,7 +574,7 @@ router.post('/internal/downloads', downloadLimiter, async (req, res) => {
     const download = await GuestDownload.create({
       downloadId, compositeUrl, photoUrls: urls, eventName, organizationName, sessionId, expiresAt,
     });
-    const base = String(process.env.WEBSITE_URL || '').replace(/\/+$/, '');
+    const base = String(process.env.WEBSITE_URL || process.env.WEBSITE_PUBLIC_URL || 'https://happypix.vercel.app').replace(/\/+$/, '');
     return ok(res, { downloadId: download.downloadId, url: `${base}/download/${download.downloadId}`, expiresAt }, 201);
   } catch (error) {
     console.error('internal/downloads failed:', error);

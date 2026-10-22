@@ -8,12 +8,14 @@ import {
   useWindowDimensions,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import type { CapturedPhoto } from '@happypix/types';
+import { cameraManager } from '../../../../packages/camera-core/src/index';
 import {
   ScreenContainer,
   FlashOverlay,
@@ -30,6 +32,47 @@ import type { RootStackParamList } from '../../App';
 type Props = NativeStackScreenProps<RootStackParamList, 'Camera'>;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const CanonLiveView: React.FC<{ isFocused: boolean; onReady: () => void }> = ({ isFocused, onReady }) => {
+  const liveUrl = cameraManager.getLiveViewUrl();
+  const [frameTick, setFrameTick] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    cameraManager.startPreview().then(() => {
+      if (mounted) onReady();
+    }).catch(() => {});
+
+    const interval = setInterval(() => {
+      if (mounted && isFocused) {
+        setFrameTick((t) => (t + 1) % 10000);
+      }
+    }, 120);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      cameraManager.stopPreview().catch(() => {});
+    };
+  }, [isFocused]);
+
+  if (!liveUrl) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000000' }}>
+        <ActivityIndicator size="large" color="#8b5cf6" />
+        <Text style={{ color: '#a78bfa', marginTop: 12, fontSize: 16 }}>Connecting to Canon DSLR Liveview...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: `${liveUrl}?t=${frameTick}` }}
+      style={{ width: '100%', height: '100%' }}
+      resizeMode="cover"
+    />
+  );
+};
 
 export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useAppTheme();
@@ -72,7 +115,25 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [hasPermission]);
 
+  const activeCameraType = cameraManager.getActiveType();
+
   const captureFrame = async (index: number): Promise<CapturedPhoto> => {
+    if (activeCameraType === 'canon') {
+      try {
+        const canonPhoto = await cameraManager.capture();
+        return {
+          id: `photo-${Date.now()}-${index}`,
+          uri: canonPhoto.uri,
+          dataUrl: canonPhoto.dataUrl || canonPhoto.uri,
+          width: canonPhoto.width,
+          height: canonPhoto.height,
+          capturedAt: new Date().toISOString(),
+        };
+      } catch (err: any) {
+        console.warn('Canon capture error, checking tablet camera fallback:', err);
+      }
+    }
+
     if (cameraRef.current && device && isFocused) {
       const file = await cameraRef.current.takePhoto({
         enableShutterSound: false,
@@ -145,7 +206,9 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.container}>
         {/* Full-Screen Viewfinder — Covers 100% of frame in both Portrait and Landscape */}
         <View style={styles.viewfinderContainer}>
-          {hasPermission && device && isFocused ? (
+          {activeCameraType === 'canon' ? (
+            <CanonLiveView isFocused={isFocused} onReady={() => setCameraReady(true)} />
+          ) : hasPermission && device && isFocused ? (
             <Camera
               key={isLandscape ? 'cam-landscape' : 'cam-portrait'}
               ref={cameraRef}
@@ -324,7 +387,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cameraFullFrame: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     width: '100%',
     height: '100%',
   },

@@ -13,13 +13,14 @@ import type {
   CameraType,
 } from '@happypix/types';
 import { PhoneCameraProvider } from './providers/PhoneCameraProvider';
-import { CanonCameraProvider } from './providers/CanonCameraProvider';
+import { CanonCameraProvider, type CanonCameraConfig } from './providers/CanonCameraProvider';
 import { SonyCameraProvider } from './providers/SonyCameraProvider';
 import { PtpCameraProvider } from './providers/PtpCameraProvider';
 
 export class CameraManager {
   private activeProvider: CameraProvider | null = null;
   private allProviders: Map<CameraType, CameraProvider> = new Map();
+  private customCanonConfig: CanonCameraConfig | null = null;
 
   constructor() {
     // Register all providers
@@ -27,6 +28,15 @@ export class CameraManager {
     this.allProviders.set('canon', new CanonCameraProvider({ ip: '192.168.1.2' }));
     this.allProviders.set('sony', new SonyCameraProvider());
     this.allProviders.set('ptp', new PtpCameraProvider());
+  }
+
+  /**
+   * Set custom Canon CCAPI IP address from settings
+   */
+  setCanonConfig(ip: string, port = 8080): void {
+    const cleanIp = ip.trim().replace(/^http:\/\//, '').replace(/\/.*$/, '').split(':')[0];
+    this.customCanonConfig = { ip: cleanIp, port };
+    this.allProviders.set('canon', new CanonCameraProvider(this.customCanonConfig));
   }
 
   // ── Discovery ────────────────────────────────────────────────────
@@ -40,27 +50,21 @@ export class CameraManager {
 
     // 1. Try Canon CCAPI via network probe
     try {
-      const canonConfig = await CanonCameraProvider.probe();
+      const probeList = this.customCanonConfig
+        ? [this.customCanonConfig.ip, '192.168.1.2', '192.168.0.2', '10.0.2.2']
+        : ['192.168.1.2', '192.168.0.2', '192.168.1.100', '10.0.2.2'];
+
+      const canonConfig = await CanonCameraProvider.probe(probeList);
       if (canonConfig) {
-        // Re-create provider with discovered IP
-        this.allProviders.set(
-          'canon',
-          new CanonCameraProvider(canonConfig),
-        );
+        this.allProviders.set('canon', new CanonCameraProvider(canonConfig));
         found.push({ type: 'canon', name: 'Canon Camera (CCAPI)', address: canonConfig.ip });
       }
     } catch {
       // Not found
     }
 
-    // 2. Sony — only if SDK available (currently stub)
-    // TODO: Add Sony discovery when SDK license arrives
-
-    // 3. PTP USB — only if USB device detected (Android only)
-    // TODO: Add PTP USB device enumeration
-
-    // 4. Phone camera — always available as fallback
-    found.push({ type: 'phone', name: 'Device Camera' });
+    // 2. Phone camera — always available as fallback
+    found.push({ type: 'phone', name: 'Integrated Tablet Camera' });
 
     return found;
   }
@@ -84,7 +88,7 @@ export class CameraManager {
   /** Auto-select best available camera */
   async autoSelect(): Promise<CameraType> {
     const results = await this.discover();
-    const preferred = results.find(r => r.type !== 'phone') ?? results[0];
+    const preferred = results.find((r) => r.type !== 'phone') ?? results[0];
     if (!preferred) throw new Error('CameraManager: No cameras found');
     await this.selectProvider(preferred.type);
     return preferred.type;
@@ -92,6 +96,12 @@ export class CameraManager {
 
   private requireProvider(): CameraProvider {
     if (!this.activeProvider) {
+      // Auto-fallback to phone camera
+      const phone = this.allProviders.get('phone');
+      if (phone) {
+        this.activeProvider = phone;
+        return phone;
+      }
       throw new Error('CameraManager: No provider selected. Call selectProvider() first.');
     }
     return this.activeProvider;
@@ -128,6 +138,18 @@ export class CameraManager {
 
   getActiveType(): CameraType | null {
     return this.activeProvider?.type ?? null;
+  }
+
+  getActiveProvider(): CameraProvider | null {
+    return this.activeProvider;
+  }
+
+  getLiveViewUrl(): string | null {
+    if (this.activeProvider?.type === 'canon') {
+      const canon = this.activeProvider as CanonCameraProvider;
+      return canon.getLiveViewUrl();
+    }
+    return null;
   }
 
   async disconnect(): Promise<void> {

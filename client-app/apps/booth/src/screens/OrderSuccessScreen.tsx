@@ -50,7 +50,7 @@ export const OrderSuccessScreen: React.FC<Props> = ({ navigation }) => {
     if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
       return fromEnv.trim().replace(/\/+$/, '');
     }
-    return '';
+    return 'https://happypix.vercel.app';
   };
 
   const websiteBase = resolveDownloadWebsiteBase(snapshot?.settings?.websiteUrl);

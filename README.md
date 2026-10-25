@@ -165,6 +165,7 @@ Every document below is versioned in this repository. Start with the owner's ord
 | 3 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Install, run, test, build, conventions, troubleshooting |
 | 4 | [`docs/BACKEND_API_DATABASE.md`](docs/BACKEND_API_DATABASE.md) | Every endpoint, error code, schema, index and migration |
 | 4b | [`docs/openapi.yaml`](docs/openapi.yaml) | Machine-readable OpenAPI 3.1 contract |
+| 4c | [`docs/BACKEND_REFERENCE.html`](docs/BACKEND_REFERENCE.html) | **Self-contained HTML backend reference** — every endpoint with inputs/outputs, all middleware, utils, services, models and the total system flow. Open it in a browser; no server needed |
 | 5 | [`docs/APPLICATIONS_CRM.md`](docs/APPLICATIONS_CRM.md) | Website, CRM, Android, Electron — modules and behaviour |
 | 6 | [`docs/HARDWARE_PRINTING.md`](docs/HARDWARE_PRINTING.md) | Cameras, printers, drivers, media, print geometry |
 | 7 | [`docs/DEPLOYMENT_RELEASE.md`](docs/DEPLOYMENT_RELEASE.md) | Hosting, DNS, CI/CD, signing, rollout, rollback |
@@ -173,6 +174,8 @@ Every document below is versioned in this repository. Start with the owner's ord
 | 10 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Monitoring, alerts, backups, DR, on-call runbooks |
 | 11 | [`docs/USER_ADMIN_GUIDE.md`](docs/USER_ADMIN_GUIDE.md) | Onboarding, event setup, operator workflow, admin |
 | 12 | [`business/SCALABILITY_PLAN.md`](business/SCALABILITY_PLAN.md) | 10K → 10M users: architecture and cost at each stage |
+| 12b | [`docs/HOSTING_AND_SCALING.md`](docs/HOSTING_AND_SCALING.md) | Where every component runs today, what each costs, the triggers and stages for growth, and the 30+ situations that force an architecture change |
+| 12c | [`docs/DIAGRAMS.md`](docs/DIAGRAMS.md) · [`docs/diagrams/index.html`](docs/diagrams/index.html) | 29 maintained diagrams: ecosystem, ER, DFD L0/L1/L2, HLD/LLD, future architecture. The HTML version is interactive |
 | 13 | [`business/FINANCIAL_MODEL.xlsx`](business/FINANCIAL_MODEL.xlsx) | Full expenditure model, forecasts, runway |
 | 14 | [`business/UNIT_ECONOMICS.xlsx`](business/UNIT_ECONOMICS.xlsx) | Pricing, cost per print/photo/AI call, margins, break-even |
 | 15 | [`business/HANDOVER_REGISTER.xlsx`](business/HANDOVER_REGISTER.xlsx) | Owners, vendors, renewals, credentials, debt, artefacts |
@@ -183,8 +186,11 @@ Supporting technical references already in the repo:
   handbook (schema rationale, AI pipeline, viva-style Q&A).
 * [`electron/HARDWARE_SDK_REPORT.md`](electron/HARDWARE_SDK_REPORT.md) — Windows/macOS SDK parity.
 * [`crm/SECURITY.md`](crm/SECURITY.md) — CRM hosting headers and client-side posture.
-* [`crm/BACKEND-CHANGES.md`](crm/BACKEND-CHANGES.md) — CRM ↔ v1 backend contract gaps.
-* [`client-app/TECH_STACK_AND_RUN_GUIDE.md`](client-app/TECH_STACK_AND_RUN_GUIDE.md) — RN monorepo.
+* [`docs/BACKEND_REFERENCE.html`](docs/BACKEND_REFERENCE.html) — the generated, single-file backend reference
+  (rebuild with `python3 docs/scripts/build_backend_doc.py`).
+* [`docs/diagrams/src/`](docs/diagrams/src) — the Mermaid sources behind all 29 diagrams
+  (`python3 docs/scripts/build_diagrams.py` to rebuild the viewer).
+* [`docs/HOSTING_AND_SCALING.md`](docs/HOSTING_AND_SCALING.md) — hosting, unit costs and the scale trigger table.
 
 ---
 

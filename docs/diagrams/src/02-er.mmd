@@ -1,0 +1,544 @@
+%%@ d2-1 :: ER overview — 23 collections and their foreign keys
+%%@ note: Read this first, then open the five detail diagrams. Cardinality is as enforced by the code, not as declared: MongoDB has no real FK constraints, so every arrow is enforced by an application check.
+%%@ note: Three relations are deliberately nullable and matter operationally — AuditLog.organizationId (null = platform scope), Photo.organizationId (null = legacy/unscoped capture) and PhotoShare.organizationId (required only for org-scoped shares).
+erDiagram
+  ORGANIZATION ||--o{ USER : "employs"
+  ORGANIZATION ||--o{ DEVICE : "owns"
+  ORGANIZATION ||--o{ EVENT : "runs"
+  ORGANIZATION ||--o{ COUPON : "issues"
+  ORGANIZATION ||--o{ PAYMENT : "earns"
+  ORGANIZATION ||--o{ SUBSCRIPTION : "buys"
+  ORGANIZATION ||--o| ORGANIZATION_DEFAULTS : "configures"
+  ORGANIZATION ||--o{ SETTING : "overrides"
+  ORGANIZATION ||--o{ WITHDRAWAL : "requests"
+  ORGANIZATION ||--o{ ORG_AI_TEMPLATE : "authors"
+  ORGANIZATION ||--o{ AUDIT_LOG : "scopes"
+  ORGANIZATION ||--o{ PHOTO : "publishes"
+  ORGANIZATION ||--o{ PLATFORM_SUPPORT_REQUEST : "raises"
+  ORGANIZATION ||--o{ TICKET : "reports"
+  ORGANIZATION ||--o{ SUPPORT_TICKET : "reports"
+  SUBSCRIPTION_PLAN ||--o{ SUBSCRIPTION : "priced by"
+  EVENT ||--o{ DEVICE : "assigned to"
+  EVENT ||--o{ PHOTO : "captures"
+  EVENT ||--o{ COUPON : "restricted to"
+  EVENT ||--o{ PAYMENT : "earns"
+  EVENT ||--o{ PHOTO_SHARE : "shares"
+  EVENT ||--o{ GUEST_DOWNLOAD : "delivers"
+  EVENT ||--o{ DELIVERY_RECORD : "delivers"
+  TEMPLATE ||--o{ EVENT : "selected by"
+  TEMPLATE_LAYOUT ||--o{ TEMPLATE : "layout of"
+  DEVICE ||--o{ PAYMENT : "collects"
+  DEVICE ||--o{ PHOTO : "captures"
+  PAYMENT ||--o{ DIGITAL_TOKEN : "unlocks"
+  PHOTO_SHARE ||--o{ DELIVERY_RECORD : "delivered as"
+  PHOTO ||--o{ PHOTO_SHARE : "referenced by"
+  PHOTO ||--o{ GUEST_DOWNLOAD : "referenced by"
+  USER ||--o{ AUDIT_LOG : "acts in"
+  USER ||--o{ PLATFORM_SUPPORT_REQUEST : "creates"
+  USER ||--o{ ROLE_CONFIG : "matrix for"
+
+%%@ d2-2 :: ER detail — identity, tenancy, subscription and configuration
+%%@ note: The tenant root is ORGANIZATION. Every organisation-scoped document carries organizationId and every query is pinned to req.organization._id — internal roles are never given an empty filter.
+%%@ note: SETTING with organizationId = null is the global row that holds the platform gallery policy, which is why the same collection appears both org-scoped and platform-scoped.
+erDiagram
+  ORGANIZATION {
+    objectId _id PK
+    string name "shown to guests and on payment QR"
+    string ownerName
+    string email UK
+    string country "IN or AU — drives gateway"
+    string plan "trial, basic, pro, premium, custom"
+    string currency "INR or AUD"
+    string billingCycle "monthly, quarterly, semiannual, annual"
+    date planStartedAt
+    date planExpiresAt
+    date nextBillingDate
+    string paymentGateway "razorpay or stripe"
+    string status "active, suspended, banned, expired"
+    string suspendReason
+    objectId suspendedBy FK
+    date trialEndsAt
+    number allowedDevices "mirrored from plan"
+    number allowedEvents "mirrored from plan"
+    number aiCredits
+    array addons "key, activatedAt, expiresAt"
+    number sessionVersion "org-wide token revocation"
+    object gallerySettings "per-org override"
+    objectId createdBy FK
+  }
+  USER {
+    objectId _id PK
+    string name
+    string email UK
+    string password "bcrypt hash"
+    string role "OWNER, PLATFORM_ADMIN, SUPPORT_MANAGER, ORG_ADMIN, ORG_MANAGER"
+    objectId organizationId FK "null for platform staff"
+    string status "active or inactive"
+    date lastLoginAt
+    number sessionVersion
+    string forgotPasswordCodeHash
+    date forgotPasswordCodeExpires
+    number forgotPasswordAttempts
+    string emailChangeCodeHash
+    string emailChangePending
+  }
+  SUBSCRIPTION_PLAN {
+    objectId _id PK
+    string key UK "trial, basic, pro, premium, addon-*"
+    string name
+    string kind "plan or addon"
+    number price "mirror of monthly INR"
+    number priceMonthly
+    number priceQuarterly
+    number priceSemiannual
+    number priceAnnual
+    number devices
+    number events
+    number aiCredits
+    string discountType "none, percent, flat"
+    number discountValue
+    date discountStartsAt
+    date discountEndsAt
+    number discountMaxRedemptions
+    number discountRedemptions
+    boolean active
+    boolean isDeleted "soft delete"
+  }
+  SUBSCRIPTION {
+    objectId _id PK
+    objectId organizationId FK
+    string plan
+    number amount
+    number originalAmount
+    number discountAmount
+    string invoiceNo UK
+    string razorpayOrderId
+    string razorpayPaymentId
+    date startDate
+    date endDate
+    string status "paid, pending, failed"
+    objectId createdBy FK
+  }
+  ROLE_CONFIG {
+    objectId _id PK
+    string role "legacy matrix — writes not mounted"
+    array permissions
+    date updatedAt
+  }
+  SETTING {
+    objectId _id PK
+    objectId organizationId FK "null = platform/global row"
+    boolean enableMobilePrinting
+    boolean galleryEnabled
+    boolean requireGuestConsent
+    date galleryUpdatedAt
+    objectId galleryUpdatedBy FK
+    string razorpayKeyId
+    string razorpayKeySecret "encrypted"
+    string cashfreeAppId
+    string cashfreeSecretKey "encrypted"
+    string cashfreeEnv
+    string gatewayPriority
+    string upiId
+  }
+  ORGANIZATION_DEFAULTS {
+    objectId _id PK
+    objectId organizationId FK,UK
+    string name
+    string logoUrl
+    number boothTimeoutSec "10 to 86400"
+    number qrTimeoutMinutes
+    string upiId
+    string payoutMode "upi or wallet"
+    string paymentDisplayName
+    string razorpayKeySecret "encrypted"
+    string cashfreeSecretKey "encrypted"
+    string gatewayPriority
+    object layoutPrices
+    object templatePrices
+  }
+  AUDIT_LOG {
+    objectId _id PK
+    objectId organizationId FK "null = platform scope"
+    objectId actorId FK "null = booth or system"
+    string actorName "denormalised"
+    string actorRole
+    string action "dotted event name"
+    string entity
+    string severity "info, warn, danger"
+    string ip
+    date at "the only timestamp"
+  }
+  ORGANIZATION ||--o{ USER : "employs"
+  ORGANIZATION ||--o| ORGANIZATION_DEFAULTS : "has"
+  ORGANIZATION ||--o{ SETTING : "has"
+  ORGANIZATION ||--o{ SUBSCRIPTION : "billed"
+  SUBSCRIPTION_PLAN ||--o{ SUBSCRIPTION : "defines"
+  ORGANIZATION ||--o{ AUDIT_LOG : "scopes"
+  USER ||--o{ AUDIT_LOG : "acts in"
+  USER ||--o{ ROLE_CONFIG : "matrix"
+
+%%@ d2-3 :: ER detail — events, booths, templates and coupons
+%%@ note: EVENT is the unit of booth work; DEVICE.assignedEventId is the single pointer that decides which event a booth is shooting. Deleting an event clears that pointer and detaches coupons.
+%%@ note: Event-level gateway keys are overrides of the organisation defaults, which is why the same credential columns exist on both documents.
+erDiagram
+  EVENT {
+    objectId _id PK
+    objectId organizationId FK
+    string name
+    string clientName
+    string location
+    date startDate
+    date endDate
+    string status "upcoming, live, finished"
+    boolean paused "paused beats live"
+    array templateIds FK
+    array filters
+    boolean digitalCopy
+    object layoutPrices
+    object branding "logoUrl, tagline, up to 15 logos"
+    string shortCode
+    array assignedDeviceIds FK
+    string passkey "booth join secret"
+    number printPrice
+    array printOptions
+    boolean downloadEnabled
+    boolean printingEnabled
+    number boothTimeout
+    number qrTimeoutMinutes
+    string razorpayKeySecret "encrypted override"
+    string cashfreeSecretKey "encrypted override"
+    string gatewayPriority
+    string upiId
+    object sharingConfig "enabled, expirationDays"
+    array enabledLayouts
+    objectId assignedManagerId FK
+    objectId createdBy FK
+  }
+  DEVICE {
+    objectId _id PK
+    objectId organizationId FK
+    string deviceUuid UK "installation identity"
+    string deviceName
+    string location
+    string deviceToken "legacy plaintext — migrated away"
+    string deviceTokenHash "SHA-256"
+    string operatorName
+    string operatorPhone
+    objectId assignedEventId FK
+    date lastSeenAt
+    string ipAddress
+    string platform
+    string appVersion
+    object telemetry "prints, shutters, batteryPct"
+    object connections "camera, printer, kioskScreen"
+    string status "active, inactive, blocked"
+  }
+  TEMPLATE {
+    objectId _id PK
+    string name
+    string category
+    number price
+    string layoutId FK
+    string componentId
+    object design
+    string source "designer, playground, ai_generated"
+    boolean active
+    number usage
+    objectId createdBy FK
+  }
+  TEMPLATE_LAYOUT {
+    objectId _id PK
+    string codeword UK
+    object grid
+    objectId createdBy FK
+  }
+  ORG_AI_TEMPLATE {
+    objectId _id PK
+    objectId organizationId FK
+    string name
+    string category
+    number price
+    object layout "code, familyId, slots, printSize"
+    array slots
+    object design
+    array assets
+    array versions
+    string prompt
+    string source
+    object cache "indexedDb"
+    objectId createdBy FK
+  }
+  COUPON {
+    objectId _id PK
+    objectId organizationId FK
+    string code "unique per org"
+    string type "percentage or fixed"
+    number value
+    number quantity
+    number usedCount
+    date expiryDate
+    array eventIds FK
+    string status "active or paused"
+  }
+  ORGANIZATION ||--o{ EVENT : "runs"
+  ORGANIZATION ||--o{ DEVICE : "owns"
+  ORGANIZATION ||--o{ ORG_AI_TEMPLATE : "authors"
+  ORGANIZATION ||--o{ COUPON : "issues"
+  EVENT ||--o{ DEVICE : "assigned to"
+  EVENT }o--o{ TEMPLATE : "uses"
+  EVENT }o--o{ COUPON : "restricted to"
+  TEMPLATE_LAYOUT ||--o{ TEMPLATE : "layout of"
+
+%%@ d2-4 :: ER detail — money: payments, subscriptions, coupons and payouts
+%%@ note: There is no single "revenue" collection. Payment rows are per booth transaction; Subscription rows are per platform plan purchase; Withdrawal rows are organisation payouts from the wallet balance.
+%%@ note: Payment.settlement decides whether money goes to the organisation UPI directly or into the HappyPix wallet — the revenue dashboard splits every total on this field.
+erDiagram
+  PAYMENT {
+    objectId _id PK
+    objectId organizationId FK
+    string razorpayOrderId
+    string paymentLinkId "qr_* or plink_*"
+    string paymentLinkUrl
+    string razorpayPaymentId
+    string razorpaySignature
+    string gateway "razorpay or cashfree"
+    string cashfreeOrderId
+    string cashfreePaymentId
+    string cashfreeQrData "raw UPI string"
+    objectId eventId FK
+    string eventName
+    objectId deviceId FK
+    string sessionId
+    string guestPhone
+    string settlement "upi or wallet"
+    number amount "rupees"
+    string currency
+    number printCount
+    boolean digitalCopy
+    array photoUrls
+    string compositeUrl
+    string couponCode
+    boolean couponCounted "idempotency for redemption"
+    number discountApplied
+    string status "created, pending, paid, failed"
+    string utr "12-digit offline UPI reference"
+    date createdAt
+    date paidAt
+  }
+  SUBSCRIPTION {
+    objectId _id PK
+    objectId organizationId FK
+    string plan
+    number amount
+    string invoiceNo UK
+    date startDate
+    date endDate
+    string status
+  }
+  COUPON {
+    objectId _id PK
+    objectId organizationId FK
+    string code
+    string type
+    number value
+    number quantity
+    number usedCount
+    date expiryDate
+    array eventIds FK
+  }
+  WITHDRAWAL {
+    objectId _id PK
+    objectId organizationId FK
+    number amount "minimum 500"
+    string status "processing, paid, failed"
+    string upiId
+    string reference
+    objectId requestedBy FK
+    date requestedAt
+    date processedAt
+    string note
+  }
+  ORGANIZATION ||--o{ PAYMENT : "earns"
+  ORGANIZATION ||--o{ SUBSCRIPTION : "billed"
+  ORGANIZATION ||--o{ WITHDRAWAL : "payouts"
+  ORGANIZATION ||--o{ COUPON : "issues"
+  EVENT ||--o{ PAYMENT : "earns"
+  DEVICE ||--o{ PAYMENT : "collects"
+  COUPON ||--o{ PAYMENT : "discounts"
+
+%%@ d2-5 :: ER detail — media, digital delivery and TTL lifecycle
+%%@ note: Four collections carry a MongoDB TTL index on expiresAt: PHOTO_SHARE, GUEST_DOWNLOAD, DIGITAL_TOKEN (and the index is declared, not cron-driven). Data disappears without any application write, so every reader must also check expiry explicitly.
+%%@ note: PHOTO has no TTL — photo rows are permanent by design (a legacy TTL index on createdAt is actively dropped at boot). Its URL points at a private bucket, so readers must sign.
+erDiagram
+  PHOTO {
+    objectId _id PK
+    objectId organizationId FK "nullable for legacy captures"
+    string s3Key
+    string url "private bucket URL"
+    string compositeUrl "final print strip"
+    objectId eventId FK
+    objectId deviceId FK
+    string sessionId "dedupe key for gallery"
+    boolean guestConsent "controls gallery visibility"
+    date generatedAt
+    boolean finalised
+    string printStatus
+    string digitalStatus
+    date createdAt
+  }
+  PHOTO_SHARE {
+    objectId _id PK
+    objectId eventId FK
+    objectId organizationId FK
+    string tokenHash UK "32 random bytes, hex"
+    array photoUrls
+    string compositeUrl
+    array photoIds FK
+    date expiresAt "TTL"
+    string status "active, expired, disabled"
+    number viewCount
+    number downloadCount
+    number shareCount
+    date createdAt
+  }
+  DIGITAL_TOKEN {
+    objectId _id PK
+    string token UK
+    objectId paymentId FK
+    array photoUrls
+    string compositeUrl
+    date expiresAt "TTL — 24 h"
+    number downloadCount
+    date createdAt
+  }
+  GUEST_DOWNLOAD {
+    objectId _id PK
+    string downloadId UK "18 random bytes base64url"
+    objectId organizationId FK
+    objectId eventId FK
+    objectId deviceId FK
+    string sessionId
+    string compositeUrl
+    array photoUrls
+    array photoIds FK
+    string eventName
+    string organizationName
+    date expiresAt "TTL — 24 h from session"
+    number viewCount
+    number downloadCount
+    date createdAt
+  }
+  DELIVERY_RECORD {
+    objectId _id PK
+    objectId photoShareId FK
+    objectId eventId FK
+    objectId organizationId FK
+    string method "QR, DOWNLOAD, WHATSAPP, EMAIL, SMS, NATIVE_SHARE, COPY_LINK"
+    string destinationMasked
+    string status "pending, sent, failed"
+    string provider
+    string providerMessageId
+    string errorCode
+    date sentAt
+    date failedAt
+  }
+  EVENT ||--o{ PHOTO : "captures"
+  EVENT ||--o{ PHOTO_SHARE : "shares"
+  EVENT ||--o{ GUEST_DOWNLOAD : "delivers"
+  EVENT ||--o{ DELIVERY_RECORD : "delivers"
+  DEVICE ||--o{ PHOTO : "captures"
+  PAYMENT ||--o| DIGITAL_TOKEN : "unlocks"
+  PHOTO_SHARE ||--o{ DELIVERY_RECORD : "delivered as"
+  PHOTO }o--o{ PHOTO_SHARE : "included in"
+  PHOTO }o--o{ GUEST_DOWNLOAD : "included in"
+
+%%@ d2-6 :: ER detail — support, leads and the audit trail
+%%@ note: Three different support models exist and none of them is a duplicate: SUPPORT_TICKET is a guest or client ticket raised from a booth or website, TICKET is the org-side operational ticket, PLATFORM_SUPPORT_REQUEST is the org-to-platform escalation with an accept/deny/apply lifecycle.
+%%@ note: AUDIT_LOG is append-only in practice: no route updates or deletes a row, and the actor name and role are denormalised so deleting a user never blanks history.
+erDiagram
+  SUPPORT_TICKET {
+    objectId _id PK
+    string ticketType "end_user or client"
+    objectId organizationId FK
+    string name
+    string email
+    string subject
+    string message
+    objectId eventId FK
+    string eventShortCode
+    objectId deviceId FK
+    string sessionId
+    string paymentReference
+    boolean holdPhotos "blocks photo deletion"
+    string status "open, in-progress, resolved, closed"
+    string priority "low, normal, high, urgent"
+    array adminNotes "text, createdAt"
+    date resolvedAt
+  }
+  TICKET {
+    objectId _id PK
+    objectId organizationId FK
+    objectId eventId FK
+    objectId deviceId FK
+    string category "device, payment, photo, event, general"
+    string subject
+    string priority
+    string status "open, in_progress, resolved, closed"
+    object guest "name, contact"
+    object session
+    array messages "author, at, text"
+    string resolution
+  }
+  PLATFORM_SUPPORT_REQUEST {
+    objectId _id PK
+    string ticketNo "assigned on accept"
+    objectId organizationId FK
+    objectId createdBy FK
+    string subject
+    string category "technical, billing, account, feature, other"
+    string priority "low, medium, high, urgent"
+    string status "new, denied, open, in_progress, resolved"
+    object decision "accepted or denied, reason, by, at"
+    array messages "side org or platform, text, images"
+    number reapplyCount
+    object lastReapplication
+    string resolution
+    date acceptedAt
+    date resolvedAt
+  }
+  WEBSITE_LEAD {
+    objectId _id PK
+    string name
+    string email
+    string phone
+    string company
+    string message
+    string type "contact, demo, hardware, support"
+    string status "new, contacted, closed"
+    string notes
+    date contactedAt
+    date closedAt
+  }
+  AUDIT_LOG {
+    objectId _id PK
+    objectId organizationId FK "null = platform"
+    objectId actorId FK "null = booth or system"
+    string actorName
+    string actorRole
+    string action
+    string entity
+    string summary
+    string severity
+    string ip
+    date at
+  }
+  ORGANIZATION ||--o{ SUPPORT_TICKET : "receives"
+  ORGANIZATION ||--o{ TICKET : "receives"
+  ORGANIZATION ||--o{ PLATFORM_SUPPORT_REQUEST : "raises"
+  USER ||--o{ PLATFORM_SUPPORT_REQUEST : "creates"
+  USER ||--o{ AUDIT_LOG : "acts in"
+  ORGANIZATION ||--o{ AUDIT_LOG : "scopes"
+  EVENT ||--o{ SUPPORT_TICKET : "about"
+  DEVICE ||--o{ SUPPORT_TICKET : "raised at"
+  EVENT ||--o{ TICKET : "about"

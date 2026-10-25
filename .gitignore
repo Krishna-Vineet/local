@@ -36,3 +36,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Python bytecode (doc generators)
+__pycache__/
+*.pyc

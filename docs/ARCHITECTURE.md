@@ -55,13 +55,14 @@
         ┌──────────────┴───────────────┐
         │                              │
   ┌─────▼──────────┐            ┌──────▼─────────┐
-  │ Android booth  │            │ Electron booth │
-  │ (on-site LAN)  │            │ (on-site LAN)  │
-  │ RN + XState    │            │ React 19       │
-  └─────┬──────────┘            └──────┬─────────┘
-        │                              │
-   Camera (CCAPI/USB/phone)       Camera (UVC/CCAPI seam)
-   Printer (IPP / OS spooler)     Printer (Win spooler / CUPS)
+  │ RN booth       │            │ Electron booth │
+  │ Android · iPad │            │ (on-site LAN)  │
+  │ (on-site LAN)  │            │ React 19       │
+  │ RN + XState    │            └──────┬─────────┘
+  └─────┬──────────┘                   │
+        │                       Camera (UVC/CCAPI seam)
+   Camera (CCAPI/USB/phone)      Printer (Win spooler / CUPS)
+   Printer (IPP · Print Bridge · AirPrint stub)
 ```
 
 ### 1.2 Trust boundaries
@@ -139,15 +140,19 @@ single permission matrix in `src/lib/roles.js`. The in-browser mock backend
 
 ### 2.4 Booth clients
 
-| Concern | Android (`/client-app`) | Electron (`/electron`) |
-|---|---|---|
-| Process model | RN bridge, native modules | Renderer (React) + main (Node) with IPC |
-| State | XState finite machine (`boothMachine.ts`) | React context + reducer, idle timers |
-| Compositing | Skia (`RenderEngine`, `SkiaRenderAdapter`) | Canvas 2D (`utils/composite.ts`) |
-| Camera | VisionCamera + Canon CCAPI + PTP seam | `getUserMedia` + `reportCamera` telemetry |
-| Printing | IPP / DNP bridge / OS | PowerShell `System.Drawing` (Win), `lp` (macOS) |
-| Kiosk lock | Android Lock Task Mode (device owner) | BrowserWindow `kiosk: true`, fullscreen |
-| Offline | AsyncStorage snapshot + `offlineSyncService` | `services/cache.ts` + device store JSON |
+| Concern | RN booth — Android (`/client-app`) | RN booth — iPad (`/client-app/apps/booth/ios`) | Electron (`/electron`) |
+|---|---|---|---|
+| Process model | RN bridge, native modules (Kotlin) | RN bridge, no custom native modules yet | Renderer (React) + main (Node) with IPC |
+| State | XState finite machine (`boothMachine.ts`) | Same code | React context + reducer, idle timers |
+| Compositing | Skia (`RenderEngine`, `SkiaRenderAdapter`) | Same code | Canvas 2D (`utils/composite.ts`) |
+| Camera | VisionCamera + Canon CCAPI + PTP seam | VisionCamera (front camera), CCAPI untested | `getUserMedia` + `reportCamera` telemetry |
+| Printing | IPP / DNP Print Bridge / OS | **Print Bridge only**; AirPrint is a stub | PowerShell `System.Drawing` (Win), `lp` (macOS) |
+| Kiosk lock | Lock Task Mode (device owner) | Guided Access / Single App Mode (MDM) | BrowserWindow `kiosk: true` |
+| Offline | AsyncStorage snapshot + `offlineSyncService` | Same code | `services/cache.ts` + device store JSON |
+| Platform notes | `dpm set-device-owner`, `10.0.2.2` host | `Info.plist` keys, Local Network permission, no `10.0.2.2` | — |
+
+The 18 iPad-specific findings, the build steps and the lockdown recipe live in
+[`IPAD_SUPPORT.md`](IPAD_SUPPORT.md); this table only records where the two RN targets diverge.
 
 ---
 
@@ -585,7 +590,7 @@ every shift change and would leave orphaned permissions.
 | 2 | **Sony / Nikon native transports pending** | Those bodies are unsupported on Android | Interfaces and opcodes are mapped; transport work is scoped in the roadmap |
 | 3 | **CUPS does not expose dye-sub media counts** | macOS cannot report `paperRemaining` for some drivers | Field returns `null` (honest); operator gets a low-media prompt by print count threshold |
 | 4 | **No automated E2E for booths** | Regressions caught by unit/contract tests + manual QA | Detox (Android) and Playwright-for-Electron planned; see TESTING doc |
-| 5 | **iOS app not built** | iPhone/iPad booths unsupported | RN code is portable; needs an Xcode project, provisioning and camera/print plugins |
+| 5 | **iPad build not shipped** | The Xcode target and iPad configuration exist and the session flow runs, but printing, kiosk lockdown, app icons and TestFlight signing are open | Tracked finding-by-finding in [`IPAD_SUPPORT.md`](IPAD_SUPPORT.md) §5 and §10 |
 | 6 | **Video booth / GIF mode** | Add-on exists in the price catalogue but is not implemented in the booth | Scoped as a post-launch feature; do not sell the add-on yet |
 | 7 | **Single Mongo cluster, one region** | Regional latency and blast radius | Atlas replica set + automated backup today; multi-region read preference is in the scalability plan |
 | 8 | **Cron jobs run in-process** | A crash mid-job delays retries | Idempotent jobs + heartbeat-driven retries; moving to a queue is stage-2 of the scale plan |

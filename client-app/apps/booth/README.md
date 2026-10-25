@@ -1,6 +1,6 @@
 # 📸 Happypix Booth App
 
-This is the main React Native application for the **Happypix Booth**, located within the `client-app` monorepo. It is designed primarily for Android devices and acts as the core interface for the photo booth experience.
+This is the main React Native application for the **Happypix Booth**, located within the `client-app` monorepo. It is the core interface for the photo booth experience, and builds for **Android tablets and iPad**. Android is the more exercised target; the iPad target runs the full guest session but still needs kiosk lockdown, an icon set, signing and a native print path — see [`docs/IPAD_SUPPORT.md`](../../../docs/IPAD_SUPPORT.md).
 
 ## 🚀 Getting Started
 
@@ -8,8 +8,14 @@ This is the main React Native application for the **Happypix Booth**, located wi
 
 - Node.js (v22+)
 - pnpm (v9+)
+**Android:**
 - Android Studio & Android SDK (API Level 33+ / Tiramisu)
 - Java JDK 17
+
+**iPad:** (macOS only)
+- Xcode 16.x (iOS 18 SDK, deployment target 15.1)
+- CocoaPods via `bundle exec` (see `Gemfile`)
+- Apple Developer Program for on-device signing
 
 ### Environment Setup
 
@@ -41,6 +47,14 @@ pnpm start
 pnpm android
 ```
 
+### Running on iPad
+
+```bash
+bundle install
+bundle exec pod install --project-directory=ios
+open ios/booth.xcworkspace      # then Run on an iPad simulator or device
+```
+
 ## 🏗️ Architecture
 
 The app leverages shared packages from the monorepo:
@@ -50,7 +64,9 @@ The app leverages shared packages from the monorepo:
 
 ## 🔒 Kiosk Mode
 
-This application is intended to run in Kiosk Mode (Lock Task Mode) on production devices. Ensure the device is properly provisioned using ADB as a Device Owner if you need to test Kiosk mode locally.
+**Android:** the app is intended to run in Kiosk Mode (Lock Task Mode) on production devices. Ensure the device is properly provisioned using ADB as a Device Owner if you need to test Kiosk mode locally.
+
+**iPad:** not implemented. `KioskModule` is a no-op on iOS; use Guided Access or MDM Single App Mode. See [`docs/IPAD_SUPPORT.md`](../../../docs/IPAD_SUPPORT.md) §6.
 
 ---
 

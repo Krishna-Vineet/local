@@ -632,7 +632,21 @@ generates a new `deviceUuid` after a wipe, producing a new pairing.
 |---|---|---|
 | Google Play | Privacy policy URL, data safety form, permission justification (camera, storage) | ⟨prepare before submission⟩ |
 | Google Play | Kiosk apps may use managed configurations; device-owner provisioning is not a store feature | Documented for managed deployment |
-| Apple App Store | iOS app does not exist yet; would need camera/photo usage descriptions and a privacy manifest | Future work |
+| Apple App Store | iPad build exists. `Info.plist` declares `NSCameraUsageDescription`, `NSPhotoLibraryAddUsageDescription`, `NSLocationWhenInUseUsageDescription` and `NSLocalNetworkUsageDescription`; `PrivacyInfo.xcprivacy` declares the required-reason APIs (FileTimestamp `C617.1`, UserDefaults `CA92.1`, SystemBootTime `35F9.1`) and `NSPrivacyTracking = false` | ✅ Code side ready — privacy answers and the icon set still to be filled in |
+| Apple App Store | Data disclosure: the app collects nothing itself, but session photos are uploaded to the tenant's account and guest downloads are 24-hour links | ⟩ answer "Photos or Videos — collected, linked to the organisation, not used for tracking" |
+
+**iPad-specific privacy notes** (full detail in [`IPAD_SUPPORT.md`](IPAD_SUPPORT.md) §8):
+
+* **Local Network permission.** iPads must be granted local-network access to reach a printer or a
+  Wi-Fi camera on the venue LAN. The prompt text is the `NSLocalNetworkUsageDescription` string; if an
+  operator declines it, printing fails but **no data leaves the device** — the booth simply cannot see
+  the LAN.
+* **No analytics or crash SDK is bundled** in the booth app, so `NSPrivacyTracking` staying `false` is
+  accurate. If Sentry is added later (recommended in `OPERATIONS.md`), the manifest and the privacy
+  answers must be updated in the same release.
+* **Kiosk lockdown is not a privacy control.** Guided Access stops a guest leaving the app; it does not
+  encrypt anything. The pairing token in Keychain/AsyncStorage and the 24-hour download TTL remain the
+  actual controls.
 
 ### 12.5 Breach notification summary
 

@@ -391,14 +391,19 @@ the machine, so a timeout cannot leave a half-paid session in limbo.
 
 | Module | Platform | Notes |
 |---|---|---|
-| VisionCamera | Android/iOS | Device camera |
-| Canon CCAPI | Android | HTTP REST over Wi-Fi, no native SDK |
-| IPP printer | Android | Raw IPP over TCP 631 |
+| VisionCamera | Android **and iPadOS** | Device camera; front camera preferred for a booth |
+| Canon CCAPI | Android, iPad (same TS provider) | HTTP REST over Wi-Fi, no native SDK; untested on iPad |
+| IPP printer | Android | Raw IPP over TCP 631; the request body is not RFC-complete, so real printers reject it |
+| Print Bridge (DNP) | Android, iPad | Posts the composite to the Electron app's `:9123` server on the same LAN — **the only working iPad print path** |
+| AirPrint | iPad | `AirPrintProvider` is a stub; a native `UIPrintInteractionController` bridge is still to be written |
 | Kiosk (Kotlin) | Android | `DeviceAdminReceiver`, lock task allowlist |
-| Zeroconf | Android | mDNS printer/camera discovery |
-| Skia | Android/iOS | Compositing and filters |
+| Kiosk lockdown | iPad | No native module — Guided Access or MDM Single App Mode |
+| Zeroconf | dependency present, unused | mDNS printer/camera discovery; needs `NSBonjourServices` to work on iPad |
+| Skia | Android **and iPadOS** | Compositing and filters |
 
 ### 7.5 Build and deployment
+
+Android:
 
 ```bash
 pnpm install
@@ -411,12 +416,34 @@ adb shell dpm set-device-owner com.happypix.booth/.kiosk.KioskAdminReceiver
 Kiosk provisioning requires a **factory-reset device with no Google account** — Android refuses
 device-owner assignment otherwise. This is an OS rule, not a HappyPix limitation.
 
-### 7.6 iOS status
+iPad (macOS build host only):
 
-No iOS project exists. The RN code and `camera-core`/`printer-core` abstractions are portable, but
-iOS needs: an Xcode workspace, provisioning profiles, a VisionCamera iOS config, AirPrint printing
-(AirPrint is the practical path — raw IPP is blocked), and App Store review for kiosk behaviour.
-Treat as new work, not a port.
+```bash
+cd client-app/apps/booth
+bundle install && (cd ios && bundle exec pod install)
+pnpm ios --simulator "iPad Pro 13-inch (M4)"
+pnpm ios --device
+```
+
+### 7.6 iPadOS status
+
+**The target exists and the guest session runs.** `client-app/apps/booth/ios` contains a real Xcode
+project — `booth.xcodeproj`, `Podfile`, `AppDelegate.swift` (RN 0.86 `RCTReactNativeFactory`),
+`Info.plist`, `PrivacyInfo.xcprivacy`, launch storyboard — with `TARGETED_DEVICE_FAMILY = "1,2"`,
+iPadOS 15.1 deployment and all four iPad orientations declared. All 11 screens, `BoothProvider`, the
+API client, Skia compositing and the UPI-QR payment path are shared with Android and are platform
+neutral.
+
+What is **not** iPad-ready is everything that turns a tablet into a booth appliance:
+
+* **Printing** — AirPrint is a stub and the IPP client sends an incomplete request, so the only
+  working path is the Electron **Print Bridge** on a PC in the same LAN.
+* **Kiosk lockdown** — no Swift module; use Guided Access or MDM Single App Mode.
+* **Keep-awake and sounds** — both call Android-only native modules and silently do nothing.
+* **Safe areas, app icons, signing/TestFlight** — see the findings table.
+
+Full detail, with file-and-line findings, the lockdown recipe, the print path decision and a QA
+checklist: [`IPAD_SUPPORT.md`](IPAD_SUPPORT.md).
 
 ---
 

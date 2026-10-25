@@ -345,15 +345,29 @@ Confirm: webhook received, `payments` record correct, receipt email sent, refund
 
 ### 6.1 Operating systems
 
-| OS | Electron booth | CRM | Website | Status |
-|---|---|---|---|---|
-| Windows 11 Pro 23H2+ | ✅ Primary | ✅ Chrome/Edge | ✅ | Supported |
-| Windows 10 22H2 | ✅ | ✅ | ✅ | Supported (until EOL) |
-| macOS 14/15 (Apple silicon) | ✅ | ✅ Safari/Chrome | ✅ | Supported |
-| macOS 13 (Intel) | ☑️ untested recently | ✅ | ✅ | Best effort |
-| Ubuntu 22.04/24.04 | ☑️ CUPS path | ✅ | ✅ | Best effort |
-| Android 13/14/15 | — | ✅ browser | ✅ | Booth app |
-| iOS/iPadOS | — | ✅ browser | ✅ | No native booth app |
+| OS | RN booth | Electron booth | CRM | Website | Status |
+|---|---|---|---|---|---|
+| Windows 11 Pro 23H2+ | — | ✅ Primary | ✅ Chrome/Edge | ✅ | Supported |
+| Windows 10 22H2 | — | ✅ | ✅ | ✅ | Supported (until EOL) |
+| macOS 14/15 (Apple silicon) | ✅ build host | ✅ | ✅ Safari/Chrome | ✅ | Supported |
+| macOS 13 (Intel) | ✅ build host | ☑️ untested recently | ✅ | ✅ | Best effort |
+| Ubuntu 22.04/24.04 | — | ☑️ CUPS path | ✅ | ✅ | Best effort |
+| Android 13/14/15 | ✅ primary | — | ✅ browser | ✅ | Booth app |
+| iPadOS 15.1 – 18.x | ✅ target exists | — | ✅ browser | ✅ | Booth app — see the matrix below |
+| iOS / iPadOS (browser only) | — | — | ✅ browser | ✅ | Guest download portal |
+
+**iPad device matrix for the booth** (add these to every release run — the Android tablets do not
+exercise any of it):
+
+| Device | Why | Minimum check |
+|---|---|---|
+| iPad (10th gen) | Baseline 4:3, closest to the Android tablets the layout was tuned on | Full session + print via Print Bridge |
+| iPad Pro 13" (M4) | 1366 pt landscape — exercises the interaction-zone cap and 1.33× scaling | Layout, QR size, safe-area insets |
+| iPad mini (A17) | Tightest vertical space | Camera + film rail, no clipped controls |
+| iPad (9th gen), iPadOS 15.1 | Deployment-target floor | Cold boot, rotate, one session |
+| iPad in Slide Over (negative test) | Must be impossible (`UIRequiresFullScreen`) | App refuses to resize |
+
+The 18 iPad findings and the full checklist are in [`IPAD_SUPPORT.md`](IPAD_SUPPORT.md) §5 and §9.
 
 ### 6.2 Browsers
 
@@ -478,7 +492,8 @@ Severity scale: **S1** data loss/security, **S2** blocks a core flow, **S3** deg
 | 1 | S2 | macOS CUPS often cannot report dye-sub media levels (`paperRemaining: null`) | Track media by print count; keep a spare roll; DNP Windows rig for full telemetry | By design — vendor limitation |
 | 2 | S2 | Canon USB tether on Windows/macOS unsupported (no EDSDK) | Use CCAPI over Wi-Fi, or a UVC webcam | Accepted limitation |
 | 3 | S2 | Nikon/Sony capture not shipped | Use Canon CCAPI or device camera | Roadmap |
-| 4 | S3 | iOS booth app does not exist | Android tablet or Windows/Mac kiosk | Roadmap |
+| 4 | S2 | iPad booth cannot print without a Print Bridge; AirPrint is a stub | Run the Electron print bridge on a PC in the same LAN | Roadmap — native AirPrint bridge, `IPAD_SUPPORT.md` IP-8 |
+| 4b | S3 | No kiosk lockdown on iPadOS (home button exits) | Guided Access or MDM Single App Mode | Operational — `IPAD_SUPPORT.md` §6 |
 | 5 | S3 | No automated E2E for booth flows | Manual suite §3.4/3.5 every release | Roadmap |
 | 6 | S3 | Video/GIF booth add-on is sellable in the catalogue but not implemented | Do not sell the add-on until shipped | Product action required |
 | 7 | S3 | Deactivated user's existing session remains valid up to 8 h | Rotate `JWT_SECRET` for immediate revocation | Accepted risk |

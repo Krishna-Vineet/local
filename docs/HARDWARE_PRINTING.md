@@ -77,21 +77,21 @@ Design constraints that shaped this layer:
 
 ### 2.1 Summary matrix
 
-| Camera | Connection | Android booth | Electron (Windows) | Electron (macOS) | Status |
-|---|---|---|---|---|---|
-| Device / tablet camera | built-in | ✅ VisionCamera | — | — | ✅ Verified |
-| USB webcam (any UVC) | USB | ⚠️ via RN UVC lib | ✅ `getUserMedia` | ✅ `getUserMedia` | ☑️ OS-verified |
-| Canon EOS R50 | Wi-Fi CCAPI | ✅ | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS R100 | Wi-Fi CCAPI | ✅ | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS R10 / R7 / R8 | Wi-Fi CCAPI | ✅ | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS R5 / R6 / R6 II | Wi-Fi CCAPI | ✅ | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS 90D / 80D | Wi-Fi CCAPI | ✅ | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon PowerShot G7X III | Wi-Fi CCAPI | ✅ | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS M50 II | Wi-Fi CCAPI | ✅ | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon DSLR over USB | USB (EDSDK) | ✖ | ⚠️ not wired | ⚠️ not wired | ✖ EDSDK not bundled |
-| Nikon DSLR / Z series | USB PTP | ⚠️ transport pending | ⚠️ transport pending | ⚠️ transport pending | ⚠️ Opcodes mapped |
-| Sony Alpha (A7/A6xxx) | USB (Sony SDK) | ⚠️ stub | ⚠️ stub | ⚠️ stub | ⚠️ Awaiting SDK licence |
-| iPhone / iPad camera | built-in | ✖ (no iOS app) | — | — | ✖ |
+| Camera | Connection | Android booth | iPad booth | Electron (Windows) | Electron (macOS) | Status |
+|---|---|---|---|---|---|---|
+| Device / tablet camera | built-in | ✅ VisionCamera | ✅ VisionCamera (front preferred) | — | — | ✅ Verified on Android, ✅ runs on iPad |
+| USB webcam (any UVC) | USB | ⚠️ via RN UVC lib | ⚠️ unverified on iPad | ✅ `getUserMedia` | ✅ `getUserMedia` | ☑️ OS-verified |
+| Canon EOS R50 | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
+| Canon EOS R100 | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
+| Canon EOS R10 / R7 / R8 | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
+| Canon EOS R5 / R6 / R6 II | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
+| Canon EOS 90D / 80D | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
+| Canon PowerShot G7X III | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
+| Canon EOS M50 II | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
+| Canon DSLR over USB | USB (EDSDK) | ✖ | ✖ (no USB host without EDSDK + adapter) | ⚠️ not wired | ⚠️ not wired | ✖ EDSDK not bundled |
+| Nikon DSLR / Z series | USB PTP | ⚠️ transport pending | ⚠️ transport pending | ⚠️ transport pending | ⚠️ transport pending | ⚠️ Opcodes mapped |
+| Sony Alpha (A7/A6xxx) | USB (Sony SDK) | ⚠️ stub | ⚠️ stub | ⚠️ stub | ⚠️ stub | ⚠️ Awaiting SDK licence |
+| A second iPhone/iPad used as a remote camera | — | ✖ | ✖ | — | — | ✖ Not a supported topology — one device runs both the camera and the session |
 
 > **Read this carefully.** "Implemented (CCAPI)" means the code issues the correct Canon CCAPI
 > requests and handles the documented responses. It does **not** mean every listed body has been
@@ -245,23 +245,24 @@ Live view is a **preview only**; the captured still always comes from the full-r
 
 ### 5.1 Dye-sublimation (the intended booth class)
 
-| Printer | Media | Android | Windows | macOS | Status |
-|---|---|---|---|---|---|
-| **DNP DS-RX1HS** | 4×6, 4×8, 6×8 | ⚠️ via WPS/IPP | ✅ driver + CyStat | ☑️ CUPS | ⚠️ Driver path implemented |
-| DNP DS620A | 4×6, 5×7, 6×8, 6×9 | ⚠️ via WPS/IPP | ✅ driver + CyStat | ☑️ CUPS | ⚠️ Implemented |
-| DNP DS820A | 8×10, 8×12 | ⚠️ via WPS/IPP | ✅ | ☑️ CUPS | ⚠️ Implemented |
-| DNP QW410 | 4×6 | ⚠️ | ✅ | ☑️ CUPS | ⚠️ Implemented |
-| Citizen CY-02 / CX-02 | 4×6, 6×8 | ⚠️ | ✅ | ☑️ CUPS | ⚠️ Implemented |
-| Citizen CY-01 | 4×6 | ⚠️ | ✅ | ☑️ CUPS | ⚠️ Implemented |
-| HiTi P525L | 4×6 | ⚠️ | ✅ | ☑️ CUPS | ⚠️ Implemented |
-| HiTi P910L | 6×8 | ⚠️ | ✅ | ☑️ CUPS | ⚠️ Implemented |
-| Shinko S1245 / S6145 | 4×6, 6×8 | ⚠️ | ✅ | ☑️ CUPS | ⚠️ Implemented |
-| Canon Selphy CP1300 / CP1500 | 4×6 postcard | ⚠️ | ✅ | ☑️ CUPS | ⚠️ Implemented |
-| Mitsubishi CP-D70DW / CP-M15 | 4×6, 6×8 | ⚠️ | ✅ | ☑️ CUPS | ⚠️ Implemented |
+| Printer | Media | Android | iPad | Windows | macOS | Status |
+|---|---|---|---|---|---|---|
+| **DNP DS-RX1HS** | 4×6, 4×8, 6×8 | ⚠️ via WPS/IPP | ⚠️ via Print Bridge only | ✅ driver + CyStat | ☑️ CUPS | ⚠️ Driver path implemented |
+| DNP DS620A | 4×6, 5×7, 6×8, 6×9 | ⚠️ via WPS/IPP | ⚠️ via Print Bridge only | ✅ driver + CyStat | ☑️ CUPS | ⚠️ Implemented |
+| DNP DS820A | 8×10, 8×12 | ⚠️ via WPS/IPP | ⚠️ via Print Bridge only | ✅ | ☑️ CUPS | ⚠️ Implemented |
+| DNP QW410 | 4×6 | ⚠️ | ⚠️ via Print Bridge (or AirPrint once implemented) | ✅ | ☑️ CUPS | ⚠️ Implemented |
+| Citizen CY-02 / CX-02 | 4×6, 6×8 | ⚠️ | ⚠️ via Print Bridge (or AirPrint once implemented) | ✅ | ☑️ CUPS | ⚠️ Implemented |
+| Citizen CY-01 | 4×6 | ⚠️ | ⚠️ via Print Bridge only | ✅ | ☑️ CUPS | ⚠️ Implemented |
+| HiTi P525L | 4×6 | ⚠️ | ⚠️ via Print Bridge only | ✅ | ☑️ CUPS | ⚠️ Implemented |
+| HiTi P910L | 6×8 | ⚠️ | ⚠️ via Print Bridge only | ✅ | ☑️ CUPS | ⚠️ Implemented |
+| Shinko S1245 / S6145 | 4×6, 6×8 | ⚠️ | ⚠️ via Print Bridge only | ✅ | ☑️ CUPS | ⚠️ Implemented |
+| Canon Selphy CP1300 / CP1500 | 4×6 postcard | ⚠️ | ⚠️ AirPrint-capable model, but our AirPrint bridge is a stub | ✅ | ☑️ CUPS | ⚠️ Implemented |
+| Mitsubishi CP-D70DW / CP-M15 | 4×6, 6×8 | ⚠️ | ⚠️ via Print Bridge only | ✅ | ☑️ CUPS | ⚠️ Implemented |
 
-**Note on macOS/Android media telemetry:** dye-sub counters (paper remaining, ribbon %) come from
+**Note on macOS/Android/iPad media telemetry:** dye-sub counters (paper remaining, ribbon %) come from
 vendor SDKs that exist mainly for Windows. On macOS the CUPS path usually reports `null` for media
-levels — honest, not a bug. See §11.
+levels, and on iPad there is no public API for dye-sub consumables at all. Honest `null`, not a bug.
+See §11.
 
 ### 5.2 Office / inkjet / laser printers
 
@@ -271,8 +272,12 @@ Supported through the OS driver, with caveats:
 |---|---|---|
 | Any Windows driver printer | ☑️ | Print quality and speed unsuitable for high volume; margins may clip |
 | Any CUPS printer | ☑️ | Same caveat; `fit-to-page` helps but cannot fix hardware margins |
-| AirPrint | ☑️ on macOS | Good for emergencies |
-| Network IPP | ✅ Android raw IPP | Requires the printer to accept `image/jpeg` or `image/pwg-raster` |
+| AirPrint | ☑️ from macOS; ❌ from iPad today | Our `AirPrintProvider` posts a raw bitmap, which is not a valid IPP job — a native `UIPrintInteractionController` bridge is required |
+| Network IPP | ✅ Android raw IPP; ❌ iPad | Our IPP body omits the operation/document attribute groups, so strict CUPS servers return 400. Requires the printer to accept `image/jpeg` or `image/pwg-raster` |
+
+**iPad summary:** an iPad booth prints through the **HappyPix Print Bridge** (the Electron app's
+`:9123` server) on a machine in the same LAN. AirPrint from the iPad is the roadmap item that removes
+that PC — see [`IPAD_SUPPORT.md`](IPAD_SUPPORT.md) §7.
 
 **Do not sell an inkjet rig as a booth solution.** Dye-sub is the product: dry prints, no smearing,
 ~8 s per 4×6, consistent colour.

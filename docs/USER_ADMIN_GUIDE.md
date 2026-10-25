@@ -207,7 +207,7 @@ Larger sheets cost more in media and take longer to print. Price accordingly.
 
 ### 5.1 What you need
 
-* A booth device with the HappyPix Booth app installed (Android tablet, Windows PC or Mac).
+* A booth device with the HappyPix Booth app installed (Android tablet, iPad, Windows PC or Mac).
 * The 6-digit pairing code from the event.
 * Your organization admin email and password (the first time only).
 
@@ -217,6 +217,30 @@ Larger sheets cost more in media and take longer to print. Price accordingly.
 2. Enter the 6-digit code (or your email and password if prompted).
 3. The booth downloads the event: templates, prices, branding.
 4. The CRM shows the booth as **Online** with a green indicator.
+
+### 5.2.1 First run on an iPad
+
+An iPad asks two permission questions the first time, and both must be answered correctly on the
+spot — they are easy to dismiss and painful to undo in front of a queue:
+
+1. **Camera** — allow. Needed for every session.
+2. **Local Network** — allow. Needed only to reach a printer or a Wi-Fi camera on the venue network.
+   Declining it does **not** stop sessions or uploads; it stops printing.
+
+Then lock the iPad down, because iOS does not do it for you:
+
+* **Guided Access** (Settings → Accessibility → Guided Access, then triple-click the side button at
+  the booth screen) — the minimum acceptable lockdown for a single device.
+* **Auto-Lock → Never** (Settings → Display & Brightness) — otherwise the screen sleeps mid-event.
+* **MDM Single App Mode** for a fleet — the correct answer for more than a couple of booths.
+
+Guided Access **disables the app's own idle timer**, keeps the screen on, and is released with a
+passcode, so set that passcode at the event and change it afterwards. A full iPad runbook, including
+what to do when the device reboots mid-event, is in [`IPAD_SUPPORT.md`](IPAD_SUPPORT.md) §6.
+
+An iPad booth prints through a **Print Bridge** running on a PC or Mac on the same network — there is
+no working AirPrint path from the app yet. If you have no Print Bridge, run a digital-only iPad booth
+and hand out download QR codes.
 
 ### 5.3 What the booth remembers
 

@@ -144,6 +144,7 @@ our own account, region or negotiated contract.
 | remove.bg | Image | ~**$0.20** per image pay-as-you-go | 1 AI credit charged to the org per call |
 | Sentry | Team | **$26 / month** | Not yet wired ⟨verify⟩ |
 | GitHub | Team | **$4 / user / month** | Releases host the installers |
+| Apple Developer Program | Annual | **$99 / year** (~₹715/month) | Required to sign and TestFlight an iPad build; per organisation, not per device |
 
 ---
 
@@ -165,6 +166,10 @@ our own account, region or negotiated contract.
 | Sentry (once enabled) | flat | 26.00 | ₹2,236 |
 | Domain, TLS, misc | 3 domains | 3.00 | ₹258 |
 | **Total** | | **≈ $304** | **≈ ₹26,150** |
+
+Not in the total above: the **Apple Developer Program, $99/year** (about ₹715/month), which becomes
+a real line item the moment the iPad build is distributed through TestFlight and the App Store. It is
+a fixed published cost that does not scale with booths, so it is not modelled per session.
 
 Add the pass-through that is *not* infrastructure: **Razorpay fees on GMV**. At 6,000 sessions × ₹120 average
 ticket ≈ ₹7.2 L GMV, card-heavy traffic costs ~₹14,400 in fees; UPI-heavy traffic costs near zero. That number
@@ -415,7 +420,7 @@ likely to arrive within a year.
 | E2 | Organisations want their own webhooks | Integration request | No outbound webhook system, no retry, no signing | Webhook subscriptions + signed delivery + replay | 3 weeks |
 | E3 | A public API is requested | Partner enquiry | Auth is cookie/JWT for humans and device tokens for booths; no API keys | API keys with scopes, rate limits, usage metering | 3 weeks |
 | E4 | Real-time dashboards are expected | "Why is this page stale?" | Everything is poll-on-load; only booths poll | SSE or WebSocket channel; or accept 30 s polling and say so | 2 weeks |
-| E5 | iOS booth app is requested | Customer with iPads | Only Android and Electron exist | React Native iOS target reusing `client-app` packages | 4–6 weeks |
+| E5 | iPad booths go into the field | A customer wants iPads, or an operator prefers them to Android tablets | The RN iOS target **exists** and runs the session, but printing needs a PC-side Print Bridge, kiosk lockdown is Guided Access/MDM, and nothing is signed or distributed | Native AirPrint bridge (removes the PC), Swift idle-timer + kiosk banner, icon set, Fastlane → TestFlight | 2–3 weeks to pilot, 4–6 to drop the PC |
 | E6 | White-label / custom domain per org | Agency enquiry | One domain set, CORS allowlist is static | Tenant domains + per-domain certificate automation | 2–3 weeks |
 
 ### F · Reliability and operations

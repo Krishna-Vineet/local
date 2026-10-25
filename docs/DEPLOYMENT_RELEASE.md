@@ -13,7 +13,7 @@
 3. [Environments](#3-environments)
 4. [Configuration and secrets](#4-configuration-and-secrets)
 5. [CI/CD pipeline](#5-cicd-pipeline)
-6. [Signing and distribution](#6-signing-and-distribution)
+6. [Signing and distribution](#6-signing-and-distribution) — Windows, macOS, Android, iPadOS
 7. [Release procedure](#7-release-procedure)
 8. [Versioning, notes and checksums](#8-versioning-notes-and-checksums)
 9. [Rollback](#9-rollback)
@@ -365,17 +365,44 @@ keytool -genkeypair -v -keystore happypix-release.keystore \
 # store both files in the company vault, NOT in the repo
 ```
 
-### 6.4 Linux
+### 6.4 iPadOS
+
+| Step | Detail |
+|---|---|
+| App ID | `com.happypix.booth` in the Apple Developer portal; no special capabilities |
+| Signing | Automatic signing with the organisation team; commit an `ExportOptions.plist`, **never** certificates or profiles |
+| Icons | Full `AppIcon` set (iPhone + iPad sizes + 1024 marketing) — currently **empty**, see `IPAD_SUPPORT.md` IP-6 |
+| Info.plist | `NSLocalNetworkUsageDescription`, `UIRequiresFullScreen`, `ITSAppUsesNonExemptEncryption` (all present) |
+| Privacy manifest | `PrivacyInfo.xcprivacy` present; App Store privacy answers must still be filled in (photos are uploaded) |
+| Build | `bundle exec pod install` → `xcodebuild archive` → `xcodebuild -exportArchive` |
+| Distribution | TestFlight (internal → external) → App Store |
+
+```bash
+cd client-app/apps/booth
+bundle exec pod install --project-directory=ios
+xcodebuild -workspace ios/booth.xcworkspace -scheme booth \
+  -configuration Release -sdk iphoneos -archivePath build/booth.xcarchive archive
+xcodebuild -exportArchive -archivePath build/booth.xcarchive \
+  -exportOptionsPlist ios/ExportOptions.plist -exportPath build/ipa
+```
+
+The build host must be **macOS**; there is no Linux or Windows path to an `.ipa`. Review notes for
+the App Store should state that this is an operator-provisioned kiosk with no public sign-up and that
+lockdown is applied by Guided Access or MDM — see [`IPAD_SUPPORT.md`](IPAD_SUPPORT.md) §6 and §8.
+
+### 6.5 Linux
 
 AppImage or `.deb` via electron-builder. No signing requirement; publish a SHA-256 with the file.
 
-### 6.5 Distribution channels
+### 6.6 Distribution channels
 
 | Channel | Artefact | Audience |
 |---|---|---|
 | Direct download link | NSIS `.exe`, `.dmg` | Operators (current) |
 | Play Store internal testing | `.aab` / APK | Pilot operators |
 | Play Store production | `.aab` | General availability (after review) |
+| TestFlight | `.ipa` | iPad pilots |
+| App Store | `.ipa` | iPad general availability (after review) |
 | GitHub Releases | All artefacts + checksums | Internal + audit trail |
 
 ---
@@ -463,7 +490,7 @@ Bump rules: breaking API contract → MAJOR; new feature → MINOR; fix → PATC
 
 ### Known issues
 - macOS cannot report dye-sub media counters for some drivers (by design, returns null).
-- iOS booth app not available.
+- iPad build is not distributed yet (TestFlight pipeline, icons and the native AirPrint path are still open; see docs/IPAD_SUPPORT.md).
 
 ### Checksums
 SHA-256 published in the release notes block below.

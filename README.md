@@ -1,11 +1,11 @@
 # HappyPix
 
-**A complete photo-booth operating system** — public website, multi-tenant CRM, Android booth app,
-Windows/macOS kiosk, payments, dye-sublimation printing and 24-hour guest digital delivery, all
-running on one backend.
+**A complete photo-booth operating system** — public website, multi-tenant CRM, a React Native booth
+app for **Android tablets and iPad**, a Windows/macOS kiosk, payments, dye-sublimation printing and
+24-hour guest digital delivery, all running on one backend.
 
 <p align="center">
-  <b>Website</b> · <b>CRM</b> · <b>Booth (Android)</b> · <b>Booth (Electron)</b> · <b>Backend</b> · <b>Website backend</b>
+  <b>Website</b> · <b>CRM</b> · <b>Booth (Android + iPad)</b> · <b>Booth (Electron)</b> · <b>Backend</b> · <b>Website backend</b>
 </p>
 
 ---
@@ -32,7 +32,7 @@ usual pile of disconnected tools — a booking sheet, a standalone capture app, 
 WhatsApp group for photo delivery — with one system where:
 
 * the **operator** manages clients, events, booths, templates, pricing and staff in a CRM;
-* the **booth** (Android tablet or Windows/macOS PC) captures, composes, prints and uploads;
+* the **booth** (Android tablet, iPad, or a Windows/macOS PC) captures, composes, prints and uploads;
 * the **guest** pays at the booth, walks away with a physical print and scans a QR code for a
   high-resolution digital copy that self-destructs in 24 hours;
 * the **platform owner** sees revenue, subscriptions, support and device telemetry in one console.
@@ -56,8 +56,9 @@ Verified in this repository (build + typecheck + lint passing on `arena/097e52ae
 * **Backend** — 100+ REST endpoints, 23 Mongoose models, JWT auth, device-token auth, rate limits,
   audit log, payment webhooks with signature verification, S3 uploads, TTL-based guest downloads.
 * **CRM** — 5 fixed roles enforced three times (nav, router, API), 21 screens, zero UI dependencies.
-* **Booth apps** — Android (XState + Skia, Canon CCAPI, IPP) and Electron (React 19, PowerShell
-  spooler, CUPS) with full session flow, filters, ornaments, payment, print, issue-raising, QR.
+* **Booth apps** — one React Native codebase for **Android and iPad** (XState + Skia, Canon CCAPI,
+  IPP/AirPrint) plus an Electron kiosk (React 19, PowerShell spooler, CUPS); all three run the same
+  session flow, filters, ornaments, payment, print, issue-raising and QR.
 * **Website** — marketing, pricing, plan checkout, guest download portal.
 
 Where something is *not* production-ready, it is explicitly marked in
@@ -77,7 +78,7 @@ working if it only exists as a stub.
         ▼              ▼               ▼                ▼                 ▼
   ┌───────────┐  ┌───────────┐  ┌────────────┐  ┌─────────────┐  ┌─────────────┐
   │ Website   │  │    CRM    │  │  Backend   │  │ Booth       │  │ Booth       │
-  │ happypix  │  │  crm.     │  │  api.      │  │ Android     │  │ Electron    │
+  │ happypix  │  │  crm.     │  │  api.      │  │Android·iPad │  │ Electron    │
   │ React 18  │  │ React 18  │  │ Express 5  │  │ RN + XState │  │ React 19    │
   └─────┬─────┘  └─────┬─────┘  └──────┬─────┘  └──────┬──────┘  └──────┬──────┘
         │              │               │               │                │
@@ -104,7 +105,7 @@ working if it only exists as a stub.
 | 2 | **Website backend** | `/website-backend` | Website (server-to-server) | Public plans API, Razorpay checkout, presigned guest downloads, sales leads |
 | 3 | **CRM** | `/crm` | Platform owner/admins, org admins/managers | Tenancy, events, devices, templates, pricing, revenue, support, audit |
 | 4 | **Main backend** | `/backend` | CRM, booths, webhooks | Auth, tenancy, snapshots, payments, sessions, photos, support, AI |
-| 5 | **Android booth** | `/client-app` | Booth operators (tablet) | Full kiosk flow with native camera/printer/kiosk packages |
+| 5 | **React Native booth** | `/client-app` | Booth operators (Android tablet, iPad) | Full kiosk flow with native camera/printer/kiosk packages; iOS target in `apps/booth/ios` |
 | 6 | **Electron booth** | `/electron` | Booth operators (PC kiosk) | Same flow on Windows/macOS with spooler printing + DNP telemetry |
 
 ---
@@ -132,21 +133,23 @@ working if it only exists as a stub.
 |---|---|---|
 | CRM | React 18.3, Vite 5.4, hand-rolled SVG/CSS (zero UI libs) | Any modern browser |
 | Website | React 18.3, Vite 5.4, React Router 6, Framer Motion 11 | Any modern browser |
-| Android booth | React Native 0.86, TypeScript 5, XState 5, Skia 2.6, VisionCamera 4.6 | Android 13+ (API 33) |
+| React Native booth | React Native 0.86, TypeScript 5, XState 5, Skia 2.6, VisionCamera 4.6 | Android 13+ (API 33) · iPadOS 15.1+ |
 | Electron booth | Electron 44, React 19, Vite 7, TypeScript 5.9 | Windows 10/11, macOS 12+, Linux |
 
 ### Hardware platform support
 
-| Device class | Android booth | Electron booth |
-|---|---|---|
-| Device/phone camera | ✅ VisionCamera | ✅ `getUserMedia` |
-| Canon DSLR (Wi-Fi) | ✅ CCAPI REST | ⚠️ seam only (`canon-sdk-pending`) |
-| Nikon (USB PTP) | ⚠️ transport pending | ⚠️ transport pending |
-| Sony Alpha | ⚠️ interface stub (SDK NDA) | ⚠️ interface stub |
-| Windows spooler printers | — | ✅ PowerShell + `System.Drawing` |
-| macOS/Linux CUPS printers | — | ✅ `lp` + `lpstat` |
-| Network IPP printers | ✅ raw IPP (RFC 8011) | ⚠️ via OS driver |
-| DNP media/ribbon telemetry | ⚠️ no public Android SDK | ✅ `CyStat64.dll` + WMI fallback |
+| Device class | RN booth — Android | RN booth — iPad | Electron booth |
+|---|---|---|---|
+| Device/phone camera | ✅ VisionCamera | ✅ VisionCamera | ✅ `getUserMedia` |
+| Canon DSLR (Wi-Fi) | ✅ CCAPI REST | ⚠️ same code, untested | ⚠️ seam only (`canon-sdk-pending`) |
+| Nikon (USB PTP) | ⚠️ transport pending | ⚠️ transport pending | ⚠️ transport pending |
+| Sony Alpha | ⚠️ interface stub (SDK NDA) | ⚠️ interface stub | ⚠️ interface stub |
+| Windows spooler printers | — | — (via Print Bridge) | ✅ PowerShell + `System.Drawing` |
+| macOS/Linux CUPS printers | — | — (via Print Bridge) | ✅ `lp` + `lpstat` |
+| Network IPP printers | ✅ raw IPP (RFC 8011) | ⚠️ via Print Bridge | ⚠️ via OS driver |
+| AirPrint | — | ❌ stub only (needs a native bridge) | — |
+| DNP media/ribbon telemetry | ⚠️ no public Android SDK | ⚠️ no public iOS SDK | ✅ `CyStat64.dll` + WMI fallback |
+| Kiosk lockdown | ✅ Lock Task Mode (device owner) | ⚠️ Guided Access / MDM only | ✅ `kiosk: true` window |
 
 Full detail, including the tested-model tables and the honest "untested" column, is in
 [`docs/HARDWARE_PRINTING.md`](docs/HARDWARE_PRINTING.md) and
@@ -174,6 +177,7 @@ Every document below is versioned in this repository. Start with the owner's ord
 | 10 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Monitoring, alerts, backups, DR, on-call runbooks |
 | 11 | [`docs/USER_ADMIN_GUIDE.md`](docs/USER_ADMIN_GUIDE.md) | Onboarding, event setup, operator workflow, admin |
 | 12 | [`business/SCALABILITY_PLAN.md`](business/SCALABILITY_PLAN.md) | 10K → 10M users: architecture and cost at each stage |
+| 5b | [`docs/IPAD_SUPPORT.md`](docs/IPAD_SUPPORT.md) | iPad build, behaviour, the 18 review findings and the kiosk/lockdown recipe |
 | 12b | [`docs/HOSTING_AND_SCALING.md`](docs/HOSTING_AND_SCALING.md) | Where every component runs today, what each costs, the triggers and stages for growth, and the 30+ situations that force an architecture change |
 | 12c | [`docs/DIAGRAMS.md`](docs/DIAGRAMS.md) · [`docs/diagrams/index.html`](docs/diagrams/index.html) | 29 maintained diagrams: ecosystem, ER, DFD L0/L1/L2, HLD/LLD, future architecture. The HTML version is interactive |
 | 13 | [`business/FINANCIAL_MODEL.xlsx`](business/FINANCIAL_MODEL.xlsx) | Full expenditure model, forecasts, runway |
@@ -247,6 +251,7 @@ local/
 | pnpm | 9.x | `client-app` only |
 | MongoDB | Atlas free tier or local 7.x | backend, website-backend |
 | Java JDK 17 + Android SDK 35 | — | Android booth |
+| Xcode 16 + CocoaPods (macOS) | — | iPad booth |
 | Python 3 | ≥ 3.10 | optional tooling scripts |
 | FFmpeg | any | optional video-booth work |
 
@@ -314,7 +319,7 @@ npm run dist:win        # NSIS installer
 npm run dist:mac        # arm64 DMG
 ```
 
-### 5 · Android booth
+### 5 · React Native booth (Android and iPad)
 
 ```bash
 cd client-app
@@ -324,6 +329,19 @@ pnpm build:apk          # debug APK
 pnpm build:apk:release  # signed release APK
 adb shell dpm set-device-owner com.happypix.booth/.kiosk.KioskAdminReceiver   # lock-task kiosk
 ```
+
+iPad (**macOS only** — the full guide is [`docs/IPAD_SUPPORT.md`](docs/IPAD_SUPPORT.md)):
+
+```bash
+cd client-app/apps/booth
+bundle install && (cd ios && bundle exec pod install)
+pnpm ios --simulator "iPad Pro 13-inch (M4)"     # simulator
+pnpm ios --device                                # signed device build
+```
+
+Two iPad facts that cost hours if you learn them the hard way: `10.0.2.2` is an **Android emulator**
+host and means nothing on iOS (use the laptop's LAN IP in `apps/booth/.env`), and LAN printing needs
+the **Local Network** permission, which the first login prompt requests.
 
 ### 6 · First end-to-end run
 
@@ -395,7 +413,7 @@ marked `⟨TBC⟩` on purpose so the register can be signed off):
 |---|---|---|
 | Platform architecture & backend | ⟨TBC⟩ — Engineering Lead | Backend engineer |
 | CRM product & tenancy rules | ⟨TBC⟩ — Product Owner | Frontend engineer |
-| Android booth (`client-app`) | ⟨TBC⟩ — Mobile Lead | Mobile engineer |
+| RN booth — Android + iPad (`client-app`) | ⟨TBC⟩ — Mobile Lead | Mobile engineer |
 | Electron booth (`/electron`) | ⟨TBC⟩ — Desktop Lead | Desktop engineer |
 | Hardware rigs, printer media, spares | ⟨TBC⟩ — Operations Lead | Field technician |
 | Payments, subscriptions, refunds | ⟨TBC⟩ — Finance | Finance associate |
@@ -419,7 +437,8 @@ Last verified: **2026-10-23** on branch `arena/097e52ae-local`
 | Multi-tenant backend + RBAC | ✅ Production | 5 fixed roles, three-layer enforcement |
 | CRM (platform + org) | ✅ Production | 21 screens, 6 demo orgs, audit trail |
 | Website + guest downloads | ✅ Production | 24 h TTL, presigned S3 |
-| Android booth flow | ✅ Production | Capture → edit → print → QR |
+| RN booth flow (Android) | ✅ Production | Capture → edit → print → QR |
+| iPad build | ⚠️ Runs, not shipped | Xcode target + iPad config present; printing, kiosk lockdown, icons and signing still open — see [`docs/IPAD_SUPPORT.md`](docs/IPAD_SUPPORT.md) |
 | Electron booth flow | ✅ Production | Same flow, cross-platform print |
 | Payments (Razorpay/Cashfree) | ✅ Production | Webhook signature verification |
 | S3 photo + composite upload | ✅ Fixed 2026-10-23 | Composite now uploaded with individuals |
@@ -427,7 +446,7 @@ Last verified: **2026-10-23** on branch `arena/097e52ae-local`
 | Canon CCAPI camera | ✅ Android / ⚠️ Electron seam | Wi-Fi REST, no native SDK |
 | Nikon PTP / Sony SDK | ⚠️ Not shipped | Interfaces ready, transports pending |
 | Live video booth mode | ⚠️ Add-on scaffolded | Not shipped to customers |
-| Native mobile iOS build | ⚠️ Not built | RN code is portable, no iOS project yet |
+| iPad distribution | ⚠️ Not started | No App Store record, no icons, no Fastlane — §8 of the iPad doc |
 | Automated E2E (Detox/Playwright) | ⚠️ Partial | Unit + contract tests only |
 
 Anything marked ⚠️ is described in its document with the exact gap and the work required.

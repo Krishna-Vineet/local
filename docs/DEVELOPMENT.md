@@ -2,7 +2,7 @@
 
 > **Audience:** anyone who needs to run, modify or review this codebase.
 > **Assumes:** macOS, Linux or Windows with a POSIX-ish shell (Git Bash/WSL works on Windows).
-> **Last verified:** 2026-10-23, branch `arena/097e52ae-local`.
+> **Last verified:** 2026-10-23, branch `main`.
 
 ---
 
@@ -528,7 +528,7 @@ register, not the repo.
 | Branch | Purpose |
 |---|---|
 | `main` | Deployable; protected |
-| `arena/097e52ae-local` | Current active development branch |
+| `main` | Current active development branch |
 | `feat/<slug>` | Feature work, branched from `main` |
 | `fix/<slug>` | Bug fixes |
 | `chore/<slug>` | Tooling, deps, docs |

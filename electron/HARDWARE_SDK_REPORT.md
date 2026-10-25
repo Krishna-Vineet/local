@@ -1,6 +1,6 @@
 # HappyPix Booth — Hardware SDK & Device Integration Report
 
-> Generated: 2026-10-23 · Branch `arena/097e52ae-local`
+> Generated: 2026-10-23 · Branch `main`
 > Scope: Electron kiosk (`/electron`) + reference Android `client-app` packages
 > Purpose: What cameras/printers are supported, what capabilities exist, what telemetry is reported, and is it working on **Windows and macOS**?
 
@@ -161,4 +161,4 @@ Printer driver install remains the only OS prerequisite: Windows — install ven
 
 ---
 
-*Report covers `electron/src/electron/{hardware,dnpTelemetry,printServer,store,main}`, `electron/src/ui/{utils/composite,App,screens/Camera,Success}` and `client-app/packages/{camera-core,printer-core}` on `arena/097e52ae-local`.*
+*Report covers `electron/src/electron/{hardware,dnpTelemetry,printServer,store,main}`, `electron/src/ui/{utils/composite,App,screens/Camera,Success}` and `client-app/packages/{camera-core,printer-core}` on `main`.*

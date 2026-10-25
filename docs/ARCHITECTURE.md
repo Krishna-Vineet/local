@@ -2,7 +2,7 @@
 
 > **Audience:** engineers, architects, investors doing technical diligence, new senior hires.
 > **Companions:** [`BACKEND_API_DATABASE.md`](BACKEND_API_DATABASE.md) · [`APPLICATIONS_CRM.md`](APPLICATIONS_CRM.md) · [`HARDWARE_PRINTING.md`](HARDWARE_PRINTING.md)
-> **Last verified:** 2026-10-23, branch `arena/097e52ae-local`.
+> **Last verified:** 2026-10-23, branch `main`.
 
 ---
 

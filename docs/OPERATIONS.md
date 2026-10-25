@@ -2,7 +2,7 @@
 
 > **Audience:** on-call engineer, support lead, operations manager.
 > **Assumes:** you may be reading this at 2 am with a venue full of guests.
-> **Last verified:** 2026-10-23, branch `arena/097e52ae-local`.
+> **Last verified:** 2026-10-23, branch `main`.
 
 ---
 

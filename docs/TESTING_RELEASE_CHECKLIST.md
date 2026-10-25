@@ -2,7 +2,7 @@
 
 > **Scope:** what is tested today, how, what is knowingly untested, and the exact checklist that must
 > be completed before a release reaches a customer.
-> **Last verified:** 2026-10-23, branch `arena/097e52ae-local`.
+> **Last verified:** 2026-10-23, branch `main`.
 
 ---
 

@@ -3,7 +3,7 @@
 > **Covers:** public website, website backend, CRM (platform + organization), Android booth,
 > Electron booth, shared components and offline behaviour.
 > **Companions:** [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`HARDWARE_PRINTING.md`](HARDWARE_PRINTING.md) · [`USER_ADMIN_GUIDE.md`](USER_ADMIN_GUIDE.md)
-> **Last verified:** 2026-10-23, branch `arena/097e52ae-local`.
+> **Last verified:** 2026-10-23, branch `main`.
 
 ---
 

@@ -4,7 +4,7 @@
 > (`/website-backend`, port 5001).
 > **Machine-readable contract:** [`openapi.yaml`](openapi.yaml) (OpenAPI 3.1) — import into Postman,
 > Insomnia or Swagger UI.
-> **Last verified:** 2026-10-23, branch `arena/097e52ae-local`.
+> **Last verified:** 2026-10-23, branch `main`.
 
 ---
 

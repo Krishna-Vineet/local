@@ -63,6 +63,24 @@ Cardinality describes what the code enforces; MongoDB adds no constraint of its 
 **Sequence diagrams** are ordered by real call order in the code, not by intent. Where the booth
 retries or polls, the loop box states the interval used by the shipped apps.
 
+**Connector colours** — the HTML viewer paints every connecting line by what it carries, so a
+payment arrow and a Mongo arrow are never the same colour. GitHub shows the same diagrams in the
+default Mermaid theme, where connectors stay neutral; open `docs/diagrams/index.html` to see them.
+
+| Colour | Category | Matched from |
+|---|---|---|
+| Blue | HTTP / API call | the label, or an endpoint-shaped node (`/api/booth/...`) |
+| Red | Auth, token, permission | `token`, `login`, `session`, `permission`, `role` |
+| Green | MongoDB / data | `MongoDB`, `collection`, `query`, `index`, `TTL index` |
+| Amber | S3 / photo media | `S3`, `upload`, `presign`, `photo`, `composite` |
+| Purple | Payment, price, plan | `payment`, `order`, `coupon`, `price`, `settlement` |
+| Orange | Printing | `print`, `spool`, `IPP`, `DNP`, `paper` |
+| Cyan | Async, webhook, TTL | `webhook`, `cron`, `retry`, `poll`, `expiry` |
+
+A connector with no label and no useful endpoint name cycles through the same palette in reading
+order, so dense diagrams still trace line by line. `docs/scripts/edge_colors.js` holds the rules —
+it is inlined into both HTML viewers at build time, so nothing is fetched at runtime.
+
 ---
 
 ## 1 · Ecosystem

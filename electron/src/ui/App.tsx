@@ -358,10 +358,7 @@ function App() {
         digitalCopy: session.digitalCopy,
         guestConsent: session.customization.guestConsent ?? true,
         compositeUrl,
-        photos: [
-          ...session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
-          ...(compositeUrl ? [{ url: compositeUrl, isComposite: true, type: 'composite' } as any] : []),
-        ],
+        photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
         eventId: snapshot?.event?.id,
       })
       shareUrl = (completed as any).shareUrl ?? (completed as any).downloadUrl ?? null

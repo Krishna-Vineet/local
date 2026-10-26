@@ -2,7 +2,7 @@
 
 > **Scope:** how every artefact gets from a commit to a customer, and how to get it back out again.
 > **Audience:** release engineer, on-call engineer, founder doing a hotfix at 11 pm.
-> **Last verified:** 2026-10-23, branch `main`.
+> **Last verified:** 2026-10-23, branch `arena/097e52ae-local`.
 
 ---
 
@@ -289,7 +289,7 @@ jobs:
 | Branch | Effect |
 |---|---|
 | `main` | Production deploy of all four Vercel projects |
-| `main` | Preview deploy (safe) |
+| `arena/097e52ae-local` | Preview deploy (safe) |
 | `feat/*`, `fix/*` | Preview deploy |
 | Tag `v*` | Release artefacts (installers) + release notes |
 

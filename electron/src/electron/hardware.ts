@@ -322,7 +322,8 @@ export async function printJob(request: PrintRequest) {
   }
 
   const writeTemp = async (): Promise<string> => {
-    const tempFile = path.join(os.tmpdir(), `happypix-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`)
+    const ext = request.bitmapDataUrl!.startsWith('data:image/jpeg') ? 'jpg' : 'png'
+    const tempFile = path.join(os.tmpdir(), `happypix-print-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`)
     const base64Data = request.bitmapDataUrl!.includes(',') ? request.bitmapDataUrl!.split(',')[1] : request.bitmapDataUrl!
     await fs.writeFile(tempFile, Buffer.from(base64Data, 'base64'))
     return tempFile

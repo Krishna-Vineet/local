@@ -51,7 +51,7 @@ WhatsApp group for photo delivery — with one system where:
 
 ### What is genuinely production-grade today
 
-Verified in this repository (build + typecheck + lint passing on `main`):
+Verified in this repository (build + typecheck + lint passing on `arena/097e52ae-local`):
 
 * **Backend** — 100+ REST endpoints, 23 Mongoose models, JWT auth, device-token auth, rate limits,
   audit log, payment webhooks with signature verification, S3 uploads, TTL-based guest downloads.
@@ -363,7 +363,7 @@ Detailed walkthrough: [`docs/USER_ADMIN_GUIDE.md`](docs/USER_ADMIN_GUIDE.md).
 |---|---|
 | Single monorepo | `github.com/Krishna-Vineet/local` |
 | Default branch | `main` |
-| Active development branch | `main` |
+| Active development branch | `arena/097e52ae-local` |
 | Package managers | npm (5 apps) + pnpm (client-app workspace) |
 
 ### Environments
@@ -429,7 +429,7 @@ Security Officer *and* the Engineering Lead within 15 minutes, regardless of hou
 
 ## 9. Project status at a glance
 
-Last verified: **2026-10-23** on branch `main`
+Last verified: **2026-10-23** on branch `arena/097e52ae-local`
 (`npm run typecheck && npm run lint && npm run build:react` in `/electron` — passing).
 
 | Area | Status | Notes |

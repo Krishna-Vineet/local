@@ -11,14 +11,27 @@ const FILTER_CSS: Record<string, string> = {
   party: 'saturate(1.5) contrast(1.2) hue-rotate(15deg)',
 };
 
+function resolveAssetUrl(src?: string | null): string {
+  if (!src || typeof src !== 'string') return '';
+  if (src.startsWith('data:') || src.startsWith('http://') || src.startsWith('https://')) return src;
+  const base = (import.meta as any).env?.VITE_BOOTH_API_URL || 'http://localhost:5000';
+  return `${String(base).replace(/\/+$/, '')}/${src.replace(/^\/+/, '')}`;
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    if (!src || typeof src !== 'string') {
+      return reject(new Error('Invalid image source'));
+    }
+    const resolved = resolveAssetUrl(src);
     const img = new Image();
-    // Allow AWS S3 / CDN images to be read into canvas without tainting
-    try { img.crossOrigin = 'anonymous' } catch { void 0 }
+    // Only set crossOrigin for remote URLs; never for data URLs (avoids Chromium CORS violation)
+    if (!resolved.startsWith('data:')) {
+      try { img.crossOrigin = 'anonymous'; } catch { void 0; }
+    }
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('A photo could not be loaded for printing.'));
-    img.src = src;
+    img.src = resolved;
   });
 }
 
@@ -27,9 +40,9 @@ function drawCover(
   img: HTMLImageElement,
   x: number, y: number, w: number, h: number,
 ) {
-  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
-  const dw = img.naturalWidth * scale;
-  const dh = img.naturalHeight * scale;
+  const scale = Math.max(w / (img.naturalWidth || w), h / (img.naturalHeight || h));
+  const dw = (img.naturalWidth || w) * scale;
+  const dh = (img.naturalHeight || h) * scale;
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
@@ -40,27 +53,84 @@ export async function renderCompositeDataUrl(input: {
   eventName?: string;
 }): Promise<string> {
   const { template, photos, customization } = input;
-  const { layout, design } = template;
+  const layout = template?.layout;
+  const design: any = template?.design;
   const canvas = document.createElement('canvas');
-  canvas.width = layout.canvas.width;
-  canvas.height = layout.canvas.height;
+  canvas.width = layout?.canvas?.width || 1200;
+  canvas.height = layout?.canvas?.height || 1800;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas is not available on this device.');
 
-  const colors = design.background.colors.length ? design.background.colors : ['#ffffff'];
-  if (design.background.type === 'image' && design.background.url) {
-    const bg = await loadImage(design.background.url).catch(() => null);
-    if (bg) drawCover(ctx, bg, 0, 0, canvas.width, canvas.height);
-    else { ctx.fillStyle = colors[0]; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-  } else if (colors.length > 1) {
+  const templateAssets: any[] = Array.isArray((template as any)?.assets) ? (template as any).assets : [];
+  const bg: any = design?.background;
+  const rawBgUrl: string | null =
+    (typeof bg === 'string' ? bg : bg?.url) ||
+    design?.bg?.url ||
+    templateAssets.find((a: any) => a.role === 'background' || a.type === 'background')?.url ||
+    null;
+  const bgColors: string[] = (Array.isArray(bg?.colors) && bg.colors.length > 0)
+    ? bg.colors
+    : (Array.isArray(design?.bg?.colors) && design.bg.colors.length > 0)
+      ? design.bg.colors
+      : ['#ffffff'];
+
+  if (rawBgUrl) {
+    const bgImg = await loadImage(rawBgUrl).catch(() => null);
+    if (bgImg) drawCover(ctx, bgImg, 0, 0, canvas.width, canvas.height);
+    else { ctx.fillStyle = bgColors[0]; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  } else if (bgColors.length > 1) {
     const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    colors.forEach((color, i) => gradient.addColorStop(i / (colors.length - 1), color));
+    bgColors.forEach((color: string, i: number) => gradient.addColorStop(i / (bgColors.length - 1), color));
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   } else {
-    ctx.fillStyle = colors[0];
+    ctx.fillStyle = bgColors[0];
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
+
+  // Collect decorations and frame overlays
+  const decorations: any[] = Array.isArray(design?.decorations) ? [...design.decorations] : [];
+  for (const asset of templateAssets) {
+    if (asset?.role === 'overlay' || asset?.role === 'frame' || asset?.type === 'overlay') {
+      if (!decorations.some((d) => d.url === asset.url || (d.assetId && d.assetId === asset.assetId))) {
+        decorations.push({ url: asset.url, overlay: true, x: 0, y: 0, width: 1, height: 1 });
+      }
+    }
+  }
+
+  const drawDecorationsLayer = async (overlayPass: boolean) => {
+    for (const dec of decorations) {
+      if (!dec || !dec.url) continue;
+      const isOverlay = dec.overlay !== false && dec.position !== 'background';
+      if (isOverlay !== overlayPass) continue;
+      const decImg = await loadImage(dec.url).catch(() => null);
+      if (!decImg) continue;
+      let dx = 0;
+      let dy = 0;
+      let dw = canvas.width;
+      let dh = canvas.height;
+      if (dec.position === 'top-right') {
+        dw = canvas.width * 0.3;
+        dh = canvas.height * 0.3;
+        dx = canvas.width - dw;
+        dy = 0;
+      } else if (dec.position === 'bottom-left') {
+        dw = canvas.width * 0.3;
+        dh = canvas.height * 0.3;
+        dx = 0;
+        dy = canvas.height - dh;
+      } else {
+        if (dec.x !== undefined) dx = Math.abs(Number(dec.x)) <= 4 ? Number(dec.x) * canvas.width : Number(dec.x);
+        if (dec.y !== undefined) dy = Math.abs(Number(dec.y)) <= 4 ? Number(dec.y) * canvas.height : Number(dec.y);
+        if (dec.width !== undefined) dw = Number(dec.width) <= 4 ? Number(dec.width) * canvas.width : Number(dec.width);
+        if (dec.height !== undefined) dh = Number(dec.height) <= 4 ? Number(dec.height) * canvas.height : Number(dec.height);
+      }
+      ctx.drawImage(decImg, dx, dy, dw, dh);
+    }
+  };
+
+  // 1.5 Under-slot decorations
+  await drawDecorationsLayer(false);
 
   // Ornament / decor overlay — subtle but visible so CRM composite matches preview
   const rawDecor = (customization as any).decor
@@ -105,25 +175,44 @@ export async function renderCompositeDataUrl(input: {
     ctx.restore()
   }
 
-  const filter = FILTER_CSS[customization.filter] || 'none';
-  for (let i = 0; i < layout.photoSlots.length; i += 1) {
-    const slot = layout.photoSlots[i];
+  // 2. Photo slots
+  const filter = FILTER_CSS[customization?.filter || 'original'] || 'none';
+  const photoSlots = Array.isArray(layout?.photoSlots) ? layout.photoSlots : [];
+  for (let i = 0; i < photoSlots.length; i += 1) {
+    const slot = photoSlots[i];
     const photo = photos[i];
-    if (!photo?.dataUrl) continue;
-    const img = await loadImage(photo.dataUrl);
+    const photoData = photo?.dataUrl || (photo as any)?.uri;
+    if (!photoData) continue;
+    const img = await loadImage(photoData).catch(() => null);
+    if (!img) continue;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(slot.x, slot.y, slot.width, slot.height);
+    if (design?.slotShape === 'rounded' || design?.slotShape === 'pill') {
+      if (typeof (ctx as any).roundRect === 'function') {
+        const radius = design.slotShape === 'pill' ? Math.min(slot.width, slot.height) / 2 : 16;
+        (ctx as any).roundRect(slot.x, slot.y, slot.width, slot.height, radius);
+      } else {
+        ctx.rect(slot.x, slot.y, slot.width, slot.height);
+      }
+    } else {
+      ctx.rect(slot.x, slot.y, slot.width, slot.height);
+    }
     ctx.clip();
-    ctx.filter = filter;
+    if (filter && filter !== 'none') {
+      ctx.filter = filter;
+    }
     drawCover(ctx, img, slot.x, slot.y, slot.width, slot.height);
     ctx.restore();
     ctx.filter = 'none';
   }
 
+  // 2.5 Over-slot decorations & frame overlays (draws frame cutout on top of photos)
+  await drawDecorationsLayer(true);
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  for (const sticker of customization.stickers) {
+  const stickers = Array.isArray(customization?.stickers) ? customization.stickers : [];
+  for (const sticker of stickers) {
     const size = 90 * (sticker.scale ?? 1);
     ctx.font = `${size}px serif`;
     ctx.fillText(sticker.emoji, (sticker.x / 100) * canvas.width, (sticker.y / 100) * canvas.height);
@@ -153,9 +242,9 @@ export async function renderCompositeDataUrl(input: {
     logoX += lw + 10
   }
 
-  const title = customization.title || design.title || input.eventName || '';
-  const subtitle = customization.subtitle || design.subtitle || '';
-  ctx.fillStyle = design.textColor || '#2a1630';
+  const title = customization?.title || design?.title || input?.eventName || '';
+  const subtitle = customization?.subtitle || design?.subtitle || '';
+  ctx.fillStyle = design?.textColor || '#2a1630';
   ctx.textAlign = 'right';
   if (title) {
     ctx.font = `700 ${Math.round(footerH * 0.30)}px 'Fredoka Variable', Nunito, sans-serif`;
@@ -168,5 +257,5 @@ export async function renderCompositeDataUrl(input: {
     ctx.globalAlpha = 1;
   }
 
-  return canvas.toDataURL('image/png');
+  return canvas.toDataURL('image/jpeg', 0.95);
 }

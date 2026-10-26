@@ -3,7 +3,7 @@
 > **Scope:** what cameras and printers HappyPix supports, how they are driven, what is verified
 > versus merely implemented, and how to recover from failures at a live event.
 > **Companion:** [`../electron/HARDWARE_SDK_REPORT.md`](../electron/HARDWARE_SDK_REPORT.md) (Windows/macOS SDK parity detail).
-> **Last verified:** 2026-10-23, branch `main`.
+> **Last verified:** 2026-10-23, branch `arena/097e52ae-local`.
 
 ---
 

@@ -526,5 +526,5 @@ Every assumption in this document that depends on our own account rather than a 
 
 ---
 
-*Last verified: 2026-10-25 against branch `main`. List prices checked the same week; re-verify
+*Last verified: 2026-10-25 against branch `arena/097e52ae-local`. List prices checked the same week; re-verify
 before any budget or investor document cites them.*

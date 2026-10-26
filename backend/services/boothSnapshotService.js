@@ -678,12 +678,15 @@ async function recentSamplePhotos(event, organization, gallery) {
   const photos = await Photo.find({
     organizationId: organization._id || organization.id,
     eventId: event._id || event.id,
-    url: { $regex: '^https?://' },
+    $or: [
+      { compositeUrl: { $regex: '^https?://' } },
+      { url: { $regex: '^https?://' } },
+    ],
   }).sort({ generatedAt: -1, createdAt: -1 }).limit(12).lean();
   return photos
     .filter((photo) => photoVisibleInGallery(photo, gallery))
     .slice(0, 3)
-    .map((photo) => photo.url);
+    .map((photo) => photo.compositeUrl || photo.url);
 }
 
 export async function buildBoothSnapshot({ device, organization, event = null }) {

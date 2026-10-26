@@ -1042,7 +1042,7 @@ router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res
     if (!saved || !saved.url) {
       return { error: 'photo could not be stored' };
     }
-    const isComposite = photo && typeof photo === 'object' && photo.isComposite === true;
+    const isComposite = photo && typeof photo === 'object' && (photo.isComposite === true || photo.type === 'composite');
     const record = await Photo.create({
       organizationId: organization._id,
       eventId,
@@ -1095,15 +1095,25 @@ router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res
       if (photoVisibleInGallery(record, settings)) stored.push(String(record._id));
     }
   } else if (submittedComposite) {
-    const savedComposite = await persistSessionPhoto(String(submittedComposite), { organizationId: organization._id, eventId, sessionId });
-    if (savedComposite && savedComposite.url) {
-      compositeUrl = savedComposite.url;
+    const existingComposite = storedRecords.find((record) => record.compositeUrl && record.url === record.compositeUrl);
+    if (existingComposite && existingComposite.compositeUrl) {
+      compositeUrl = existingComposite.compositeUrl;
       if (storedRecords.length > 0) {
         await Photo.updateMany(
           { _id: { $in: storedRecords.map((record) => record._id) } },
           { $set: { compositeUrl } },
         );
-      } else {
+      }
+    } else {
+      const savedComposite = await persistSessionPhoto(String(submittedComposite), { organizationId: organization._id, eventId, sessionId });
+      if (savedComposite && savedComposite.url) {
+        compositeUrl = savedComposite.url;
+        if (storedRecords.length > 0) {
+          await Photo.updateMany(
+            { _id: { $in: storedRecords.map((record) => record._id) } },
+            { $set: { compositeUrl } },
+          );
+        }
         const record = await Photo.create({
           organizationId: organization._id,
           eventId,
@@ -1138,7 +1148,7 @@ router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res
       deviceId: device._id,
       sessionId,
       compositeUrl,
-      photoUrls: storedRecords.map((record) => record.url),
+      photoUrls: storedRecords.filter((record) => !record.compositeUrl || record.url !== record.compositeUrl).map((record) => record.url),
       photoIds: storedRecords.map((record) => record._id),
       eventName: event ? event.name : '',
       organizationName: organization.name || '',

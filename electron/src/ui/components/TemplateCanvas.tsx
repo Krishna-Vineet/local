@@ -63,13 +63,51 @@ export function TemplateCanvas({
 }) {
   const { layout, design } = template
   const frameRef = useRef<HTMLDivElement>(null)
-  const background = design.background.type === 'image' && design.background.url
-    ? `url(${design.background.url}) center / cover`
-    : design.background.colors.length > 1
-      ? `linear-gradient(145deg, ${design.background.colors.join(', ')})`
-      : design.background.colors[0]
+  const dAny: any = design || {}
+
+  const resolveUrl = (u?: string | null) => {
+    if (!u) return ''
+    if (u.startsWith('data:') || u.startsWith('http://') || u.startsWith('https://')) return u
+    const base = (import.meta as any).env?.VITE_BOOTH_API_URL || 'http://localhost:5000'
+    return `${String(base).replace(/\/+$/, '')}/${u.replace(/^\/+/, '')}`
+  }
+
+  const templateAssets: any[] = Array.isArray((template as any)?.assets) ? (template as any).assets : []
+  const bg: any = dAny?.background
+  const rawBgUrl =
+    bg?.url ||
+    (typeof bg === 'string' && (bg.startsWith('http') || bg.startsWith('data:') || bg.startsWith('/')) ? bg : null) ||
+    dAny?.bg?.url ||
+    templateAssets.find((a: any) => a.role === 'background' || a.type === 'background')?.url ||
+    null
+  const bgColors: string[] = (Array.isArray(bg?.colors) && bg.colors.length > 0)
+    ? bg.colors
+    : (Array.isArray(dAny?.bg?.colors) && dAny.bg.colors.length > 0)
+      ? dAny.bg.colors
+      : ['#ffffff']
+  const background = rawBgUrl
+    ? `url(${resolveUrl(rawBgUrl)}) center / cover`
+    : bgColors.length > 1
+      ? `linear-gradient(145deg, ${bgColors.join(', ')})`
+      : bgColors[0]
   const aspect = layout.canvas.width / layout.canvas.height
   const Designer = template.componentId ? DESIGNER_REGISTRY[template.componentId] : undefined
+
+  const overlayDecorations: any[] = []
+  if (Array.isArray(dAny?.decorations)) {
+    for (const dec of dAny.decorations) {
+      if (dec && dec.url && dec.overlay !== false && dec.position !== 'background') {
+        overlayDecorations.push(dec)
+      }
+    }
+  }
+  for (const asset of templateAssets) {
+    if (asset?.role === 'overlay' || asset?.role === 'frame' || asset?.type === 'overlay') {
+      if (!overlayDecorations.some((d) => d.url === asset.url || (d.assetId && d.assetId === asset.assetId))) {
+        overlayDecorations.push({ url: asset.url })
+      }
+    }
+  }
   const logos: string[] = []
   // Support legacy single-logo + new sponsor multi-logo fields
   const custom = customization as any
@@ -153,6 +191,22 @@ export function TemplateCanvas({
           </div>
         )
       })}
+      {overlayDecorations.map((dec, i) => (
+        <img
+          key={`overlay-dec-${i}`}
+          src={resolveUrl(dec.url)}
+          alt=""
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            pointerEvents: 'none',
+            zIndex: 2,
+          }}
+        />
+      ))}
       <div className="template-footer" style={{ color: design.textColor }}>
         <div className="template-footer-logos">
           {headerLogos.map((src, i) => (

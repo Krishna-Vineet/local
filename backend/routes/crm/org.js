@@ -1540,8 +1540,13 @@ router.get('/gallery', requirePerm(PERMS.ORG_GALLERY_VIEW), asyncRoute(async (re
       continue;
     }
     const existing = bySession.get(sid);
+    const isThisComposite = Boolean(photo.compositeUrl && (photo.url === photo.compositeUrl || photo.isComposite || photo.type === 'composite'));
+    const isExistingComposite = Boolean(existing && existing.compositeUrl && (existing.url === existing.compositeUrl || existing.isComposite || existing.type === 'composite'));
+
     if (!existing) {
       bySession.set(sid, photo);
+    } else if (isThisComposite && !isExistingComposite) {
+      bySession.set(sid, { ...photo, compositeUrl: photo.compositeUrl || existing.compositeUrl, finalised: true });
     } else if (!existing.compositeUrl && photo.compositeUrl) {
       bySession.set(sid, { ...existing, compositeUrl: photo.compositeUrl, finalised: true });
     } else if (!existing.finalised && photo.finalised) {
@@ -1565,7 +1570,7 @@ router.get('/gallery', requirePerm(PERMS.ORG_GALLERY_VIEW), asyncRoute(async (re
     const eventName = eventObj ? eventObj.name : (photo.eventId ? 'Archived event' : 'General / Booth capture');
     return {
       id: String(photo._id),
-      url: rawImageUrl || finalImageUrl,
+      url: finalImageUrl || rawImageUrl,
       imageUrl: finalImageUrl,
       finalImageUrl,
       compositeUrl: finalImageUrl,

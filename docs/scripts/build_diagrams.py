@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "docs" / "diagrams" / "src"
 MD_OUT = ROOT / "docs" / "DIAGRAMS.md"
 HTML_OUT = ROOT / "docs" / "diagrams" / "index.html"
+EDGE_COLORS_JS = ROOT / "docs" / "scripts" / "edge_colors.js"
 
 FAMILIES = {
     "01-ecosystem.mmd": ("1 · Ecosystem", "Whole-system component and trust maps."),
@@ -159,6 +160,24 @@ def build_markdown(diagrams: list[Diagram]) -> str:
     add("**Sequence diagrams** are ordered by real call order in the code, not by intent. Where the booth")
     add("retries or polls, the loop box states the interval used by the shipped apps.")
     add("")
+    add("**Connector colours** — the HTML viewer paints every connecting line by what it carries, so a")
+    add("payment arrow and a Mongo arrow are never the same colour. GitHub shows the same diagrams in the")
+    add("default Mermaid theme, where connectors stay neutral; open `docs/diagrams/index.html` to see them.")
+    add("")
+    add("| Colour | Category | Matched from |")
+    add("|---|---|---|")
+    add("| Blue | HTTP / API call | the label, or an endpoint-shaped node (`/api/booth/...`) |")
+    add("| Red | Auth, token, permission | `token`, `login`, `session`, `permission`, `role` |")
+    add("| Green | MongoDB / data | `MongoDB`, `collection`, `query`, `index`, `TTL index` |")
+    add("| Amber | S3 / photo media | `S3`, `upload`, `presign`, `photo`, `composite` |")
+    add("| Purple | Payment, price, plan | `payment`, `order`, `coupon`, `price`, `settlement` |")
+    add("| Orange | Printing | `print`, `spool`, `IPP`, `DNP`, `paper` |")
+    add("| Cyan | Async, webhook, TTL | `webhook`, `cron`, `retry`, `poll`, `expiry` |")
+    add("")
+    add("A connector with no label and no useful endpoint name cycles through the same palette in reading")
+    add("order, so dense diagrams still trace line by line. `docs/scripts/edge_colors.js` holds the rules —")
+    add("it is inlined into both HTML viewers at build time, so nothing is fetched at runtime.")
+    add("")
     add("---")
     add("")
 
@@ -247,6 +266,10 @@ HTML_TEMPLATE = """<!doctype html>
     -webkit-font-smoothing: antialiased;
   }
   code, pre { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+  /* Kept from the 2026-10-25 hand edit: mermaid draws some shapes with <path>, and a black
+     default fill keeps a missing fill from rendering as invisible in dark mode. Scoped
+     rules (edge lines, node shapes) still win, and the connector palette uses !important. */
+  path { fill: black; }
 
   .shell { display: grid; grid-template-columns: 310px minmax(0, 1fr); min-height: 100vh; }
   @media (max-width: 900px) { .shell { grid-template-columns: 1fr; } }
@@ -364,6 +387,7 @@ HTML_TEMPLATE = """<!doctype html>
         <span class="pill"><b>DFD</b> level 0, 1, 2</span>
         <span class="pill">source: <b>docs/diagrams/src/*.mmd</b></span>
       </div>
+      <div class="edge-key" data-edge-key></div>
     </header>
 
     <div class="banner" id="fallback" hidden>
@@ -381,8 +405,10 @@ HTML_TEMPLATE = """<!doctype html>
   </main>
 </div>
 
+<script>__EDGE_COLORS__</script>
 <script type="module">
   const CDN = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const EC = window.HappypixEdgeColors;
 
   // ── theme ──────────────────────────────────────────────────────────
   const root = document.documentElement;
@@ -393,6 +419,9 @@ HTML_TEMPLATE = """<!doctype html>
     localStorage.setItem('hp-diagram-theme', root.dataset.theme);
     location.reload();
   });
+
+  // ── connector colours ──────────────────────────────────────────────
+  if (EC) EC.mount();
 
   // ── wide mode ──────────────────────────────────────────────────────
   document.getElementById('expand').addEventListener('click', () => {
@@ -452,6 +481,8 @@ HTML_TEMPLATE = """<!doctype html>
       sequence: { useMaxWidth: true, wrap: true, width: 190 },
     });
     await mermaid.run({ querySelector: 'div.mermaid' });
+    // Colour the connecting lines: stroke only, geometry is untouched.
+    if (EC) EC.paintAll(document, { dark });
     document.getElementById('fallback').hidden = true;
   } catch (err) {
     console.error('Mermaid failed to load:', err);
@@ -466,6 +497,14 @@ HTML_TEMPLATE = """<!doctype html>
 </body>
 </html>
 """
+
+
+def read_edge_colors() -> str:
+    """The shared Mermaid connector palette (docs/scripts/edge_colors.js), inlined."""
+    if EDGE_COLORS_JS.exists():
+        return EDGE_COLORS_JS.read_text(encoding="utf-8")
+    print(f"warning: {EDGE_COLORS_JS} missing — connectors will be uncoloured", file=sys.stderr)
+    return ""
 
 
 def build_html(diagrams: list[Diagram], stamp: str) -> str:
@@ -509,6 +548,7 @@ def build_html(diagrams: list[Diagram], stamp: str) -> str:
 
     return (
         HTML_TEMPLATE.replace("__NAV__", "\n".join(nav))
+        .replace("__EDGE_COLORS__", read_edge_colors())
         .replace("__BODY__", "\n".join(body))
         .replace("__STAMP__", stamp)
     )

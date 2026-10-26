@@ -48,6 +48,10 @@ ROUTERS = [
     COUPONS, SETTINGS, SUPPORT, SHARE, DOWNLOADS,
 ]
 
+# Shared with build_diagrams.py: colours the connecting lines of every diagram.
+EDGE_COLORS_JS = os.path.join(HERE, 'edge_colors.js')
+EDGE_KEY = '<div class="edge-key" data-edge-key></div>'
+
 METHOD_SLUG = {'GET': 'get', 'POST': 'post', 'PUT': 'put', 'DELETE': 'delete', 'ALL': 'all'}
 
 
@@ -56,6 +60,15 @@ def e(value) -> str:
     if value is None:
         return ''
     return html.escape(str(value), quote=True)
+
+
+def read_edge_colors() -> str:
+    """The shared Mermaid connector palette, inlined so the page needs no network."""
+    if os.path.exists(EDGE_COLORS_JS):
+        with open(EDGE_COLORS_JS, encoding='utf-8') as fh:
+            return fh.read()
+    print('warning: docs/scripts/edge_colors.js missing — connectors will be uncoloured', file=sys.stderr)
+    return ''
 
 
 def chip(method: str) -> str:
@@ -270,6 +283,7 @@ def build():
   <p class="lede">One Express application (plus a small second one for the marketing site's landing APIs) serves five
   clients: the CRM, the platform console, the booth app on Windows/macOS, the Android client, and the public pages.
   Everything is multi-tenant: an <code>organizationId</code> travels from the token into almost every query.</p>
+  {EDGE_KEY}
 
   <div class="grid4">
     <div class="stat"><b>{total_eps}</b><span>endpoints across {len(ROUTERS) + 1} mounts</span></div>
@@ -312,6 +326,7 @@ def build():
   <p class="lede">Two files hold the interesting parts: <code>server.js</code> builds the global chain, and
   <code>middleware/auth.js</code> + <code>middleware/deviceAuth.js</code> hold the two authentication systems. Everything
   else is a per-route permission key.</p>
+  {EDGE_KEY}
 
   <h3 class="h3">2.1 The global chain, in order</h3>
   {mw_table(SERVER_CHAIN)}
@@ -430,6 +445,7 @@ def build():
   <h2>7 · The complete HappyPix flow</h2>
   <p class="lede">Eleven flows, starting with the whole business on one page and then narrowing to each mechanism.
   Read flow 0 first: everything after it is a detail of one of its steps.</p>
+  {EDGE_KEY}
   {flow_blocks}
 </section>''')
 
@@ -533,6 +549,8 @@ def build():
   <p class="footnote">Diagrams render locally with an inlined Mermaid build — no network required.</p>
 </aside>'''
 
+    edge_js = read_edge_colors()
+
     doc = f'''<!doctype html>
 <html lang="en" data-theme="dark">
 <head>
@@ -555,6 +573,7 @@ identical to <code>docs/DIAGRAMS.md</code>, which renders them as plain text.</d
 const DIAGRAMS = {diagram_json};
 </script>
 {mermaid_block}
+<script>{edge_js}</script>
 <script>{JS}</script>
 </body>
 </html>
@@ -824,6 +843,10 @@ JS = r"""
   const wideBtn = document.getElementById('wide');
   if (wideBtn) wideBtn.addEventListener('click', () => shell.classList.toggle('wide'));
 
+  // ── connector colours ─────────────────────────────────────────────────────
+  const EC = window.HappypixEdgeColors;
+  if (EC) EC.mount();
+
   // ── diagrams ──────────────────────────────────────────────────────────────
   let mermaidLib = null;
   let rendered = false;
@@ -873,6 +896,7 @@ JS = r"""
       });
       return;
     }
+    if (EC) EC.mount();
     lib.initialize({
       startOnLoad: false,
       securityLevel: 'loose',
@@ -890,6 +914,8 @@ JS = r"""
       try {
         const { svg } = await lib.render('d' + (++n) + '-' + key.replace(/[^a-z0-9-]/gi, ''), src);
         t.innerHTML = svg;
+        // Colour the connecting lines: stroke only, geometry is untouched.
+        if (EC) EC.paint(t.querySelector('svg'), { dark: root.getAttribute('data-theme') !== 'light' });
       } catch (err) {
         t.innerHTML = '<p class="diagram-error">Could not render this diagram: ' +
           String(err && err.message || err).replace(/[<>&]/g, '') +

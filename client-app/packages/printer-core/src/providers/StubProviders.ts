@@ -241,7 +241,27 @@ export class AirPrintProvider implements PrinterProvider {
     if (!job.bitmap) {
       return { success: false, error: 'AirPrint: Bitmap image data required' };
     }
-    // Forward to IPP destination if device address is known
+
+    // 1. Try native iOS AirPrint bridge if available
+    try {
+      // Safe dynamic require for React Native environment
+      const { NativeModules, Platform } = require('react-native');
+      if (Platform.OS === 'ios' && NativeModules?.AirPrintModule?.print) {
+        const result = await NativeModules.AirPrintModule.print({
+          bitmap: job.bitmap,
+          copies: job.copies || 1,
+          jobName: 'HappyPix Booth Print',
+        });
+        return {
+          success: true,
+          jobId: result?.jobId || `AIRPRINT-${Date.now()}`,
+        };
+      }
+    } catch {
+      // Fall through if not in React Native runtime
+    }
+
+    // 2. Fallback: Network IPP printer address
     if (this.connectedDevice?.address) {
       try {
         const res = await fetch(`http://${this.connectedDevice.address}:631/ipp/print`, {
@@ -256,7 +276,7 @@ export class AirPrintProvider implements PrinterProvider {
     }
     return {
       success: false,
-      error: 'AirPrint: No printer selected. Please connect via IPP or Print Bridge.',
+      error: 'AirPrint: No printer selected. Please connect via AirPrint or Print Bridge.',
     };
   }
 

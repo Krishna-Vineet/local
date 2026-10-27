@@ -30,6 +30,15 @@ declare global {
         printsTotal: number
         warning: string
       }>
+      canonProbe(ip?: string): Promise<{
+        connected: boolean
+        model: string | null
+        ip: string
+        port: number
+        batteryPct: number | null
+        error: string | null
+      }>
+      canonCapture(): Promise<{ success: boolean; error: string | null }>
       setKiosk(enabled: boolean): Promise<boolean>
       appInfo(): Promise<{ version: string; platform: string; packaged: boolean }>
     }

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, screen, session, shell } from 'electron'
 import path from 'node:path'
 import { clearDeviceIdentity, clearInstallation, getDeviceUuid, getInstallation, saveInstallation, type StoredInstallation } from './store.js'
 import { hardwareSnapshot, printJob, recordCapture, updateCameraReport, type CameraReport, type PrintRequest } from './hardware.js'
+import { canonCcapi } from './canonCcapi.js'
 import { getPreloadPath } from './pathResolver.js'
 import { isDev } from './util.js'
 import { startPrintServer, stopPrintServer } from './printServer.js'
@@ -67,6 +68,11 @@ function registerIpc(): void {
     mainWindow.setFullScreen(enabled)
     return mainWindow.isKiosk()
   })
+  ipcMain.handle('booth:canon-probe', (_event, ip?: string) => {
+    if (ip) canonCcapi.setIp(ip)
+    return canonCcapi.probe()
+  })
+  ipcMain.handle('booth:canon-capture', () => canonCcapi.triggerShutter())
   ipcMain.handle('booth:app-info', () => ({
     version: app.getVersion(),
     platform: process.platform,

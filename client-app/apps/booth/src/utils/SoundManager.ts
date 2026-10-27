@@ -23,8 +23,8 @@ class SoundManager {
   // Major interaction sound feedback
   static async play(name: 'click' | 'shutter' | 'beep' | 'success') {
     try {
-      // Native Android module
-      if (SimpleSound && Platform.OS === 'android') {
+      // Native module (Android & iOS)
+      if (SimpleSound) {
         SimpleSound.play(name);
         return;
       }

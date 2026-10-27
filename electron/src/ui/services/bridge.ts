@@ -104,4 +104,14 @@ export const bridge = {
     browserPrints += value.copies
     return { success: true, jobId: `PREVIEW-${Date.now()}` }
   },
+
+  async canonProbe(ip?: string) {
+    if (window.booth?.canonProbe) return window.booth.canonProbe(ip)
+    return { connected: false, model: null, ip: ip || '192.168.1.2', port: 8080, batteryPct: null, error: 'Canon probe available in Electron kiosk only' }
+  },
+
+  async canonCapture() {
+    if (window.booth?.canonCapture) return window.booth.canonCapture()
+    return { success: false, error: 'Canon capture available in Electron kiosk only' }
+  },
 }

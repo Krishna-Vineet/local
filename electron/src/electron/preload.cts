@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('booth', {
   reportCamera: (value: unknown) => ipcRenderer.invoke('booth:camera-report', value),
   recordCapture: () => ipcRenderer.invoke('booth:record-capture'),
   print: (value: unknown) => ipcRenderer.invoke('booth:print', value),
+  canonProbe: (ip?: string) => ipcRenderer.invoke('booth:canon-probe', ip),
+  canonCapture: () => ipcRenderer.invoke('booth:canon-capture'),
   setKiosk: (enabled: boolean) => ipcRenderer.invoke('booth:set-kiosk', enabled),
   appInfo: () => ipcRenderer.invoke('booth:app-info'),
 })

@@ -123,7 +123,15 @@ export class IPPProvider implements PrinterProvider {
       const bytes = decodeBase64ToUint8(base64Data);
 
       // Build IPP Print-Job request
-      const ippRequest = this.buildIPPPrintRequest(bytes, job.copies || 1, job.paperSize || '4x6');
+      const isPng = job.bitmap.startsWith('data:image/png');
+      const printerUri = `ipp://${address}:631/ipp/print`;
+      const ippRequest = this.buildIPPPrintRequest(
+        bytes,
+        job.copies || 1,
+        job.paperSize || '4x6',
+        printerUri,
+        isPng,
+      );
 
       const res = await fetch(
         `http://${address}:631/ipp/print`,
@@ -203,21 +211,76 @@ export class IPPProvider implements PrinterProvider {
   }
 
   /**
-   * Build IPP Print-Job request with embedded PNG image data
+   * Helper to encode an IPP string attribute (RFC 8011)
+   */
+  private encodeIppString(tag: number, name: string, value: string): number[] {
+    const enc = new TextEncoder();
+    const nameBytes = Array.from(enc.encode(name));
+    const valBytes = Array.from(enc.encode(value));
+    return [
+      tag,
+      (nameBytes.length >> 8) & 0xff,
+      nameBytes.length & 0xff,
+      ...nameBytes,
+      (valBytes.length >> 8) & 0xff,
+      valBytes.length & 0xff,
+      ...valBytes,
+    ];
+  }
+
+  /**
+   * Helper to encode an IPP 32-bit signed integer attribute (tag 0x21)
+   */
+  private encodeIppInteger(name: string, value: number): number[] {
+    const enc = new TextEncoder();
+    const nameBytes = Array.from(enc.encode(name));
+    return [
+      0x21, // integer tag
+      (nameBytes.length >> 8) & 0xff,
+      nameBytes.length & 0xff,
+      ...nameBytes,
+      0x00, 0x04, // 4-byte length
+      (value >> 24) & 0xff,
+      (value >> 16) & 0xff,
+      (value >> 8) & 0xff,
+      value & 0xff,
+    ];
+  }
+
+  /**
+   * Build IPP Print-Job request compliant with RFC 8011
    */
   private buildIPPPrintRequest(
     imageData: Uint8Array,
     copies: number,
     _paperSize: string,
+    printerUri: string,
+    isPng: boolean,
   ): Uint8Array {
-    const encoder = new TextEncoder();
-    const header = new Uint8Array([
+    const opAttributes: number[] = [
       0x01, 0x01,             // IPP 1.1
-      0x00, 0x02,             // Print-Job operation
-      0x00, 0x00, 0x00, 0x01, // Request ID
-      0x01,                   // operation-attributes group
-    ]);
+      0x00, 0x02,             // Print-Job operation (0x0002)
+      0x00, 0x00, 0x00, 0x01, // Request ID: 1
+      0x01,                   // Begin Operation Attributes group (tag 0x01)
+      // 0x47 = attributes-charset
+      ...this.encodeIppString(0x47, 'attributes-charset', 'utf-8'),
+      // 0x48 = attributes-natural-language
+      ...this.encodeIppString(0x48, 'attributes-natural-language', 'en-us'),
+      // 0x45 = uri (printer-uri)
+      ...this.encodeIppString(0x45, 'printer-uri', printerUri),
+      // 0x42 = nameWithoutLanguage (job-name)
+      ...this.encodeIppString(0x42, 'job-name', 'HappyPix Print'),
+      // 0x49 = mimeMediaType (document-format)
+      ...this.encodeIppString(0x49, 'document-format', isPng ? 'image/png' : 'image/jpeg'),
+      // Begin Job Attributes group (tag 0x02)
+      0x02,
+      // copies (integer)
+      ...this.encodeIppInteger('copies', Math.max(1, copies)),
+      // End-of-attributes tag (tag 0x03)
+      0x03,
+    ];
 
+    const header = new Uint8Array(opAttributes);
     const combined = new Uint8Array(header.length + imageData.length);
     combined.set(header, 0);
     combined.set(imageData, header.length);

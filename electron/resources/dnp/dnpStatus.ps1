@@ -6,18 +6,28 @@ $ErrorActionPreference = 'SilentlyContinue'
 
 # Resolve DLL path dynamically relative to script directory
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$dllPath = Join-Path $scriptDir "CyStat64.dll"
+
+# Select appropriate DLL: ARM64 vs x64 (prefer universal cspstat64, fallback to CyStat64)
+$isArm64 = ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64')
+$dllName = if ($isArm64 -and (Test-Path (Join-Path $scriptDir "cspstatArm64.dll"))) {
+    "cspstatArm64.dll"
+} elseif (Test-Path (Join-Path $scriptDir "cspstat64.dll")) {
+    "cspstat64.dll"
+} else {
+    "CyStat64.dll"
+}
+$dllPath = Join-Path $scriptDir $dllName
 
 if (-not (Test-Path $dllPath)) {
     @{
         success = $false
         connected = $false
-        error = "CyStat64.dll not found at $dllPath"
+        error = "DNP/Citizen status DLL not found at $dllPath"
     } | ConvertTo-Json -Compress
     exit 0
 }
 
-# Define C# P/Invoke wrapper for CyStat64.dll
+# Define C# P/Invoke wrapper for DNP/Citizen Native Status API
 $typeDef = @"
 using System;
 using System.Runtime.InteropServices;
@@ -45,19 +55,24 @@ try {
         Add-Type -TypeDefinition $typeDef -ErrorAction Stop
     }
 } catch {
-    # If type definition fails, return clean JSON
     @{
         success = $false
         connected = $false
-        error = "Could not bind CyStat64.dll: $($_.Exception.Message)"
+        error = "Could not bind $($dllName) - $($_.Exception.Message)"
     } | ConvertTo-Json -Compress
     exit 0
 }
 
-# Determine candidate printer names
+# Determine candidate printer names covering all major DNP & Citizen booth models
 $candidates = @()
 if ($PrinterName) { $candidates += $PrinterName }
-$candidates += @("DS-RX1", "DNP DS-RX1", "DS-RX1HS", "DNP DS-RX1HS", "DS620", "DNP DS620")
+$candidates += @(
+    "DS-RX1", "DNP DS-RX1", "DS-RX1HS", "DNP DS-RX1HS",
+    "DS620", "DNP DS620", "DS620A", "DNP DS620A",
+    "DS820", "DNP DS820", "DP-DS820",
+    "QW410", "DNP QW410", "DP-QW410",
+    "Citizen CX-02", "Citizen CY-02", "Citizen CY-01"
+)
 
 $portNum = -1
 $activePrinter = ""

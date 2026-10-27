@@ -49,11 +49,18 @@ export function CameraScreen({ template, onComplete }: {
   const [running, setRunning] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [photos, setPhotos] = useState<CapturedPhoto[]>([])
+  const [isCanonCcapi, setIsCanonCcapi] = useState(false)
   const totalShots = Math.max(3, Math.min(10, template.layout.slots * 2))
 
   useEffect(() => {
     let active = true
     async function connect() {
+      // 1. Probe for Canon CCAPI camera over local Wi-Fi
+      const ccapi = await bridge.canonProbe().catch(() => null)
+      if (ccapi?.connected && active) {
+        setIsCanonCcapi(true)
+      }
+
       try {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('Media camera API is not available on this machine.')
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
@@ -66,17 +73,38 @@ export function CameraScreen({ template, onComplete }: {
           videoRef.current.srcObject = stream
           await videoRef.current.play()
         }
-        const label = stream.getVideoTracks()[0]?.label || 'Connected camera'
+        const label = ccapi?.connected
+          ? `${ccapi.model || 'Canon EOS'} (Wi-Fi CCAPI)`
+          : stream.getVideoTracks()[0]?.label || 'Connected camera'
         setCameraName(label)
         setHasLiveStream(true)
         setCameraReady(true)
-        await bridge.reportCamera({ connected: true, working: true, batteryPct: null, model: label, error: null })
+        await bridge.reportCamera({
+          connected: true,
+          working: true,
+          batteryPct: ccapi?.batteryPct ?? null,
+          model: label,
+          error: null,
+        })
       } catch (reason) {
-        const message = reason instanceof Error ? reason.message : 'Camera could not be opened.'
-        setError(`${message} Simulator captures remain available.`)
-        setCameraName('Canon adapter simulator')
-        setCameraReady(true)
-        await bridge.reportCamera({ connected: false, working: false, batteryPct: null, model: null, error: message })
+        if (ccapi?.connected && active) {
+          setCameraName(`${ccapi.model || 'Canon EOS'} (Wi-Fi CCAPI)`)
+          setCameraReady(true)
+          setError(null)
+          await bridge.reportCamera({
+            connected: true,
+            working: true,
+            batteryPct: ccapi.batteryPct ?? null,
+            model: ccapi.model,
+            error: null,
+          })
+        } else {
+          const message = reason instanceof Error ? reason.message : 'Camera could not be opened.'
+          setError(`${message} Simulator captures remain available.`)
+          setCameraName('Canon adapter simulator')
+          setCameraReady(true)
+          await bridge.reportCamera({ connected: false, working: false, batteryPct: null, model: null, error: message })
+        }
       }
     }
     void connect()
@@ -117,7 +145,10 @@ export function CameraScreen({ template, onComplete }: {
       sound.shutter()
       const photo = captureFrame(shot)
       photosRef.current = [...photosRef.current, photo]
-      setPhotos(photosRef.current)
+      setPhotos([...photosRef.current])
+      if (isCanonCcapi) {
+        void bridge.canonCapture().catch(() => {})
+      }
       void bridge.recordCapture()
       await wait(450)
       setCountdown(null)

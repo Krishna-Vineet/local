@@ -3,12 +3,12 @@ import {
   View,
   StyleSheet,
   useWindowDimensions,
-  SafeAreaView,
   ViewStyle,
   StatusBar,
   Text,
   TouchableOpacity,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '../context/ThemeContext';
 
 /*
@@ -143,21 +143,26 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
   contentStyle,
 }) => {
   const { theme, mode } = useAppTheme();
-  const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
+  const insets = useSafeAreaInsets();
 
   return (
-    <SafeAreaView
+    <View
       style={[
         styles.safeArea,
-        { backgroundColor: theme.colors.background },
+        {
+          backgroundColor: theme.colors.background,
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
         style,
       ]}
     >
       <StatusBar
         barStyle={mode === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={theme.colors.background}
-        hidden={false}
+        hidden={true}
       />
       <View
         style={[
@@ -169,7 +174,7 @@ export const ScreenContainer: React.FC<ScreenContainerProps> = ({
             recoverable screen instead of closing the app. */}
         <ScreenErrorBoundary>{children}</ScreenErrorBoundary>
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 

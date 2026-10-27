@@ -58,6 +58,13 @@ export const KioskModule = {
 
   /** Keep screen always on (prevents sleep during booth session) */
   async keepScreenOn(enabled: boolean): Promise<void> {
+    if (Platform.OS === 'ios') {
+      const { IdleTimer } = NativeModules;
+      if (IdleTimer?.setDisabled) {
+        IdleTimer.setDisabled(enabled);
+        return;
+      }
+    }
     return NativeKiosk?.keepScreenOn(enabled);
   },
 };

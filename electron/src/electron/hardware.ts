@@ -207,7 +207,11 @@ export async function hardwareSnapshot() {
     totalMemMb: Math.round(os.totalmem() / (1024 * 1024)),
     camera: {
       ...cameraReport,
-      provider: cameraReport.model ? 'media-device' : 'canon-sdk-pending',
+      provider: cameraReport.model?.includes('CCAPI')
+        ? 'canon-ccapi-wifi'
+        : cameraReport.model
+          ? 'media-device'
+          : 'canon-sdk-pending',
       shutterCount: (cameraReport as any).shutterCount ?? counters.shutterCount,
       orientation: (cameraReport as any).orientation ?? null,
       quality: (cameraReport as any).quality ?? 'high',

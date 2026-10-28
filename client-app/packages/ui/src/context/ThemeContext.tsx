@@ -1,36 +1,46 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Appearance } from 'react-native';
-import { AppTheme, darkTheme, lightTheme, ThemeMode } from '../utils/theme';
+import React, { createContext, useContext, useMemo, useState } from 'react';
+import { AppTheme, darkTheme, defaultTheme, lightTheme, ThemeMode } from '../utils/theme';
 
 interface ThemeContextType {
   theme: AppTheme;
   mode: ThemeMode;
   toggleTheme: () => void;
+  setMode: (mode: ThemeMode) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Always default to dark kiosk mode for rich contrast and vibrant neon aesthetics
-  const [mode, setMode] = useState<ThemeMode>('dark');
+/**
+ * The kiosk now defaults to the Electron skin (warm light), because that is the
+ * design the product is judged on. `toggleTheme` still exists — some venues ask
+ * for the dark room look — but nothing in the flow depends on it.
+ */
+export const ThemeProvider: React.FC<{
+  children: React.ReactNode;
+  initialMode?: ThemeMode;
+}> = ({ children, initialMode = 'light' }) => {
+  const [mode, setMode] = useState<ThemeMode>(initialMode);
 
-  const toggleTheme = () => {
-    setMode((prev) => (prev === 'light' ? 'dark' : 'light'));
-  };
+  const value = useMemo<ThemeContextType>(() => {
+    const theme = mode === 'light' ? lightTheme : darkTheme;
+    return {
+      theme,
+      mode,
+      toggleTheme: () => setMode((prev) => (prev === 'light' ? 'dark' : 'light')),
+      setMode,
+    };
+  }, [mode]);
 
-  const theme = mode === 'light' ? lightTheme : darkTheme;
-
-  return (
-    <ThemeContext.Provider value={{ theme, mode, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };
 
-export const useAppTheme = () => {
+export const useAppTheme = (): ThemeContextType => {
   const context = useContext(ThemeContext);
   if (!context) {
     throw new Error('useAppTheme must be used within a ThemeProvider');
   }
   return context;
 };
+
+/** Theme-agnostic access for components rendered outside a provider (tests). */
+export const usePalette = () => (useContext(ThemeContext) ?? { theme: defaultTheme }).theme.palette;

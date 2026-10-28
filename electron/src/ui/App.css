@@ -80,6 +80,32 @@
 .location-note { min-height: 32px; display: flex; align-items: center; gap: 8px; color: var(--faint); font-size: 11px; }
 .form-error, .coupon-error { margin: 12px 0; padding: 10px 12px; display: flex; align-items: flex-start; gap: 8px; border: 1px solid #f4cbd2; border-radius: 11px; color: #a9364a; background: var(--red-soft); font-size: 12px; }
 .login-form > .button { width: 100%; margin-top: 13px; }
+
+/* ── hardware telemetry dock (pairing screen) ─────────────────────────────
+ * Carried over from the tablet build: an operator should never have to sign in
+ * to discover the printer is offline. Sits under the form, stays quiet when
+ * everything is green, and only one row at a time shows the details.
+ */
+.login-stack { width: min(100%, 470px); display: grid; gap: 16px; }
+.login-stack .login-form { width: 100%; }
+.hw-dock { padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-soft); box-shadow: var(--shadow-soft); }
+.hw-dock header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.hw-dock-eyebrow { font-size: 10px; font-weight: 900; letter-spacing: .17em; color: var(--pink-deep); }
+.hw-dock-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--surface-muted); color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .02em; }
+.hw-dock-pill.is-ok { background: var(--green-soft); color: var(--green); }
+.hw-dock-pill.is-warn { background: var(--amber-soft); color: var(--amber); }
+.hw-dock ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.hw-dock li { display: grid; grid-template-columns: 26px auto minmax(0, 1fr); align-items: center; gap: 9px; font-size: 12px; color: var(--ink); }
+.hw-dock-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px; background: var(--surface-muted); color: var(--violet); }
+.hw-dock li.is-warn .hw-dock-icon { background: var(--amber-soft); color: var(--amber); }
+.hw-dock-label { font-weight: 800; }
+.hw-dock-detail { justify-self: end; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; color: var(--green); }
+.hw-dock li.is-warn .hw-dock-detail { color: var(--amber); }
+.hw-dock footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--line); font-size: 10px; color: var(--faint); }
+.hw-dock footer button { padding: 0; border: 0; background: none; color: var(--violet); font-size: 10px; font-weight: 850; letter-spacing: .04em; cursor: pointer; }
+.hw-dock footer button:hover { text-decoration: underline; }
+.hw-dock footer button:focus-visible { outline: 2px solid #df6aa2; outline-offset: 3px; border-radius: 6px; }
+@media (max-height: 760px) { .hw-dock footer { display: none; } }
 .demo-note { margin-top: 16px; padding: 11px 14px; display: flex; justify-content: space-between; gap: 12px; border-radius: 11px; color: var(--muted); background: #f7f2fa; font-size: 11px; }
 
 /* Waiting and start */
@@ -473,45 +499,101 @@
 .template-slot.is-active:after { content: 'Slot ' attr(data-slot); position: absolute; top: -18px; left: 50%; transform: translateX(-50%); background: var(--violet); color: #fff; font-size: 8px; font-weight: 900; letter-spacing: .08em; padding: 2px 6px; border-radius: 999px; white-space: nowrap; }
 
 /* Issue modal — electron parity with Android OrderSuccessScreen */
+/* ── guest support modal ──────────────────────────────────────────────────
+ * Was cloned from the tablet app's dark sheet (#12121b / violet chips), which
+ * sat on top of a white kiosk like a different product. It now uses the same
+ * light surface, radii and pink accents as every other Electron screen.
+ */
 .issue-modal-overlay {
   position: fixed; inset: 0; z-index: 1200;
   display: grid; place-items: center;
-  padding: 20px;
-  background: rgba(10, 8, 16, 0.88);
-  backdrop-filter: blur(8px);
+  padding: 22px;
+  background: rgba(40, 22, 55, .42);
+  backdrop-filter: blur(6px);
+  animation: issue-fade .16s ease-out;
 }
+@keyframes issue-fade { from { opacity: 0; } to { opacity: 1; } }
 .issue-modal-card {
-  width: min(100%, 560px); max-height: 90vh; overflow: auto;
-  background: #12121b;
-  border: 1.5px solid #28283a;
-  border-radius: 24px;
-  padding: 24px;
-  box-shadow: 0 30px 90px rgba(0,0,0,.5);
-  color: #fff;
+  width: min(100%, 600px); max-height: min(92vh, 760px); overflow: auto;
+  padding: 22px 24px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  animation: issue-rise .2s cubic-bezier(.2, .8, .3, 1);
 }
-.issue-modal-header { display: flex; justify-content: space-between; align-items: center; }
-.issue-modal-header h2 { margin: 0; font-family: 'Fredoka Variable'; font-size: 19px; font-weight: 900; color: #fff; }
-.issue-modal-close { width: 36px; height: 36px; border-radius: 50%; border: 1px solid #2a2a3c; background: #181824; color: #a1a1aa; cursor: pointer; display: grid; place-items: center; }
-.issue-modal-sub { margin: 6px 0 16px; color: #71717a; font-size: 12px; }
-.issue-cat-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
-.cat-chip { min-width: 120px; flex: 1 1 45%; padding: 10px 12px; border-radius: 12px; border: 1px solid #2a2a3c; background: #181824; color: #a1a1aa; text-align: left; cursor: pointer; transition: border .15s, background .15s; }
-.cat-chip b { display: block; font-size: 12px; font-weight: 800; color: #a1a1aa; }
-.cat-chip small { display: block; font-size: 11px; color: #71717a; margin-top: 2px; }
-.cat-chip.active { border-color: #8b5cf6; background: rgba(139,92,246,.18); }
-.cat-chip.active b { color: #fff; }
-.issue-label { display: grid; gap: 6px; margin-top: 10px; color: #8b5cf6; font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+@keyframes issue-rise { from { transform: translateY(14px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
+.issue-modal-kicker { display: inline-flex; align-items: center; gap: 7px; color: var(--pink-deep); font-size: 10px; font-weight: 900; letter-spacing: .16em; }
+.issue-modal-kicker svg { flex: none; }
+.issue-modal-header { display: flex; margin-top: 8px; align-items: center; justify-content: space-between; gap: 12px; }
+.issue-modal-header h2 { margin: 0; font-family: 'Fredoka Variable'; font-size: 24px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+.issue-modal-close {
+  width: 34px; height: 34px; flex: none; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--surface-soft); color: var(--muted);
+  font-size: 13px; cursor: pointer; display: grid; place-items: center;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.issue-modal-close:hover { background: var(--pink-soft); border-color: #f6c9de; color: var(--pink-deep); }
+.issue-modal-sub { margin: 6px 0 16px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.issue-cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 4px; }
+.cat-chip {
+  padding: 11px 13px; border-radius: 16px; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface-soft); color: var(--muted);
+  transition: border-color .15s, background .15s, box-shadow .15s, transform .12s;
+}
+.cat-chip:hover { border-color: #ead3e4; background: #fff; }
+.cat-chip:active { transform: translateY(1px); }
+.cat-chip { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: start; gap: 9px; }
+.cat-chip-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: var(--surface-muted); color: var(--violet); }
+.cat-chip.active .cat-chip-icon { background: #fff; color: var(--pink-deep); }
+.cat-chip b { display: block; font-size: 12.5px; font-weight: 850; color: var(--ink); }
+.cat-chip small { display: block; margin-top: 3px; font-size: 11px; line-height: 1.35; color: var(--faint); }
+.cat-chip.active { border-color: #f0a6c8; background: var(--pink-soft); box-shadow: 0 6px 18px rgba(216, 53, 133, .12); }
+.cat-chip.active b { color: var(--pink-deep); }
+.cat-chip.active small { color: #a8517a; }
+.issue-label {
+  display: grid; gap: 7px; margin-top: 14px;
+  color: #655570; font-size: 10px; font-weight: 900; letter-spacing: .13em;
+}
 .issue-label input, .issue-label textarea {
-  width: 100%; padding: 11px 12px; border-radius: 12px; border: 1.5px solid #2a2a3c; background: #181824; color: #fff; font-size: 13px; font-family: inherit; outline: none;
+  width: 100%; padding: 0 15px; height: 50px;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: var(--surface-soft); color: var(--ink);
+  font-family: inherit; font-size: 13.5px; font-weight: 600; outline: none;
+  user-select: text; transition: border-color .15s, box-shadow .15s;
 }
-.issue-label textarea { resize: vertical; min-height: 70px; }
-.issue-meta { margin-top: 10px; background: rgba(255,255,255,.04); border-radius: 8px; padding: 8px; text-align: center; color: #52525b; font-size: 10px; }
-.issue-error { margin-top: 10px; color: #fda4af; font-size: 12px; text-align: center; }
-.ticket-success { text-align: center; padding: 18px 0; }
-.ticket-success-circle { width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 50%; background: #22c55e; display: grid; place-items: center; color: #fff; }
-.ticket-success h3 { margin: 6px 0; font-size: 18px; font-weight: 900; }
-.ticket-ref { color: #a78bfa; font-weight: 800; font-size: 13px; }
+.issue-label textarea { height: auto; min-height: 84px; padding: 12px 15px; line-height: 1.5; resize: vertical; }
+.issue-label input:focus, .issue-label textarea:focus { border-color: #df6aa2; box-shadow: 0 0 0 4px rgba(238, 76, 150, .08); background: #fff; }
+.issue-label input::placeholder, .issue-label textarea::placeholder { color: var(--faint); font-weight: 600; }
+.issue-meta {
+  margin-top: 14px; padding: 9px 12px; border-radius: 12px;
+  background: var(--violet-soft); color: #6b5a86;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .02em; text-align: center;
+}
+.issue-error {
+  margin-top: 10px; padding: 9px 12px; border-radius: 12px;
+  background: var(--red-soft); border: 1px solid #f4cbd2;
+  color: #a9364a; font-size: 12px; font-weight: 700; text-align: center;
+}
+.ticket-success { text-align: center; padding: 8px 0 4px; }
+.ticket-success-circle {
+  width: 62px; height: 62px; margin: 0 auto 14px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(140deg, #37b184, var(--green));
+  box-shadow: 0 14px 30px rgba(33, 149, 109, .28);
+}
+.ticket-success h3 { margin: 0 0 4px; font-family: 'Fredoka Variable'; font-size: 21px; font-weight: 600; color: var(--ink); }
+.ticket-success p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.ticket-ref { color: var(--pink-deep) !important; font-weight: 850; font-size: 13px; letter-spacing: .01em; }
+.ticket-success .button { width: 100%; margin-top: 16px; }
 .raise-issue-btn {
-  margin-top: 12px; width: 100%;
-  padding: 10px 12px; border: none; background: transparent; color: #f59e0b; font-size: 12px; font-weight: 700; cursor: pointer; text-align: center; text-decoration: underline; text-underline-offset: 3px;
+  margin-top: 12px; width: 100%; padding: 10px 12px;
+  border: 0; background: transparent; color: var(--pink-deep);
+  font-size: 12px; font-weight: 850; cursor: pointer; text-align: center;
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(213, 45, 123, .38);
 }
+.raise-issue-btn:hover { text-decoration-color: var(--pink-deep); }
+@media (max-width: 620px) { .issue-cat-grid { grid-template-columns: 1fr; } .issue-modal-card { padding: 18px; border-radius: 22px; } }
 .retry-print-btn { width: 100%; margin-top: 10px; }

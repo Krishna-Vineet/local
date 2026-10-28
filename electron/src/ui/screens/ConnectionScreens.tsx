@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { BoothSnapshot } from '../types'
 import { Brand } from '../components/Brand'
 import { Icon } from '../components/Icon'
+import { HardwareDock } from '../components/HardwareDock'
 import { PrimaryButton } from '../components/Controls'
 import { ScreenShell } from '../components/ScreenShell'
 
@@ -62,6 +63,7 @@ export function LoginScreen({
         <div className="story-film" aria-hidden="true"><span/><span/><span/><span/></div>
       </section>
       <section className="login-panel">
+        <div className="login-stack">
         <form onSubmit={submit} className="login-form">
           <div className="login-mark"><Icon name="sparkles"/><span>BOOTH PAIRING</span></div>
           <h2>Connect this booth</h2>
@@ -73,6 +75,8 @@ export function LoginScreen({
           {error && <div className="form-error"><Icon name="info" size={18}/>{error}</div>}
           <PrimaryButton type="submit" disabled={busy}>{busy ? 'Pairing booth…' : 'Pair & continue'}<Icon name="arrow-right" size={20}/></PrimaryButton>
         </form>
+        <HardwareDock online={navigator.onLine} locating={locating}/>
+        </div>
       </section>
     </main>
   )

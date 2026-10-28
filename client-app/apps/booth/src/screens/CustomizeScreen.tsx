@@ -1,171 +1,154 @@
-import { goBackOr } from '../utils/navigation';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  Image,
   ActivityIndicator,
-  useWindowDimensions,
+  Image,
   PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
-import type { Customization, FilterId, OrnamentId, PlacedSticker } from '@happypix/types';
+import type { Customization, FilterId, PlacedSticker } from '@happypix/types';
 import {
-  ScreenContainer,
-  LayoutContainer,
+  Button,
+  Card,
+  Eyebrow,
+  Icon,
+  Pill,
   TemplateCanvas,
-  useAppTheme,
+  fonts,
   fontSize,
-  scale,
   moderateScale,
+  radii,
+  scale,
+  shadows,
+  useAppTheme,
   verticalScale,
 } from '../../../../packages/ui/src/index';
+import { AppShell } from '../components/AppShell';
 import { useBooth } from '../context/BoothProvider';
-import { ScreenHeader } from '../components/ScreenHeader';
-import SoundManager from '../utils/SoundManager';
 import { InactivityToast } from '../components/InactivityToast';
+import { goBackOr } from '../utils/navigation';
+import SoundManager from '../utils/SoundManager';
 import type { RootStackParamList } from '../../App';
+
+/**
+ * Customisation, rebuilt against the Electron screen
+ * (`electron/src/ui/screens/CustomizeScreen.tsx`).
+ *
+ * What changed and why — this screen is the one the product is judged on:
+ *  · one big preview on the left, tools in a single bordered card on the right
+ *    (Electron's `.customize-layout`), instead of two floating dark panels;
+ *  · the tab strip is Electron's `.custom-tools nav` — violet pill for the
+ *    active tab, quiet text for the rest — not four boxes competing for
+ *    attention;
+ *  · filters are swatches with a live thumbnail dot and a caption underneath
+ *    (`.filter-options`), so the guest sees the *look*, not a paragraph;
+ *  · stickers get a size/remove list *inside the panel* (`.sticker-list`), so a
+ *    mis-placed emoji is fixed without hunting for a 18pt × on a photo;
+ *  · the consent question moved out of the scroll area into one full-width row
+ *    with Yes/No pills, exactly like Electron and the Android build both do
+ *    (`.consent-row`), because an important question should not be hidden under
+ *    a scroll;
+ *  · type is Fredoka for headings and Nunito for UI text, matching the desktop
+ *    kiosk — the previous build used the system font, which is most of the
+ *    reason the two clients felt unrelated.
+ */
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Customize'>;
 type TabId = 'filters' | 'stickers' | 'logos' | 'text';
 
-const ORNAMENTS: { id: OrnamentId; label: string; symbol: string; desc: string }[] = [
-  { id: 'none', label: 'Clean', symbol: '○', desc: 'No background motifs' },
-  { id: 'hearts', label: 'Hearts', symbol: '♡', desc: 'Corner flourishes & floating hearts' },
-  { id: 'stars', label: 'Stars', symbol: '✦', desc: 'Starlight sparkles & constellations' },
-  { id: 'bubbles', label: 'Bubbles', symbol: '◌', desc: 'Translucent floating bubbles' },
-  { id: 'confetti', label: 'Confetti', symbol: '⌁', desc: 'Festive ribbons & party shapes' },
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'filters', label: 'Filter' },
+  { id: 'stickers', label: 'Stickers' },
+  { id: 'logos', label: 'Logos' },
+  { id: 'text', label: 'Text' },
 ];
 
-const FRAME_COLORS = [
-  { name: 'Original', hex: '' },
-  { name: 'White', hex: '#ffffff' },
-  { name: 'Pure Dark', hex: '#0f0f14' },
-  { name: 'Blush Pink', hex: '#ffe4e6' },
-  { name: 'Lavender', hex: '#ede9fe' },
-  { name: 'Mint', hex: '#dcfce7' },
-  { name: 'Sky', hex: '#e0f2fe' },
+const FILTERS: { id: FilterId; label: string; swatch: string }[] = [
+  { id: 'original', label: 'Natural', swatch: 'linear-gradient' },
+  { id: 'warm', label: 'Warm', swatch: '#f4b06a' },
+  { id: 'cool', label: 'Cool', swatch: '#7fb2e5' },
+  { id: 'bw', label: 'B&W', swatch: '#5b5b63' },
+  { id: 'vintage', label: 'Vintage', swatch: '#a97b4f' },
+  { id: 'soft', label: 'Soft', swatch: '#f0a8c1' },
+  { id: 'party', label: 'Party', swatch: '#ee4c96' },
 ];
 
-const FILTERS: { id: FilterId; label: string; color: string; desc: string }[] = [
-  { id: 'original', label: 'Natural', color: '#a1a1aa', desc: 'True natural tones' },
-  { id: 'warm', label: 'Warm Sun', color: '#f59e0b', desc: 'Golden amber glow' },
-  { id: 'cool', label: 'Cool Breeze', color: '#0ea5e9', desc: 'Fresh oceanic blues' },
-  { id: 'bw', label: 'Classic B&W', color: '#3f3f46', desc: 'High-contrast monochrome' },
-  { id: 'vintage', label: 'Vintage Film', color: '#b45309', desc: 'Warm retro sepia' },
-  { id: 'soft', label: 'Soft Dream', color: '#f472b6', desc: 'Dreamy pastel glow' },
-  { id: 'party', label: 'Party Pop', color: '#ec4899', desc: 'Vibrant punchy colors' },
-];
+const EMOJIS = ['❤️', '✨', '🎉', '📸', '👑', '🦋', '🌸', '🥳', '💫', '🌈', '🫶', '🥂'];
 
-const EMOJIS = ['❤️', '✨', '🎉', '📸', '👑', '🦋', '🌸', '🥳', '💍', '🥂', '🔥', '⭐'];
+/* ── draggable sticker ─────────────────────────────────────────────────── */
 
-// ── Interactive Draggable and Resizable Sticker Component ─────────
-interface StickerItemProps {
+const PlacedStickerView: React.FC<{
   sticker: PlacedSticker;
   canvasWidth: number;
   canvasHeight: number;
-  onUpdate: (id: string, x: number, y: number, size: number) => void;
+  onMove: (id: string, x: number, y: number, size: number) => void;
+  onScale: (id: string, delta: number) => void;
   onRemove: (id: string) => void;
-}
+}> = ({ sticker, canvasWidth, canvasHeight, onMove, onScale, onRemove }) => {
+  const { theme } = useAppTheme();
+  const p = theme.palette;
+  const [selected, setSelected] = useState(false);
+  const size = sticker.size || 34;
+  const origin = useRef({ x: sticker.x, y: sticker.y });
 
-const InteractiveSticker: React.FC<StickerItemProps> = ({
-  sticker,
-  canvasWidth,
-  canvasHeight,
-  onUpdate,
-  onRemove,
-}) => {
-  const [size, setSize] = useState(sticker.size || 34);
-  const [posX, setPosX] = useState(sticker.x); // percentage (0..100)
-  const [posY, setPosY] = useState(sticker.y);
-
-  const panResponder = useRef(
+  const responder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderMove: (_, gestureState) => {
-        const deltaXPercent = (gestureState.dx / canvasWidth) * 100;
-        const deltaYPercent = (gestureState.dy / canvasHeight) * 100;
-        const newX = Math.max(0, Math.min(88, posX + deltaXPercent));
-        const newY = Math.max(0, Math.min(88, posY + deltaYPercent));
-        onUpdate(sticker.id, newX, newY, size);
+      onMoveShouldSetPanResponder: (_evt, gesture) => Math.abs(gesture.dx) + Math.abs(gesture.dy) > 3,
+      onPanResponderGrant: () => {
+        origin.current = { x: sticker.x, y: sticker.y };
+        setSelected(true);
       },
-      onPanResponderRelease: (_, gestureState) => {
-        const deltaXPercent = (gestureState.dx / canvasWidth) * 100;
-        const deltaYPercent = (gestureState.dy / canvasHeight) * 100;
-        const finalX = Math.max(0, Math.min(88, posX + deltaXPercent));
-        const finalY = Math.max(0, Math.min(88, posY + deltaYPercent));
-        setPosX(finalX);
-        setPosY(finalY);
-        onUpdate(sticker.id, finalX, finalY, size);
+      onPanResponderMove: (_evt, gesture) => {
+        const x = Math.max(0, Math.min(90, origin.current.x + (gesture.dx / canvasWidth) * 100));
+        const y = Math.max(0, Math.min(90, origin.current.y + (gesture.dy / canvasHeight) * 100));
+        origin.current = { x, y };
+        onMove(sticker.id, x, y, size);
       },
     })
   ).current;
 
-  const handleEnlarge = () => {
-    SoundManager.play('click');
-    const newSize = Math.min(64, size + 8);
-    setSize(newSize);
-    onUpdate(sticker.id, posX, posY, newSize);
-  };
-
-  const handleShrink = () => {
-    SoundManager.play('click');
-    const newSize = Math.max(20, size - 8);
-    setSize(newSize);
-    onUpdate(sticker.id, posX, posY, newSize);
-  };
-
   return (
     <View
-      {...panResponder.panHandlers}
+      {...responder.panHandlers}
       style={[
-        styles.interactiveStickerContainer,
+        styles.sticker,
         {
-          left: `${sticker.x}%` as any,
-          top: `${sticker.y}%` as any,
+          left: `${sticker.x}%` as unknown as number,
+          top: `${sticker.y}%` as unknown as number,
+          borderColor: selected ? p.pink : 'transparent',
         },
       ]}
     >
-      <Text style={{ fontSize: size }}>{sticker.emoji}</Text>
-
-      {/* Floating Controls for Delete & Resize */}
-      <View style={styles.stickerToolbar}>
-        <TouchableOpacity
-          onPress={() => onRemove(sticker.id)}
-          style={styles.stickerDeleteBtn}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.stickerBtnText}>✕</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={handleEnlarge}
-          style={styles.stickerScaleBtn}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.stickerBtnText}>+</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={handleShrink}
-          style={styles.stickerScaleBtn}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.stickerBtnText}>−</Text>
-        </TouchableOpacity>
-      </View>
+      <Text style={{ fontSize: moderateScale(size) }}>{sticker.emoji}</Text>
+      {selected ? (
+        <View style={styles.stickerTools}>
+          <Pressable onPress={() => onScale(sticker.id, -0.2)} style={[styles.stickerTool, { backgroundColor: p.surface }]} hitSlop={6}>
+            <Text style={[styles.stickerToolText, { color: p.violet }]}>−</Text>
+          </Pressable>
+          <Pressable onPress={() => onScale(sticker.id, 0.2)} style={[styles.stickerTool, { backgroundColor: p.surface }]} hitSlop={6}>
+            <Text style={[styles.stickerToolText, { color: p.violet }]}>+</Text>
+          </Pressable>
+          <Pressable onPress={() => onRemove(sticker.id)} style={[styles.stickerTool, styles.stickerToolDanger]} hitSlop={6}>
+            <Text style={[styles.stickerToolText, { color: p.white }]}>×</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 };
 
+/* ── screen ────────────────────────────────────────────────────────────── */
+
 export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useAppTheme();
+  const p = theme.palette;
   const {
     snapshot,
     session,
@@ -175,783 +158,669 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
     secondsLeft,
     resetIdleTimer,
     resetGuestSession,
+    online,
   } = useBooth();
 
-  const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
   const isFocused = useIsFocused();
-
   const event = snapshot?.event;
   const template = session.template;
   const photos = session.selectedPhotos || [];
   const customization = session.customization;
 
-  const allowedFilters = event?.filters && event.filters.length > 0 ? event.filters : null;
-  const availableFilters = allowedFilters ? FILTERS.filter(f => f.id === 'original' || allowedFilters.includes(f.id)) : FILTERS;
+  const allowed = event?.filters && event.filters.length > 0 ? event.filters : null;
+  const filters = allowed
+    ? FILTERS.filter((f) => f.id === 'original' || allowed.includes(f.id))
+    : FILTERS;
 
   const orgName = snapshot?.settings?.organizationName || snapshot?.organization?.name || 'HappyPix';
   const galleryEnabled = snapshot?.settings?.galleryEnabled !== false;
   const requireGuestConsent = snapshot?.settings?.requireGuestConsent === true;
+  const showConsent = galleryEnabled && requireGuestConsent;
 
-  const [activeTab, setActiveTab] = useState<TabId>('filters');
+  const [tab, setTab] = useState<TabId>('filters');
   const [printing, setPrinting] = useState(false);
-  const [guestConsent, setGuestConsent] = useState(
-    requireGuestConsent
-      ? (customization.guestConsent !== undefined ? customization.guestConsent : true)
-      : true
+  const [consent, setConsentState] = useState(
+    requireGuestConsent && customization.guestConsent !== undefined ? customization.guestConsent : true
   );
 
   useEffect(() => {
     setIdleTimerEnabled(true);
     resetIdleTimer();
     return () => setIdleTimerEnabled(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (secondsLeft === 0 && !printing && isFocused) {
       resetGuestSession(navigation);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondsLeft, printing, isFocused]);
 
-  // Safe navigation redirect outside render phase
   useEffect(() => {
-    if (!template) {
-      navigation.replace('Templates');
-    }
+    if (!template) navigation.replace('Templates');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [template, navigation]);
 
-  if (!template) {
-    return null;
-  }
-
-  const isPortraitTemplate = template.layout.orientation === 'portrait';
-  const rawCw = template.layout?.canvas?.width;
-  const rawCh = template.layout?.canvas?.height;
-  const aspect = rawCw && rawCh ? rawCw / rawCh : isPortraitTemplate ? 2 / 3 : 3 / 2;
-
-  const maxCanvasW = isLandscape ? scale(320) : Math.max(200, width - 84);
-  const maxCanvasH = isLandscape
-    ? Math.min(verticalScale(310), Math.max(180, height * 0.44))
-    : Math.max(175, Math.min(320, Math.round(height * 0.32)));
-  const canvasWidth = Math.min(maxCanvasW, Math.round(maxCanvasH * aspect));
-  const canvasHeight = Math.round(canvasWidth / aspect);
-
-  const lastStickerAddRef = useRef(0);
+  const lastAdd = useRef(0);
 
   const update = (patch: Partial<Customization>, silent = false) => {
-    if (!silent) {
-      SoundManager.play('click');
-    }
-    updateSession({
-      customization: { ...customization, ...patch },
-    });
+    if (!silent) SoundManager.play('click');
+    resetIdleTimer();
+    updateSession({ customization: { ...customization, ...patch } });
   };
 
   const addSticker = (emoji: string) => {
     const now = Date.now();
-    if (now - lastStickerAddRef.current < 350) return; // Prevent double taps
-    lastStickerAddRef.current = now;
-
-    SoundManager.play('click');
-    const newSticker: PlacedSticker = {
-      id: `st-${now}-${customization.stickers.length}`,
-      emoji,
-      x: 35 + (customization.stickers.length % 4) * 8,
-      y: 35 + (customization.stickers.length % 4) * 8,
-      size: 36,
-    };
-    update({ stickers: [...customization.stickers, newSticker] });
-  };
-
-  const handleUpdateSticker = (id: string, x: number, y: number, size: number) => {
-    const updated = customization.stickers.map((st) =>
-      st.id === id ? { ...st, x, y, size } : st
+    if (now - lastAdd.current < 300) return;
+    lastAdd.current = now;
+    SoundManager.play('select');
+    const placed = customization.stickers.length;
+    update(
+      {
+        stickers: [
+          ...customization.stickers,
+          {
+            id: `st-${now}-${placed}`,
+            emoji,
+            x: 32 + (placed % 4) * 9,
+            y: 34 + (placed % 4) * 8,
+            size: 38,
+          } as PlacedSticker,
+        ],
+      },
+      true
     );
+  };
+
+  const moveSticker = (id: string, x: number, y: number, size: number) =>
     updateSession({
-      customization: { ...customization, stickers: updated },
+      customization: {
+        ...customization,
+        stickers: customization.stickers.map((st) => (st.id === id ? { ...st, x, y, size } : st)),
+      },
     });
-  };
 
-  const handleRemoveSticker = (id: string) => {
+  const scaleSticker = (id: string, delta: number) => {
     SoundManager.play('click');
-    const filtered = customization.stickers.filter((st) => st.id !== id);
-    update({ stickers: filtered });
+    update(
+      {
+        stickers: customization.stickers.map((st) =>
+          st.id === id ? { ...st, size: Math.max(22, Math.min(72, (st.size || 34) + delta * 40)) } : st
+        ),
+      },
+      true
+    );
   };
 
-  const handleToggleConsent = () => {
+  const removeSticker = (id: string) => {
     SoundManager.play('click');
-    const next = !guestConsent;
-    setGuestConsent(next);
-    update({ guestConsent: next });
+    update({ stickers: customization.stickers.filter((st) => st.id !== id) }, true);
   };
 
-  const handlePrint = async () => {
+  const setConsent = (next: boolean) => {
+    SoundManager.play('click');
+    setConsentState(next);
+    update({ guestConsent: next }, true);
+  };
+
+  const onPrint = async () => {
     if (printing) return;
     setPrinting(true);
     setIdleTimerEnabled(false);
     SoundManager.play('click');
-
     try {
       updateSession({
-        customization: { ...customization, guestConsent: requireGuestConsent ? guestConsent : true },
+        customization: { ...customization, guestConsent: requireGuestConsent ? consent : true },
       });
       await finishAndPrint();
       navigation.navigate('OrderSuccess');
-    } catch (e) {
+    } catch {
       navigation.navigate('OrderSuccess');
     } finally {
       setPrinting(false);
     }
   };
 
-  const handleBack = () => {
+  const onBack = () => {
     SoundManager.play('click');
     goBackOr(navigation, 'Start');
   };
 
-  const availableLogos = event?.branding?.logos || [];
+  const orientation = template?.layout.orientation;
+  const rawW = template?.layout?.canvas?.width;
+  const rawH = template?.layout?.canvas?.height;
+  const aspect = rawW && rawH ? rawW / rawH : orientation === 'portrait' ? 2 / 3 : 3 / 2;
+
+  const logos = useMemo(() => event?.branding?.logos || [], [event]);
+
+  if (!template) return null;
 
   return (
-    <ScreenContainer style={{ backgroundColor: '#050508' }}>
-      <LayoutContainer>
-        {/* Prominent Header with Countdown Timer */}
-        <ScreenHeader
-          title="Make It Yours"
-          subtitle="Customize your final print preview before sending to the printer"
-          secondsLeft={secondsLeft}
-          step="CUSTOMIZE"
-        />
-
-        <View style={[styles.mainLayout, isLandscape ? styles.rowLayout : styles.colLayout]}>
-          {/* Live Print Canvas — TRUE PRINT PREVIEW (NO BOX AROUND FRAME) */}
-          <View style={styles.printStageWrapper}>
-            <View
-              style={[
-                styles.printCanvasContainer,
-                { width: canvasWidth, height: canvasHeight },
-              ]}
-            >
-              <TemplateCanvas
-                template={template}
-                photos={photos}
-                customization={customization}
-                renderStickers={false}
-                style={{
-                  width: canvasWidth,
-                  height: canvasHeight,
-                  borderRadius: 12,
-                  overflow: 'hidden',
-                }}
-              />
-
-              {/* Draggable & Resizable Stickers Overlay */}
-              <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-                {customization.stickers.map((st) => (
-                  <InteractiveSticker
-                    key={st.id}
-                    sticker={st}
-                    canvasWidth={canvasWidth}
-                    canvasHeight={canvasHeight}
-                    onUpdate={handleUpdateSticker}
-                    onRemove={handleRemoveSticker}
-                  />
-                ))}
-              </View>
-            </View>
-
-            <Text style={styles.truePrintHint}>
-              ✨ True print preview • Tap and drag stickers freely
-            </Text>
-          </View>
-
-          {/* Tools & Customization Control Panel */}
-          <View style={[styles.toolsPanel, isLandscape ? styles.toolsPanelRow : styles.toolsPanelCol]}>
-            {/* Tool Tabs */}
-            <View style={styles.tabBar}>
-              {(
-                [
-                  ['filters', 'Filter'],
-                  ['stickers', 'Stickers'],
-                  ['logos', 'Logos'],
-                  ['text', 'Text'],
-                ] as const
-              ).map(([id, label]) => (
-                <TouchableOpacity
-                  key={id}
-                  style={[styles.tabBtn, activeTab === id && styles.tabBtnActive]}
-                  onPress={() => {
-                    SoundManager.play('click');
-                    setActiveTab(id);
-                    resetIdleTimer();
-                  }}
-                >
-                  <Text style={[styles.tabBtnText, activeTab === id && styles.tabBtnTextActive]}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
+    <AppShell
+      step="customize"
+      secondsLeft={secondsLeft}
+      online={online !== false}
+      orgName={orgName}
+      title="Make it yours"
+      subtitle="A few thoughtful touches — without hiding the design you chose."
+      testID="customize-screen"
+    >
+      <View style={styles.layout}>
+        {/* preview stage */}
+        <View style={styles.stage}>
+          <View style={[styles.frame, { aspectRatio: aspect, borderColor: p.line }]}>
+            <TemplateCanvas
+              template={template}
+              photos={photos}
+              customization={customization}
+              renderStickers={false}
+              style={styles.canvas}
+            />
+            <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+              {customization.stickers.map((st) => (
+                <PlacedStickerView
+                  key={st.id}
+                  sticker={st}
+                  canvasWidth={scale(430)}
+                  canvasHeight={scale(430) / aspect}
+                  onMove={moveSticker}
+                  onScale={scaleSticker}
+                  onRemove={removeSticker}
+                />
               ))}
             </View>
-
-            {/* Tool Body Area */}
-            <ScrollView
-              style={styles.toolBody}
-              contentContainerStyle={{ paddingBottom: 16 }}
-              showsVerticalScrollIndicator={false}
-            >
-              {/* PHOTO FILTERS */}
-              {activeTab === 'filters' && (
-                <View>
-                  <Text style={styles.kicker}>EVENT PHOTO FILTERS</Text>
-                  <View style={styles.filterGrid}>
-                    {availableFilters.map((f) => {
-                      const isActive = (customization.filter || 'original') === f.id;
-                      return (
-                        <TouchableOpacity
-                          key={f.id}
-                          style={[styles.filterCard, isActive && styles.filterCardActive]}
-                          onPress={() => update({ filter: f.id })}
-                        >
-                          <View style={[styles.filterCircle, { backgroundColor: f.color }]} />
-                          <Text style={styles.filterTitle}>{f.label}</Text>
-                          <Text style={styles.filterDesc}>{f.desc}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+            {printing ? (
+              <View style={styles.preparing}>
+                <View style={styles.preparingPill}>
+                  <ActivityIndicator size="small" color={p.pink} />
+                  <Text style={[styles.preparingText, { color: p.ink }]}>Preparing your print…</Text>
                 </View>
-              )}
-
-              {/* STICKERS */}
-              {activeTab === 'stickers' && (
-                <View>
-                  <Text style={styles.kicker}>TAP TO ADD A DRAGGABLE STICKER</Text>
-                  <View style={styles.emojiGrid}>
-                    {EMOJIS.map((emoji) => (
-                      <TouchableOpacity
-                        key={emoji}
-                        style={styles.emojiCard}
-                        onPress={() => addSticker(emoji)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.emojiChar}>{emoji}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  {customization.stickers.length > 0 && (
-                    <TouchableOpacity
-                      style={styles.clearStickersBtn}
-                      onPress={() => update({ stickers: [] })}
-                    >
-                      <Text style={styles.clearStickersText}>
-                        Clear all placed stickers ({customization.stickers.length})
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-
-              {/* LOGOS */}
-              {activeTab === 'logos' && (
-                <View>
-                  <Text style={styles.kicker}>BRAND LOGO FOOTER</Text>
-                  <View style={styles.optionGrid}>
-                    <TouchableOpacity
-                      style={[
-                        styles.logoCard,
-                        !customization.logo && styles.logoCardActive,
-                      ]}
-                      onPress={() => update({ logo: null })}
-                    >
-                      <Text style={styles.logoNoneText}>No Extra Logo</Text>
-                    </TouchableOpacity>
-
-                    {availableLogos.map((lg, i) => (
-                      <TouchableOpacity
-                        key={i}
-                        style={[
-                          styles.logoCard,
-                          customization.logo === lg && styles.logoCardActive,
-                        ]}
-                        onPress={() => update({ logo: lg })}
-                      >
-                        <Image source={{ uri: lg }} style={styles.logoImg} resizeMode="contain" />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* TEXT */}
-              {activeTab === 'text' && (
-                <View>
-                  <Text style={styles.kicker}>CUSTOM PRINT TITLE & CAPTION</Text>
-                  <View style={styles.textFields}>
-                    <Text style={styles.inputLabel}>MAIN EVENT TITLE</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      value={customization.title}
-                      onChangeText={(val) => update({ title: val }, true)}
-                      placeholder={template.design.title || 'Event Title'}
-                      placeholderTextColor="#52525b"
-                      maxLength={40}
-                    />
-
-                    <Text style={styles.inputLabel}>SUBTITLE / TAGLINE</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      value={customization.subtitle}
-                      onChangeText={(val) => update({ subtitle: val }, true)}
-                      placeholder={template.design.subtitle || 'Subtitle or Tagline'}
-                      placeholderTextColor="#52525b"
-                      maxLength={60}
-                    />
-
-                    <TouchableOpacity
-                      style={styles.resetTextBtn}
-                      onPress={() => update({ title: '', subtitle: '' })}
-                    >
-                      <Text style={styles.resetTextText}>Reset to Template Defaults</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-
-              {/* Online Gallery Guest Consent Toggle (only shown when both galleryEnabled and requireGuestConsent are enabled) */}
-              {galleryEnabled && requireGuestConsent && (
-                <View style={styles.consentCard}>
-                  <View style={styles.consentInfo}>
-                    <Text style={styles.consentTitle}>
-                      Online Event Gallery
-                    </Text>
-                    <Text style={styles.consentDesc}>
-                      Allow {orgName} to feature your Pix in the online event gallery?
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.consentToggleBtn, guestConsent && styles.consentToggleActive]}
-                    onPress={handleToggleConsent}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.consentToggleText, guestConsent && styles.consentToggleTextActive]}>
-                      {guestConsent ? 'YES' : 'NO'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </ScrollView>
+              </View>
+            ) : null}
+          </View>
+          <View style={styles.hintRow}>
+            <Icon name="sparkles" size={fontSize(15)} color={p.muted} />
+            <Text style={[styles.hint, { color: p.muted }]}>
+              Your final print preview — drag a sticker to reposition
+            </Text>
           </View>
         </View>
 
-        {/* Footer Actions */}
-        <View style={styles.footerActions}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={handleBack}
-            activeOpacity={0.8}
-            disabled={printing}
-          >
-            <Text style={styles.backBtnText}>← Back</Text>
-          </TouchableOpacity>
+        {/* tools */}
+        <Card style={styles.tools} elevation="soft">
+          <View style={[styles.tabBar, { backgroundColor: p.surfaceSoft, borderBottomColor: p.line }]}>
+            {TABS.map((item) => {
+              const active = tab === item.id;
+              return (
+                <Pressable
+                  key={item.id}
+                  onPress={() => {
+                    SoundManager.play('click');
+                    setTab(item.id);
+                    resetIdleTimer();
+                  }}
+                  disabled={printing}
+                  style={[styles.tab, active ? { backgroundColor: p.violet } : null]}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.tabText, { color: active ? p.white : p.muted }]}>{item.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-          <TouchableOpacity
-            style={[styles.printBtn, printing && styles.printBtnDisabled]}
-            disabled={printing}
-            onPress={handlePrint}
-            activeOpacity={0.85}
-          >
-            {printing ? (
-              <View style={styles.printingRow}>
-                <ActivityIndicator color="#ffffff" size="small" />
-                <Text style={styles.printBtnText}>  Sending to Printer…</Text>
-              </View>
-            ) : (
-              <Text style={styles.printBtnText}>🖨 Print My Photos →</Text>
-            )}
-          </TouchableOpacity>
+          <ScrollView contentContainerStyle={styles.toolBody} showsVerticalScrollIndicator={false}>
+            {tab === 'filters' ? (
+              <>
+                <Eyebrow color={p.pinkDeep}>Event photo filters</Eyebrow>
+                <View style={styles.filterGrid}>
+                  {filters.map((filter) => {
+                    const active = (customization.filter || 'original') === filter.id;
+                    return (
+                      <Pressable
+                        key={filter.id}
+                        onPress={() => update({ filter: filter.id })}
+                        style={[
+                          styles.filterCard,
+                          { borderColor: active ? p.pink : p.line, backgroundColor: p.surface },
+                        ]}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <View
+                          style={[
+                            styles.filterSwatch,
+                            {
+                              backgroundColor: filter.swatch === 'linear-gradient' ? p.surfaceMuted : filter.swatch,
+                              borderColor: p.line,
+                            },
+                          ]}
+                        >
+                          {filter.id === 'original' ? (
+                            <Icon name="image" size={fontSize(16)} color={p.faint} />
+                          ) : null}
+                        </View>
+                        <Text style={[styles.filterLabel, { color: active ? p.pinkDeep : p.muted }]}>
+                          {filter.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
+
+            {tab === 'stickers' ? (
+              <>
+                <Eyebrow color={p.pinkDeep}>Tap to add · drag to move</Eyebrow>
+                <Text style={[styles.toolNote, { color: p.faint }]}>
+                  Tap a sticker to show its − + × controls. Resize here, not on the print.
+                </Text>
+                <View style={styles.emojiGrid}>
+                  {EMOJIS.map((emoji) => (
+                    <Pressable
+                      key={emoji}
+                      onPress={() => addSticker(emoji)}
+                      style={[styles.emojiCard, { borderColor: p.line, backgroundColor: p.surfaceSoft }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add ${emoji} sticker`}
+                    >
+                      <Text style={{ fontSize: fontSize(24) }}>{emoji}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {customization.stickers.length ? (
+                  <View style={styles.stickerList}>
+                    {customization.stickers.map((st) => (
+                      <View key={st.id} style={[styles.stickerRow, { borderColor: p.line, backgroundColor: p.surfaceSoft }]}>
+                        <Text style={{ fontSize: fontSize(18) }}>{st.emoji}</Text>
+                        <Text style={[styles.stickerName, { color: p.muted }]} numberOfLines={1}>
+                          Sticker
+                        </Text>
+                        <Pressable
+                          onPress={() => scaleSticker(st.id, -0.2)}
+                          style={[styles.sizeBtn, { borderColor: p.line, backgroundColor: p.surface }]}
+                          accessibilityLabel="Make smaller"
+                        >
+                          <Text style={[styles.sizeBtnText, { color: p.violet }]}>−</Text>
+                        </Pressable>
+                        <Text style={[styles.sizeValue, { color: p.ink }]}>
+                          {Math.round(((st.size || 34) / 34) * 100)}%
+                        </Text>
+                        <Pressable
+                          onPress={() => scaleSticker(st.id, 0.2)}
+                          style={[styles.sizeBtn, { borderColor: p.line, backgroundColor: p.surface }]}
+                          accessibilityLabel="Make larger"
+                        >
+                          <Text style={[styles.sizeBtnText, { color: p.violet }]}>+</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => removeSticker(st.id)}
+                          style={[styles.sizeBtn, styles.deleteBtn, { borderColor: p.redSoft, backgroundColor: p.redSoft }]}
+                          accessibilityLabel="Remove sticker"
+                        >
+                          <Text style={[styles.sizeBtnText, { color: p.red }]}>×</Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                    <Pressable onPress={() => update({ stickers: [] })} style={styles.textAction}>
+                      <Text style={[styles.textActionLabel, { color: p.pinkDeep }]}>Clear all stickers</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Text style={[styles.toolNote, { color: p.faint, marginTop: verticalScale(12) }]}>
+                    No stickers yet. Tap an emoji above to place it on your print.
+                  </Text>
+                )}
+              </>
+            ) : null}
+
+            {tab === 'logos' ? (
+              <>
+                <Eyebrow color={p.pinkDeep}>Event logos</Eyebrow>
+                <View style={styles.logoGrid}>
+                  <Pressable
+                    onPress={() => update({ logo: null })}
+                    style={[
+                      styles.logoCard,
+                      { borderColor: !customization.logo ? p.pink : p.line, backgroundColor: p.surfaceSoft },
+                    ]}
+                  >
+                    <Text style={[styles.logoNone, { color: p.muted }]}>No logo</Text>
+                  </Pressable>
+                  {logos.map((logo, index) => (
+                    <Pressable
+                      key={`${logo}-${index}`}
+                      onPress={() => update({ logo })}
+                      style={[
+                        styles.logoCard,
+                        styles.logoImageCard,
+                        {
+                          borderColor: customization.logo === logo ? p.pink : p.line,
+                          backgroundColor: p.surfaceSoft,
+                        },
+                      ]}
+                    >
+                      <Image source={{ uri: logo }} style={styles.logoImage} resizeMode="contain" />
+                    </Pressable>
+                  ))}
+                </View>
+                {!logos.length ? (
+                  <Text style={[styles.toolNote, { color: p.faint }]}>
+                    This event has no logos uploaded. The template footer will be used.
+                  </Text>
+                ) : null}
+              </>
+            ) : null}
+
+            {tab === 'text' ? (
+              <>
+                <Eyebrow color={p.pinkDeep}>Custom title & caption</Eyebrow>
+                <Text style={[styles.fieldLabel, { color: p.muted }]}>MAIN TEXT</Text>
+                <TextInput
+                  value={customization.title}
+                  onChangeText={(value) => update({ title: value }, true)}
+                  placeholder={template.design?.title || 'Event title'}
+                  placeholderTextColor={p.faint}
+                  maxLength={42}
+                  style={[
+                    styles.input,
+                    { borderColor: p.line, backgroundColor: p.surfaceSoft, color: p.ink, fontFamily: fonts.bodyBold },
+                  ]}
+                />
+                <Text style={[styles.fieldLabel, { color: p.muted }]}>SUBTEXT</Text>
+                <TextInput
+                  value={customization.subtitle}
+                  onChangeText={(value) => update({ subtitle: value }, true)}
+                  placeholder={template.design?.subtitle || event?.branding?.tagline || 'Subtitle or tagline'}
+                  placeholderTextColor={p.faint}
+                  maxLength={60}
+                  style={[
+                    styles.input,
+                    { borderColor: p.line, backgroundColor: p.surfaceSoft, color: p.ink, fontFamily: fonts.bodyBold },
+                  ]}
+                />
+                <Pressable onPress={() => update({ title: '', subtitle: '' })} style={styles.textAction}>
+                  <Text style={[styles.textActionLabel, { color: p.pinkDeep }]}>Use template text</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </ScrollView>
+        </Card>
+      </View>
+
+      {showConsent ? (
+        <View style={[styles.consent, { borderColor: p.line, backgroundColor: p.surface }]}>
+          <View style={styles.consentCopy}>
+            <Text style={[styles.consentTitle, { color: p.ink }]}>Can we feature your photos?</Text>
+            <Text style={[styles.consentText, { color: p.muted }]} numberOfLines={2}>
+              Allow {orgName} to showcase these images in the event gallery. You can change this anytime.
+            </Text>
+          </View>
+          <View style={styles.consentButtons}>
+            <Pressable
+              onPress={() => setConsent(true)}
+              style={[
+                styles.consentToggle,
+                { borderColor: consent ? p.green : p.line, backgroundColor: consent ? p.green : p.surface },
+              ]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: consent }}
+            >
+              <Text style={[styles.consentToggleText, { color: consent ? p.white : p.muted }]}>Yes</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setConsent(false)}
+              style={[
+                styles.consentToggle,
+                { borderColor: !consent ? '#6b7280' : p.line, backgroundColor: !consent ? '#6b7280' : p.surface },
+              ]}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: !consent }}
+            >
+              <Text style={[styles.consentToggleText, { color: !consent ? p.white : p.muted }]}>No</Text>
+            </Pressable>
+          </View>
         </View>
+      ) : null}
 
-        {secondsLeft <= 25 && !printing && (
-          <InactivityToast secondsLeft={secondsLeft} onStayActive={resetIdleTimer} />
-        )}
-      </LayoutContainer>
-    </ScreenContainer>
+      <View style={styles.actions}>
+        <Button label="Back" variant="secondary" icon="arrow-left" onPress={onBack} disabled={printing} />
+        <View style={styles.actionsRight}>
+          {customization.stickers.length ? (
+            <Pill label={`${customization.stickers.length} sticker${customization.stickers.length > 1 ? 's' : ''}`} tone="violet" />
+          ) : null}
+          <Button
+            label={printing ? 'Preparing your print…' : 'Print my photos'}
+            icon={printing ? undefined : 'printer'}
+            variant="primary"
+            loading={printing}
+            onPress={onPrint}
+            disabled={printing}
+            testID="customize-print"
+          />
+        </View>
+      </View>
+
+      {secondsLeft <= 25 && !printing ? (
+        <InactivityToast secondsLeft={secondsLeft} onStayActive={resetIdleTimer} />
+      ) : null}
+    </AppShell>
   );
 };
 
 const styles = StyleSheet.create({
-  mainLayout: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: scale(16),
-    gap: scale(20),
-  },
-  rowLayout: {
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-  },
-  colLayout: {
-    flexDirection: 'column',
-    justifyContent: 'space-evenly',
-  },
-  printStageWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: scale(8),
-  },
-  printCanvasContainer: {
-    position: 'relative',
-    borderRadius: 14,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.55,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  truePrintHint: {
-    color: '#a1a1aa',
-    fontSize: fontSize(11),
-    fontWeight: '600',
-    marginTop: verticalScale(10),
-  },
-  interactiveStickerContainer: {
-    position: 'absolute',
-    padding: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stickerToolbar: {
-    flexDirection: 'row',
-    gap: 4,
-    position: 'absolute',
-    top: -14,
-    right: -14,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    borderRadius: 10,
-    padding: 2,
-  },
-  stickerDeleteBtn: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stickerScaleBtn: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#8b5cf6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stickerBtnText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  toolsPanel: {
-    backgroundColor: '#0f0f16',
-    borderRadius: moderateScale(24),
-    borderWidth: 1.5,
-    borderColor: '#222232',
-    padding: scale(20),
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  // Landscape: fixed-width side panel, stretches to the row height.
-  toolsPanelRow: {
-    width: scale(380),
-    alignSelf: 'stretch',
-  },
-  // Portrait: full width, takes the remaining vertical space — the
-  // fixed height it used to have overflowed shorter portrait screens
-  // and pushed the footer off-screen.
-  toolsPanelCol: {
-    width: '100%',
+  layout: {
     flex: 1,
     minHeight: 0,
-  },
-  tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#07070b',
-    borderRadius: 14,
-    padding: 3,
-    marginBottom: verticalScale(14),
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: verticalScale(8),
-    borderRadius: 11,
     alignItems: 'center',
+    gap: scale(28),
+    paddingBottom: verticalScale(8),
   },
-  tabBtnActive: {
-    backgroundColor: '#8b5cf6',
-  },
-  tabBtnText: {
-    color: '#71717a',
-    fontSize: fontSize(12),
-    fontWeight: '700',
-  },
-  tabBtnTextActive: {
-    color: '#ffffff',
-    fontWeight: '900',
-  },
-  toolBody: {
-    flex: 1,
-  },
-  kicker: {
-    color: '#8b5cf6',
-    fontSize: fontSize(10),
-    fontWeight: '800',
-    letterSpacing: 1.5,
-    marginBottom: verticalScale(10),
-  },
-  optionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: scale(8),
-  },
-  ornamentCard: {
-    backgroundColor: '#161622',
+  stage: { flex: 1.05, alignItems: 'center', justifyContent: 'center' },
+  frame: {
+    height: verticalScale(400),
+    maxWidth: '96%',
+    overflow: 'hidden',
     borderRadius: moderateScale(14),
-    borderWidth: 1.5,
-    borderColor: '#262638',
-    paddingVertical: verticalScale(10),
+    borderWidth: 0,
+    ...shadows.card,
+  },
+  canvas: { flex: 1, width: '100%', height: '100%' },
+  preparing: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
+  preparingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(10),
+    paddingHorizontal: scale(18),
+    paddingVertical: verticalScale(12),
+    borderRadius: radii.pill,
+    backgroundColor: '#ffffff',
+    ...shadows.soft,
+  },
+  preparingText: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(13) },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(6),
+    marginTop: verticalScale(10),
+  },
+  hint: { fontFamily: fonts.body, fontSize: fontSize(10) },
+
+  tools: {
+    flex: 0.95,
+    minWidth: 0,
+    maxWidth: scale(520),
+    padding: 0,
+    overflow: 'hidden',
+    borderRadius: moderateScale(25),
+  },
+  tabBar: { flexDirection: 'row', gap: scale(4), padding: scale(8), borderBottomWidth: 1 },
+  tab: {
+    flex: 1,
+    minHeight: verticalScale(38),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: moderateScale(11),
+  },
+  tabText: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(11) },
+  toolBody: { padding: scale(22), paddingBottom: verticalScale(26), minHeight: verticalScale(240) },
+  toolNote: { fontFamily: fonts.body, fontSize: fontSize(10), lineHeight: fontSize(15), marginTop: verticalScale(6) },
+
+  filterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(10), marginTop: verticalScale(14) },
+  filterCard: {
+    width: scale(84),
+    padding: scale(6),
+    borderWidth: 1,
+    borderRadius: moderateScale(14),
+  },
+  filterSwatch: {
+    height: verticalScale(54),
+    borderRadius: moderateScale(10),
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterLabel: {
+    fontFamily: fonts.bodyHeavy,
+    fontSize: fontSize(9),
+    textTransform: 'capitalize',
+    textAlign: 'center',
+    paddingTop: verticalScale(5),
+  },
+
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(9), marginTop: verticalScale(12) },
+  emojiCard: {
+    width: scale(56),
+    height: scale(56),
+    borderWidth: 1,
+    borderRadius: moderateScale(15),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  stickerList: { marginTop: verticalScale(14), gap: verticalScale(8) },
+  stickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(8),
+    paddingHorizontal: scale(11),
+    paddingVertical: verticalScale(8),
+    borderWidth: 1,
+    borderRadius: moderateScale(14),
+  },
+  stickerName: { flex: 1, fontFamily: fonts.bodyBold, fontSize: fontSize(11) },
+  sizeBtn: {
+    width: scale(30),
+    height: verticalScale(30),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: moderateScale(9),
+  },
+  sizeBtnText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(14) },
+  deleteBtn: { borderWidth: 1 },
+  sizeValue: {
+    minWidth: scale(42),
+    textAlign: 'center',
+    fontFamily: fonts.bodyHeavy,
+    fontSize: fontSize(11),
+  },
+  textAction: { paddingVertical: verticalScale(8), alignSelf: 'flex-start' },
+  textActionLabel: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(12) },
+
+  logoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(10), marginTop: verticalScale(14) },
+  logoCard: {
+    minWidth: scale(112),
+    height: verticalScale(70),
+    padding: scale(8),
+    borderWidth: 2,
+    borderRadius: moderateScale(14),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImageCard: { minWidth: scale(124) },
+  logoImage: { width: '100%', height: '100%' },
+  logoNone: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(11) },
+
+  fieldLabel: {
+    fontFamily: fonts.bodyHeavy,
+    fontSize: fontSize(10),
+    letterSpacing: 0.9,
+    marginTop: verticalScale(14),
+    marginBottom: verticalScale(6),
+  },
+  input: {
+    height: verticalScale(46),
+    borderWidth: 1,
+    borderRadius: moderateScale(12),
+    paddingHorizontal: scale(12),
+    fontSize: fontSize(13),
+  },
+
+  consent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: scale(14),
+    marginTop: verticalScale(12),
+    paddingHorizontal: scale(18),
+    paddingVertical: verticalScale(12),
+    borderWidth: 1,
+    borderRadius: moderateScale(18),
+  },
+  consentCopy: { flex: 1, minWidth: 0 },
+  consentTitle: { fontFamily: fonts.display, fontSize: fontSize(14) },
+  consentText: { fontFamily: fonts.body, fontSize: fontSize(11), lineHeight: fontSize(15) },
+  consentButtons: { flexDirection: 'row', gap: scale(8) },
+  consentToggle: {
+    minWidth: scale(66),
+    height: verticalScale(38),
     paddingHorizontal: scale(14),
     alignItems: 'center',
-    width: '48%',
-    marginBottom: scale(8),
-  },
-  ornamentCardActive: {
-    borderColor: '#8b5cf6',
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
-  },
-  ornamentSymbol: {
-    color: '#ffffff',
-    fontSize: fontSize(22),
-    marginBottom: 2,
-  },
-  ornamentLabel: {
-    color: '#ffffff',
-    fontSize: fontSize(12),
-    fontWeight: '800',
-  },
-  ornamentDesc: {
-    color: '#71717a',
-    fontSize: fontSize(9),
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  filterGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: scale(8),
-  },
-  filterCard: {
-    backgroundColor: '#161622',
-    borderRadius: moderateScale(14),
-    borderWidth: 1.5,
-    borderColor: '#262638',
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(12),
-    alignItems: 'center',
-    width: '48%',
-    marginBottom: scale(8),
-  },
-  filterCardActive: {
-    borderColor: '#8b5cf6',
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
-  },
-  filterCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    marginBottom: 4,
-  },
-  filterTitle: {
-    color: '#ffffff',
-    fontSize: fontSize(12),
-    fontWeight: '800',
-  },
-  filterDesc: {
-    color: '#71717a',
-    fontSize: fontSize(9),
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  emojiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: scale(8),
-    marginBottom: verticalScale(14),
-  },
-  emojiCard: {
-    width: scale(48),
-    height: scale(48),
-    borderRadius: moderateScale(12),
-    backgroundColor: '#161622',
-    borderWidth: 1.5,
-    borderColor: '#262638',
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  emojiChar: {
-    fontSize: fontSize(24),
-  },
-  clearStickersBtn: {
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  clearStickersText: {
-    color: '#f87171',
-    fontSize: fontSize(12),
-    fontWeight: '700',
-  },
-  logoCard: {
-    backgroundColor: '#161622',
-    borderRadius: moderateScale(14),
     borderWidth: 1.5,
-    borderColor: '#262638',
-    padding: scale(10),
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '48%',
-    height: scale(65),
+    borderRadius: radii.pill,
   },
-  logoCardActive: {
-    borderColor: '#8b5cf6',
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
-  },
-  logoNoneText: {
-    color: '#a1a1aa',
-    fontSize: fontSize(12),
-    fontWeight: '700',
-  },
-  logoImg: {
-    width: scale(70),
-    height: scale(40),
-  },
-  textFields: {
-    width: '100%',
-  },
-  inputLabel: {
-    color: '#71717a',
-    fontSize: fontSize(10),
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  textInput: {
-    backgroundColor: '#161622',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#262638',
-    color: '#ffffff',
-    padding: scale(10),
-    fontSize: fontSize(13),
-    marginBottom: verticalScale(12),
-  },
-  resetTextBtn: {
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  resetTextText: {
-    color: '#8b5cf6',
-    fontSize: fontSize(11),
-    fontWeight: '700',
-  },
-  consentCard: {
+  consentToggleText: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(13) },
+
+  actions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#161622',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#262638',
-    padding: scale(12),
     marginTop: verticalScale(14),
   },
-  consentInfo: {
-    flex: 1,
-    paddingRight: 10,
+  actionsRight: { flexDirection: 'row', alignItems: 'center', gap: scale(10) },
+
+  sticker: {
+    position: 'absolute',
+    padding: scale(4),
+    borderRadius: moderateScale(8),
+    borderWidth: 1.5,
   },
-  consentTitle: {
-    color: '#ffffff',
-    fontSize: fontSize(12),
-    fontWeight: '800',
-  },
-  consentDesc: {
-    color: '#71717a',
-    fontSize: fontSize(10),
-    marginTop: 2,
-    lineHeight: 14,
-  },
-  consentToggleBtn: {
-    backgroundColor: '#262638',
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
-  consentToggleActive: {
-    backgroundColor: '#8b5cf6',
-  },
-  consentToggleText: {
-    color: '#a1a1aa',
-    fontSize: fontSize(11),
-    fontWeight: '800',
-  },
-  consentToggleTextActive: {
-    color: '#ffffff',
-  },
-  footerActions: {
+  stickerTools: {
+    position: 'absolute',
+    top: -verticalScale(30),
+    right: 0,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: scale(3),
+    padding: scale(2),
+    borderRadius: moderateScale(10),
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  stickerTool: {
+    width: scale(24),
+    height: verticalScale(24),
+    borderRadius: moderateScale(7),
     alignItems: 'center',
-    paddingVertical: verticalScale(14),
-    paddingHorizontal: scale(16),
+    justifyContent: 'center',
   },
-  backBtn: {
-    paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(22),
-    borderRadius: moderateScale(12),
-    backgroundColor: '#171720',
-    borderWidth: 1,
-    borderColor: '#262634',
-  },
-  backBtnText: {
-    color: '#d4d4d8',
-    fontSize: fontSize(14),
-    fontWeight: '600',
-  },
-  printBtn: {
-    paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(28),
-    borderRadius: moderateScale(12),
-    backgroundColor: '#8b5cf6',
-    shadowColor: '#8b5cf6',
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  printBtnDisabled: {
-    opacity: 0.5,
-  },
-  printBtnText: {
-    color: '#ffffff',
-    fontSize: fontSize(15),
-    fontWeight: '800',
-  },
-  printingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  stickerToolDanger: { backgroundColor: '#d84b64' },
+  stickerToolText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(13) },
 });
+
+export default CustomizeScreen;

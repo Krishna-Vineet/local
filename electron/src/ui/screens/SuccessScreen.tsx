@@ -7,10 +7,10 @@ import { useQrCode } from '../hooks/useQrCode'
 import { boothApi } from '../services/api'
 
 const CATEGORIES = [
-  { id: 'printing', label: '🖨 Printing / Jam', desc: 'Print didn’t come out or jammed' },
-  { id: 'payment', label: '💳 Payment Issue', desc: 'Payment deducted but print failed' },
-  { id: 'quality', label: '📷 Photo Quality', desc: 'Blur, alignment or cut issue' },
-  { id: 'general', label: '❓ Other Help', desc: 'General question or assistance' },
+  { id: 'printing', label: 'Printing / jam', desc: 'Print didn’t come out or jammed', icon: 'printer' },
+  { id: 'payment', label: 'Payment issue', desc: 'Charged but the print failed', icon: 'wallet' },
+  { id: 'quality', label: 'Photo quality', desc: 'Blur, alignment or cut issue', icon: 'camera' },
+  { id: 'general', label: 'Something else', desc: 'A question or general help', icon: 'info' },
 ] as const
 
 type CategoryId = typeof CATEGORIES[number]['id']
@@ -165,11 +165,12 @@ export function SuccessScreen({
       {showIssueModal && (
         <div className="issue-modal-overlay" role="dialog" aria-modal="true" aria-label="Guest Support Request">
           <div className="issue-modal-card">
+            <span className="issue-modal-kicker"><Icon name="sparkles" size={14}/>GUEST SUPPORT</span>
             <div className="issue-modal-header">
-              <h2>Guest Support Request</h2>
+              <h2>How can we help?</h2>
               <button className="issue-modal-close" onClick={handleCloseIssue} aria-label="Close">✕</button>
             </div>
-            <p className="issue-modal-sub">Tickets are routed directly to the event manager CRM portal.</p>
+            <p className="issue-modal-sub">Tell us what went wrong — the ticket goes straight to this event’s manager, and someone will find you at the booth.</p>
 
             {submittedTicketId ? (
               <div className="ticket-success">
@@ -183,8 +184,9 @@ export function SuccessScreen({
               <>
                 <div className="issue-cat-grid">
                   {CATEGORIES.map((cat) => (
-                    <button key={cat.id} className={`cat-chip ${category === cat.id ? 'active' : ''}`} onClick={() => setCategory(cat.id as CategoryId)} type="button">
-                      <b>{cat.label}</b><small>{cat.desc}</small>
+                    <button key={cat.id} className={`cat-chip ${category === cat.id ? 'active' : ''}`} onClick={() => setCategory(cat.id as CategoryId)} type="button" aria-pressed={category === cat.id}>
+                      <span className="cat-chip-icon"><Icon name={cat.icon} size={15}/></span>
+                      <span className="cat-chip-copy"><b>{cat.label}</b><small>{cat.desc}</small></span>
                     </button>
                   ))}
                 </div>
@@ -208,7 +210,7 @@ export function SuccessScreen({
                   disabled={!guestContact.trim() || !issueMessage.trim() || submitting}
                   style={{ width: '100%', marginTop: 12 }}
                 >
-                  {submitting ? <><span className="button-loader" /> Submitting…</> : 'Submit Support Ticket →'}
+                  {submitting ? <><span className="button-loader" /> Submitting…</> : <>Submit support ticket<Icon name="arrow-right" size={18}/></>}
                 </PrimaryButton>
                 <SecondaryButton onClick={handleCloseIssue} style={{ width: '100%', marginTop: 8 }}>Cancel</SecondaryButton>
               </>

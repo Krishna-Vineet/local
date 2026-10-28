@@ -10,6 +10,7 @@
   --faint: #a498aa;
   --surface: #ffffff;
   --surface-soft: #fbf8fd;
+  --surface-muted: #f2edf5;
   --line: #e9e0ef;
   --pink: #ee4c96;
   --pink-deep: #d52d7b;
@@ -21,6 +22,7 @@
   --red: #d84b64;
   --red-soft: #fff0f2;
   --amber: #d58b22;
+  --amber-soft: #fdf3e3;
   --shadow: 0 20px 60px rgba(60, 32, 75, .13);
   --shadow-soft: 0 10px 32px rgba(62, 34, 79, .08);
 }

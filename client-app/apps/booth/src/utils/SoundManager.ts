@@ -1,84 +1,85 @@
 import { NativeModules, Platform, Vibration } from 'react-native';
 
-const { SimpleSound } = NativeModules;
+/**
+ * Interaction sound — the React Native twin of `electron/src/ui/services/sound.ts`.
+ *
+ * Electron synthesises five sine cues with WebAudio at call time. RN has no
+ * WebAudio, so the identical tones are generated into WAV files by
+ * `scripts/generate_tones.py` and played by the `SimpleSound` native module on
+ * both Android (`SoundPool`) and iOS (`AVAudioPlayer`). The API here keeps
+ * Electron's names — `click`, `select`, `countdown`, `shutter`, `success` — so a
+ * screen reads the same on either client.
+ *
+ * Failure is always silent: a booth that cannot play a click must still take a
+ * photo. If the native module is missing (unit tests, a fresh checkout before
+ * the first native build) the calls are no-ops rather than errors.
+ */
+
+export type SoundCue = 'click' | 'select' | 'countdown' | 'shutter' | 'success' | 'beep';
+
+const native = NativeModules.SimpleSound as
+  | { play: (name: string) => void; stopAll?: () => void }
+  | undefined;
+
+/** Haptics are additive, never a substitute — Electron has none, iPads/tablets do. */
+const HAPTICS: Record<SoundCue, number | number[]> = {
+  click: 8,
+  select: 12,
+  countdown: 14,
+  shutter: [0, 18],
+  success: [0, 14, 60, 14],
+  beep: 10,
+};
 
 class SoundManager {
-  static async init() {
-    // Sound initialization if needed per platform
+  /** True when a native player answered — useful in diagnostics and tests. */
+  static get available(): boolean {
+    return Boolean(native?.play);
   }
 
-  // Micro-interaction haptic feedback
-  static haptic(pattern: number | number[] = 15) {
+  static async init(): Promise<void> {
+    // Nothing to warm up: the modules load their samples in their constructors.
+  }
+
+  static play(cue: SoundCue = 'click'): void {
     try {
-      if (Platform.OS === 'android' || Platform.OS === 'ios') {
-        Vibration.vibrate(pattern);
-      } else if (typeof window !== 'undefined' && 'navigator' in window && 'vibrate' in navigator) {
-        navigator.vibrate(pattern);
-      }
-    } catch (e) {
-      // Ignore haptic error if unsupported
+      native?.play(cue);
+    } catch {
+      /* a silent booth is better than a crashed one */
     }
   }
 
-  // Major interaction sound feedback
-  static async play(name: 'click' | 'shutter' | 'beep' | 'success') {
+  /** Explicit haptic, for presses that should not also make a sound. */
+  static haptic(pattern: number | number[] = 12): void {
     try {
-      // Native module (Android & iOS)
-      if (SimpleSound) {
-        SimpleSound.play(name);
-        return;
-      }
+      if (Platform.OS === 'ios' || Platform.OS === 'android') Vibration.vibrate(pattern);
+    } catch {
+      /* device without a motor */
+    }
+  }
 
-      // Web Audio / Cross-Platform Fallback Synthesizer
-      if (typeof window !== 'undefined' && (window.AudioContext || (window as any).webkitAudioContext)) {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        const ctx = new AudioCtx();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+  /** Sound + haptic in one call, the shape most screens want on a tap. */
+  static tap(cue: SoundCue = 'click'): void {
+    SoundManager.play(cue);
+    if (cue === 'shutter' || cue === 'success') SoundManager.haptic(HAPTICS[cue]);
+  }
 
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        const now = ctx.currentTime;
-
-        if (name === 'click') {
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(800, now);
-          osc.frequency.exponentialRampToValueAtTime(400, now + 0.05);
-          gain.gain.setValueAtTime(0.3, now);
-          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-          osc.start(now);
-          osc.stop(now + 0.05);
-        } else if (name === 'shutter') {
-          osc.type = 'square';
-          osc.frequency.setValueAtTime(1500, now);
-          osc.frequency.exponentialRampToValueAtTime(300, now + 0.12);
-          gain.gain.setValueAtTime(0.4, now);
-          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
-          osc.start(now);
-          osc.stop(now + 0.12);
-        } else if (name === 'beep') {
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(1000, now);
-          gain.gain.setValueAtTime(0.2, now);
-          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
-          osc.start(now);
-          osc.stop(now + 0.08);
-        } else if (name === 'success') {
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(523.25, now); // C5
-          osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
-          osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
-          gain.gain.setValueAtTime(0.3, now);
-          gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-          osc.start(now);
-          osc.stop(now + 0.35);
-        }
-      }
-    } catch (e) {
-      console.log('Error playing sound', e);
+  static stopAll(): void {
+    try {
+      native?.stopAll?.();
+    } catch {
+      /* ignore */
     }
   }
 }
+
+/** Electron-compatible facade: `sound.click()`, `sound.shutter()`, … */
+export const sound = {
+  click: () => SoundManager.play('click'),
+  select: () => SoundManager.play('select'),
+  countdown: () => SoundManager.play('countdown'),
+  shutter: () => SoundManager.play('shutter'),
+  success: () => SoundManager.play('success'),
+};
 
 export default SoundManager;

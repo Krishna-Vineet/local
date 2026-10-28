@@ -11,6 +11,27 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		27F33AB978CF2D40860C725E /* AirPrintModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF3943BE178D1F68453D2B5 /* AirPrintModule.swift */; };
+		8D644617C6AF26DEBA898323 /* AirPrintModuleBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 7AAF1171D3D7980B69F99F38 /* AirPrintModuleBridge.m */; };
+		262FBE25FA170BFEA4DADB57 /* IdleTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 152B1962EF50AA84EBFF2770 /* IdleTimer.swift */; };
+		4D3254C168B5EE4829B2DDF7 /* IdleTimerBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 9ED6511543DF3CBEABD4E40D /* IdleTimerBridge.m */; };
+		DB79E9F1BEC741405591E77F /* SimpleSoundModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B027CC0D89C8F61BABC3CE6 /* SimpleSoundModule.swift */; };
+		F98100D550A19ABFA50E8870 /* SimpleSoundBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 3505C34AA004F49E54DF8111 /* SimpleSoundBridge.m */; };
+		47C0CAED3DEA6A3B4FD7F51D /* Fredoka-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 45C14560E10D9E0E093F8481 /* Fredoka-Bold.ttf */; };
+		87AFFC10C8A12A800914F2F6 /* Fredoka-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DF5B27CC4DD971121F492B8D /* Fredoka-Medium.ttf */; };
+		6389BD8535FA1C7984145C80 /* Fredoka-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 6F75F98142D8E61F84D1DCDA /* Fredoka-Regular.ttf */; };
+		20016BCDFF0255D315051748 /* Fredoka-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9083BA91CBC103516A503187 /* Fredoka-SemiBold.ttf */; };
+		0245E593E72C09C545579DBE /* Nunito-Black.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 468E03B456C93CACB5B89A24 /* Nunito-Black.ttf */; };
+		744C4B6018C76F6ED90B9A5B /* Nunito-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C8203E17528ED580E5B6E1F3 /* Nunito-Bold.ttf */; };
+		E4148D7132E51971F5AD289C /* Nunito-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F314930C707D3605C57BFD2A /* Nunito-ExtraBold.ttf */; };
+		4485349E43EF4BE7D6381916 /* Nunito-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 43832DC499412F5720C4DD1D /* Nunito-Regular.ttf */; };
+		371573E66F57CB2BEA135619 /* Nunito-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3A69832F73B2F8E486CAD25C /* Nunito-SemiBold.ttf */; };
+		F160E5E99DB6CB7791EA4D6A /* beep.wav in Resources */ = {isa = PBXBuildFile; fileRef = 109154325AB3F07CFC0DAF50 /* beep.wav */; };
+		BA5244594C982A5F185855E2 /* click.wav in Resources */ = {isa = PBXBuildFile; fileRef = CB1775D5B40A8F9B73A4D077 /* click.wav */; };
+		4BEE2FAE29476F8034C9B1EB /* countdown.wav in Resources */ = {isa = PBXBuildFile; fileRef = 986714CBA409405FD7366949 /* countdown.wav */; };
+		958DCD5ACD4703D2763A90F4 /* select.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4629A043FD661669033B14C2 /* select.wav */; };
+		FF504AEF37507EA62D596E5A /* shutter.wav in Resources */ = {isa = PBXBuildFile; fileRef = 86897640777806865F7D9F5C /* shutter.wav */; };
+		086957C3844F6E6787A94948 /* success.wav in Resources */ = {isa = PBXBuildFile; fileRef = 1F16871B2288C818A0B0F654 /* success.wav */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +45,27 @@
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = booth/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = booth/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		ABF3943BE178D1F68453D2B5 /* AirPrintModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AirPrintModule.swift; path = booth/AirPrintModule.swift; sourceTree = "<group>"; };
+		7AAF1171D3D7980B69F99F38 /* AirPrintModuleBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = AirPrintModuleBridge.m; path = booth/AirPrintModuleBridge.m; sourceTree = "<group>"; };
+		152B1962EF50AA84EBFF2770 /* IdleTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IdleTimer.swift; path = booth/IdleTimer.swift; sourceTree = "<group>"; };
+		9ED6511543DF3CBEABD4E40D /* IdleTimerBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = IdleTimerBridge.m; path = booth/IdleTimerBridge.m; sourceTree = "<group>"; };
+		6B027CC0D89C8F61BABC3CE6 /* SimpleSoundModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SimpleSoundModule.swift; path = booth/SimpleSoundModule.swift; sourceTree = "<group>"; };
+		3505C34AA004F49E54DF8111 /* SimpleSoundBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = SimpleSoundBridge.m; path = booth/SimpleSoundBridge.m; sourceTree = "<group>"; };
+		45C14560E10D9E0E093F8481 /* Fredoka-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = Fredoka-Bold.ttf; path = booth/Fonts/Fredoka-Bold.ttf; sourceTree = "<group>"; };
+		DF5B27CC4DD971121F492B8D /* Fredoka-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = Fredoka-Medium.ttf; path = booth/Fonts/Fredoka-Medium.ttf; sourceTree = "<group>"; };
+		6F75F98142D8E61F84D1DCDA /* Fredoka-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = Fredoka-Regular.ttf; path = booth/Fonts/Fredoka-Regular.ttf; sourceTree = "<group>"; };
+		9083BA91CBC103516A503187 /* Fredoka-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = Fredoka-SemiBold.ttf; path = booth/Fonts/Fredoka-SemiBold.ttf; sourceTree = "<group>"; };
+		468E03B456C93CACB5B89A24 /* Nunito-Black.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = Nunito-Black.ttf; path = booth/Fonts/Nunito-Black.ttf; sourceTree = "<group>"; };
+		C8203E17528ED580E5B6E1F3 /* Nunito-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = Nunito-Bold.ttf; path = booth/Fonts/Nunito-Bold.ttf; sourceTree = "<group>"; };
+		F314930C707D3605C57BFD2A /* Nunito-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = Nunito-ExtraBold.ttf; path = booth/Fonts/Nunito-ExtraBold.ttf; sourceTree = "<group>"; };
+		43832DC499412F5720C4DD1D /* Nunito-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = Nunito-Regular.ttf; path = booth/Fonts/Nunito-Regular.ttf; sourceTree = "<group>"; };
+		3A69832F73B2F8E486CAD25C /* Nunito-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = Nunito-SemiBold.ttf; path = booth/Fonts/Nunito-SemiBold.ttf; sourceTree = "<group>"; };
+		109154325AB3F07CFC0DAF50 /* beep.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = beep.wav; path = booth/Sounds/beep.wav; sourceTree = "<group>"; };
+		CB1775D5B40A8F9B73A4D077 /* click.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = click.wav; path = booth/Sounds/click.wav; sourceTree = "<group>"; };
+		986714CBA409405FD7366949 /* countdown.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = countdown.wav; path = booth/Sounds/countdown.wav; sourceTree = "<group>"; };
+		4629A043FD661669033B14C2 /* select.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = select.wav; path = booth/Sounds/select.wav; sourceTree = "<group>"; };
+		86897640777806865F7D9F5C /* shutter.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = shutter.wav; path = booth/Sounds/shutter.wav; sourceTree = "<group>"; };
+		1F16871B2288C818A0B0F654 /* success.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; name = success.wav; path = booth/Sounds/success.wav; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,6 +88,27 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				ABF3943BE178D1F68453D2B5 /* AirPrintModule.swift */,
+				7AAF1171D3D7980B69F99F38 /* AirPrintModuleBridge.m */,
+				152B1962EF50AA84EBFF2770 /* IdleTimer.swift */,
+				9ED6511543DF3CBEABD4E40D /* IdleTimerBridge.m */,
+				6B027CC0D89C8F61BABC3CE6 /* SimpleSoundModule.swift */,
+				3505C34AA004F49E54DF8111 /* SimpleSoundBridge.m */,
+				45C14560E10D9E0E093F8481 /* Fredoka-Bold.ttf */,
+				DF5B27CC4DD971121F492B8D /* Fredoka-Medium.ttf */,
+				6F75F98142D8E61F84D1DCDA /* Fredoka-Regular.ttf */,
+				9083BA91CBC103516A503187 /* Fredoka-SemiBold.ttf */,
+				468E03B456C93CACB5B89A24 /* Nunito-Black.ttf */,
+				C8203E17528ED580E5B6E1F3 /* Nunito-Bold.ttf */,
+				F314930C707D3605C57BFD2A /* Nunito-ExtraBold.ttf */,
+				43832DC499412F5720C4DD1D /* Nunito-Regular.ttf */,
+				3A69832F73B2F8E486CAD25C /* Nunito-SemiBold.ttf */,
+				109154325AB3F07CFC0DAF50 /* beep.wav */,
+				CB1775D5B40A8F9B73A4D077 /* click.wav */,
+				986714CBA409405FD7366949 /* countdown.wav */,
+				4629A043FD661669033B14C2 /* select.wav */,
+				86897640777806865F7D9F5C /* shutter.wav */,
+				1F16871B2288C818A0B0F654 /* success.wav */,
 			);
 			name = booth;
 			sourceTree = "<group>";
@@ -158,6 +221,21 @@
 			buildActionMask = 2147483647;
 			files = (
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
+				47C0CAED3DEA6A3B4FD7F51D /* Fredoka-Bold.ttf in Resources */,
+				87AFFC10C8A12A800914F2F6 /* Fredoka-Medium.ttf in Resources */,
+				6389BD8535FA1C7984145C80 /* Fredoka-Regular.ttf in Resources */,
+				20016BCDFF0255D315051748 /* Fredoka-SemiBold.ttf in Resources */,
+				0245E593E72C09C545579DBE /* Nunito-Black.ttf in Resources */,
+				744C4B6018C76F6ED90B9A5B /* Nunito-Bold.ttf in Resources */,
+				E4148D7132E51971F5AD289C /* Nunito-ExtraBold.ttf in Resources */,
+				4485349E43EF4BE7D6381916 /* Nunito-Regular.ttf in Resources */,
+				371573E66F57CB2BEA135619 /* Nunito-SemiBold.ttf in Resources */,
+				F160E5E99DB6CB7791EA4D6A /* beep.wav in Resources */,
+				BA5244594C982A5F185855E2 /* click.wav in Resources */,
+				4BEE2FAE29476F8034C9B1EB /* countdown.wav in Resources */,
+				958DCD5ACD4703D2763A90F4 /* select.wav in Resources */,
+				FF504AEF37507EA62D596E5A /* shutter.wav in Resources */,
+				086957C3844F6E6787A94948 /* success.wav in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -245,6 +323,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				27F33AB978CF2D40860C725E /* AirPrintModule.swift in Sources */,
+				8D644617C6AF26DEBA898323 /* AirPrintModuleBridge.m in Sources */,
+				262FBE25FA170BFEA4DADB57 /* IdleTimer.swift in Sources */,
+				4D3254C168B5EE4829B2DDF7 /* IdleTimerBridge.m in Sources */,
+				DB79E9F1BEC741405591E77F /* SimpleSoundModule.swift in Sources */,
+				F98100D550A19ABFA50E8870 /* SimpleSoundBridge.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

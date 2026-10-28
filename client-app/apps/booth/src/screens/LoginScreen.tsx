@@ -23,9 +23,7 @@ import {
   fonts,
   fontSize,
   moderateScale,
-  radii,
   scale,
-  shadows,
   useAppTheme,
   verticalScale,
 } from '../../../../packages/ui/src/index';

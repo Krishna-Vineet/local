@@ -952,3 +952,13 @@ export const useBooth = (): BoothContextValue => {
   if (!context) throw new Error('useBooth must be used within BoothProvider');
   return context;
 };
+
+/**
+ * Same value, but `null` instead of a throw when there is no provider.
+ *
+ * `AppShell` uses this to show the organisation badge and the connection pill
+ * without every screen having to forward two fields; screens can still override
+ * either. Components rendered in isolation (tests, Storybook-ish previews) keep
+ * working because they simply get no chrome data.
+ */
+export const useOptionalBooth = (): BoothContextValue | null => useContext(BoothContext);

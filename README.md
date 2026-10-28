@@ -180,6 +180,7 @@ Every document below is versioned in this repository. Start with the owner's ord
 | 5b | [`docs/IPAD_SUPPORT.md`](docs/IPAD_SUPPORT.md) | iPad build, behaviour, the 18 review findings and the kiosk/lockdown recipe |
 | 12b | [`docs/HOSTING_AND_SCALING.md`](docs/HOSTING_AND_SCALING.md) | Where every component runs today, what each costs, the triggers and stages for growth, and the 30+ situations that force an architecture change |
 | 12c | [`docs/DIAGRAMS.md`](docs/DIAGRAMS.md) · [`docs/diagrams/index.html`](docs/diagrams/index.html) | 29 maintained diagrams: ecosystem, ER, DFD L0/L1/L2, HLD/LLD, future architecture. The HTML version is interactive |
+| 5c | [`docs/KIOSK_UI_PARITY.md`](docs/KIOSK_UI_PARITY.md) | The shared kiosk design language: tokens, fonts, shell components, per-screen map for Electron vs the tablets, and the generated interaction tones |
 | 13 | [`business/FINANCIAL_MODEL.xlsx`](business/FINANCIAL_MODEL.xlsx) | Full expenditure model, forecasts, runway |
 | 14 | [`business/UNIT_ECONOMICS.xlsx`](business/UNIT_ECONOMICS.xlsx) | Pricing, cost per print/photo/AI call, margins, break-even |
 | 15 | [`business/HANDOVER_REGISTER.xlsx`](business/HANDOVER_REGISTER.xlsx) | Owners, vendors, renewals, credentials, debt, artefacts |

@@ -2,6 +2,7 @@ import React from 'react';
 import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLogo } from './AppLogo';
+import { useOptionalBooth } from '../context/BoothProvider';
 import {
   Icon,
   fonts,
@@ -9,7 +10,6 @@ import {
   moderateScale,
   radii,
   scale,
-  shadows,
   useAppTheme,
   verticalScale,
 } from '../../../../packages/ui/src/index';
@@ -61,7 +61,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   title,
   subtitle,
   secondsLeft,
-  online = true,
+  online,
   orgName,
   orgLogoUrl,
   hideProgress,
@@ -71,6 +71,14 @@ export const AppShell: React.FC<AppShellProps> = ({
   testID,
 }) => {
   const { theme } = useAppTheme();
+  // Fall back to the paired booth so screens only pass what is truly local.
+  const booth = useOptionalBooth();
+  const settings = booth?.snapshot?.settings;
+  const org = booth?.snapshot?.organization;
+  const resolvedOrgName = orgName ?? settings?.organizationName ?? org?.name ?? undefined;
+  const resolvedOrgLogo =
+    orgLogoUrl !== undefined ? orgLogoUrl : settings?.branding?.logoUrl ?? org?.branding?.logoUrl ?? null;
+  const isOnline = online ?? booth?.online ?? true;
   const p = theme.palette;
   const insets = useSafeAreaInsets();
   const index = step ? FLOW.indexOf(step) : -1;
@@ -106,20 +114,20 @@ export const AppShell: React.FC<AppShellProps> = ({
             <AppLogo width={scale(38)} height={scale(36)} forceDark={night} />
             <Text style={[styles.wordmark, { color: ink }]}>HappyPix</Text>
           </View>
-          {orgName ? (
+          {resolvedOrgName ? (
             <>
               <View style={[styles.divider, { backgroundColor: night ? 'rgba(255,255,255,0.14)' : 'rgba(88,56,105,0.14)' }]} />
               <View style={styles.orgRow}>
-                {orgLogoUrl ? (
+                {resolvedOrgLogo ? (
                   <View style={[styles.orgLogo, { borderColor: p.line, backgroundColor: p.white }]}>
-                    <OrgLogo url={orgLogoUrl} />
+                    <OrgLogo url={resolvedOrgLogo} />
                   </View>
                 ) : null}
                 <Text
                   numberOfLines={1}
                   style={[styles.orgName, { color: ink }]}
                 >
-                  {orgName}
+                  {resolvedOrgName}
                 </Text>
               </View>
             </>
@@ -143,10 +151,10 @@ export const AppShell: React.FC<AppShellProps> = ({
         )}
 
         <View style={styles.headerStatus}>
-          <View style={[styles.statusPill, { backgroundColor: online ? p.greenSoft : p.redSoft }]}>
-            <Icon name={online ? 'wifi' : 'wifi-off'} size={fontSize(13)} color={online ? p.green : p.red} />
-            <Text style={[styles.statusText, { color: online ? p.green : p.red }]}>
-              {online ? 'Connected' : 'Offline'}
+          <View style={[styles.statusPill, { backgroundColor: isOnline ? p.greenSoft : p.redSoft }]}>
+            <Icon name={isOnline ? 'wifi' : 'wifi-off'} size={fontSize(13)} color={isOnline ? p.green : p.red} />
+            <Text style={[styles.statusText, { color: isOnline ? p.green : p.red }]}>
+              {isOnline ? 'Connected' : 'Offline'}
             </Text>
           </View>
           {secondsLeft !== undefined ? (

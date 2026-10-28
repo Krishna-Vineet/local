@@ -13,17 +13,14 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import type { CapturedPhoto } from '@happypix/types';
 import {
-  ScreenContainer,
-  LayoutContainer,
   TemplateCanvas,
-  useAppTheme,
   fontSize,
   scale,
   moderateScale,
   verticalScale,
 } from '../../../../packages/ui/src/index';
 import { useBooth } from '../context/BoothProvider';
-import { ScreenHeader } from '../components/ScreenHeader';
+import { AppShell } from '../components/AppShell';
 import SoundManager from '../utils/SoundManager';
 import { InactivityToast } from '../components/InactivityToast';
 import type { RootStackParamList } from '../../App';
@@ -31,7 +28,6 @@ import type { RootStackParamList } from '../../App';
 type Props = NativeStackScreenProps<RootStackParamList, 'Photos'>;
 
 export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
-  const { theme } = useAppTheme();
   const {
     session,
     updateSession,
@@ -174,15 +170,13 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
   const portraitCellWidth = Math.max(104, Math.round(portraitCellHeight * 1.32));
 
   return (
-    <ScreenContainer style={{ backgroundColor: '#050508' }}>
-      <LayoutContainer>
-        {/* Prominent Header with Fixed-width Timer Pill */}
-        <ScreenHeader
-          title="Pick Your Best Shots"
-          subtitle={`Slot #${activeSlotIndex + 1} active. Tap any photo below to place it into your print.`}
-          secondsLeft={secondsLeft}
-          step="PHOTOS"
-        />
+    <AppShell
+      step="photos"
+      title="Choose your best shots"
+      subtitle={`Pick ${slotsCount} photo${slotsCount === 1 ? '' : 's'} for ${template?.name || 'your print'}. Tap a photo to fill the next empty slot.`}
+      secondsLeft={secondsLeft}
+      testID="photos-screen"
+    >
 
         <View style={[styles.mainLayout, isLandscape ? styles.rowLayout : styles.colLayout]}>
           {/* Negative 35mm Film Strip Reel */}
@@ -333,8 +327,7 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
         {secondsLeft <= 25 && (
           <InactivityToast secondsLeft={secondsLeft} onStayActive={resetIdleTimer} />
         )}
-      </LayoutContainer>
-    </ScreenContainer>
+    </AppShell>
   );
 };
 
@@ -358,10 +351,10 @@ const styles = StyleSheet.create({
     gap: verticalScale(12),
   },
   filmReelCard: {
-    backgroundColor: '#0a0a0f',
+    backgroundColor: '#fbf8fd',
     borderRadius: moderateScale(22),
     borderWidth: 1.5,
-    borderColor: '#20202e',
+    borderColor: '#e9e0ef',
     paddingVertical: verticalScale(12),
     paddingHorizontal: scale(14),
     shadowColor: '#000',
@@ -391,11 +384,11 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: '#d97706',
+    backgroundColor: '#d58b22',
     marginRight: 6,
   },
   filmReelTitle: {
-    color: '#d97706',
+    color: '#d58b22',
     fontSize: fontSize(10),
     fontWeight: '900',
     letterSpacing: 1.5,
@@ -409,7 +402,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(139, 92, 246, 0.35)',
   },
   filmReelCount: {
-    color: '#c4b5fd',
+    color: '#6f4bc5',
     fontSize: fontSize(10),
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -423,7 +416,7 @@ const styles = StyleSheet.create({
     width: scale(10),
     height: scale(6),
     borderRadius: 2,
-    backgroundColor: '#1c1c2a',
+    backgroundColor: '#f2edf5',
   },
   gridScrollContent: {
     paddingVertical: verticalScale(6),
@@ -449,8 +442,8 @@ const styles = StyleSheet.create({
   photoCell: {
     borderRadius: moderateScale(10),
     borderWidth: 1.5,
-    borderColor: '#242436',
-    backgroundColor: '#12121c',
+    borderColor: '#e9e0ef',
+    backgroundColor: '#fbf8fd',
     padding: scale(3),
     position: 'relative',
     overflow: 'hidden',
@@ -464,8 +457,8 @@ const styles = StyleSheet.create({
     height: verticalScale(78),
   },
   photoCellAssigned: {
-    borderColor: '#8b5cf6',
-    shadowColor: '#8b5cf6',
+    borderColor: '#d52d7b',
+    shadowColor: '#d52d7b',
     shadowOpacity: 0.6,
     shadowRadius: 8,
     elevation: 4,
@@ -478,19 +471,19 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
   photoCellNum: {
-    color: '#d97706',
+    color: '#d58b22',
     fontSize: fontSize(8),
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   slotTag: {
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#d52d7b',
     paddingVertical: 1,
     paddingHorizontal: 4,
     borderRadius: 4,
   },
   slotTagText: {
-    color: '#ffffff',
+    color: '#281637',
     fontSize: fontSize(7),
     fontWeight: '900',
   },
@@ -500,7 +493,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: '#1b1b26',
+    backgroundColor: '#f2edf5',
   },
   photoCellImg: {
     ...StyleSheet.absoluteFill,
@@ -514,24 +507,24 @@ const styles = StyleSheet.create({
     width: scale(20),
     height: scale(20),
     borderRadius: scale(10),
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#d52d7b',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#8b5cf6',
+    shadowColor: '#d52d7b',
     shadowOpacity: 0.8,
     shadowRadius: 6,
     elevation: 4,
   },
   assignedCheckIcon: {
-    color: '#ffffff',
+    color: '#281637',
     fontSize: fontSize(11),
     fontWeight: '900',
   },
   canvasStageCard: {
-    backgroundColor: '#0a0a0f',
+    backgroundColor: '#fbf8fd',
     borderRadius: moderateScale(22),
     borderWidth: 1.5,
-    borderColor: '#20202e',
+    borderColor: '#e9e0ef',
     paddingVertical: verticalScale(12),
     paddingHorizontal: scale(14),
     shadowColor: '#000',
@@ -558,7 +551,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   stageBadge: {
-    color: '#8b5cf6',
+    color: '#d52d7b',
     fontSize: fontSize(9),
     fontWeight: '800',
     letterSpacing: 2,
@@ -572,12 +565,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(139, 92, 246, 0.35)',
   },
   activeSlotText: {
-    color: '#a1a1aa',
+    color: '#776982',
     fontSize: fontSize(9),
     fontWeight: '600',
   },
   activeSlotHighlight: {
-    color: '#ffffff',
+    color: '#281637',
     fontWeight: '900',
   },
   canvasWrap: {
@@ -586,12 +579,12 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     padding: 3,
     borderRadius: 14,
-    backgroundColor: '#07070b',
+    backgroundColor: '#fbf8fd',
     borderWidth: 1,
-    borderColor: '#1d1d2c',
+    borderColor: '#f2edf5',
   },
   tapTip: {
-    color: '#71717a',
+    color: '#a498aa',
     fontSize: fontSize(11),
     textAlign: 'center',
   },
@@ -606,12 +599,12 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(12),
     paddingHorizontal: scale(22),
     borderRadius: moderateScale(12),
-    backgroundColor: '#171720',
+    backgroundColor: '#f2edf5',
     borderWidth: 1,
-    borderColor: '#262634',
+    borderColor: '#e9e0ef',
   },
   backBtnText: {
-    color: '#d4d4d8',
+    color: '#281637',
     fontSize: fontSize(14),
     fontWeight: '600',
   },
@@ -619,8 +612,8 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(12),
     paddingHorizontal: scale(28),
     borderRadius: moderateScale(12),
-    backgroundColor: '#8b5cf6',
-    shadowColor: '#8b5cf6',
+    backgroundColor: '#d52d7b',
+    shadowColor: '#d52d7b',
     shadowOpacity: 0.4,
     shadowRadius: 10,
     elevation: 5,
@@ -630,7 +623,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
   },
   nextBtnText: {
-    color: '#ffffff',
+    color: '#281637',
     fontSize: fontSize(15),
     fontWeight: '800',
   },

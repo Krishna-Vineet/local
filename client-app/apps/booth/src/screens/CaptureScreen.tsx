@@ -17,7 +17,6 @@ import { useIsFocused } from '@react-navigation/native';
 import type { CapturedPhoto } from '@happypix/types';
 import { cameraManager } from '../../../../packages/camera-core/src/index';
 import {
-  ScreenContainer,
   FlashOverlay,
   useAppTheme,
   fontSize,
@@ -25,6 +24,7 @@ import {
   moderateScale,
   verticalScale,
 } from '../../../../packages/ui/src/index';
+import { AppShell } from '../components/AppShell';
 import { useBooth } from '../context/BoothProvider';
 import SoundManager from '../utils/SoundManager';
 import type { RootStackParamList } from '../../App';
@@ -59,8 +59,8 @@ const CanonLiveView: React.FC<{ isFocused: boolean; onReady: () => void }> = ({ 
   if (!liveUrl) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000000' }}>
-        <ActivityIndicator size="large" color="#8b5cf6" />
-        <Text style={{ color: '#a78bfa', marginTop: 12, fontSize: 16 }}>Connecting to Canon DSLR Liveview...</Text>
+        <ActivityIndicator size="large" color="#ee4c96" />
+        <Text style={{ color: '#fa7cb6', marginTop: 12, fontSize: 16 }}>Connecting to Canon DSLR Liveview...</Text>
       </View>
     );
   }
@@ -199,10 +199,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const currentShot = Math.min(photos.length + 1, totalShots);
 
   return (
-    <ScreenContainer
-      style={{ backgroundColor: '#000000', padding: 0 }}
-      contentStyle={{ paddingVertical: 0, paddingHorizontal: 0 }}
-    >
+    <AppShell night step="camera" bleed testID="camera-screen">
       <View style={styles.container}>
         {/* Full-Screen Viewfinder — Covers 100% of frame in both Portrait and Landscape */}
         <View style={styles.viewfinderContainer}>
@@ -227,7 +224,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
               <View style={styles.placeholderIconWrap}>
                 <Svg width={48} height={48} viewBox="0 0 24 24">
                   <Path
-                    fill="#8b5cf6"
+                    fill="#ee4c96"
                     d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm0 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm8-7.5h-3.17L15 4.17C14.65 3.82 14.17 3.63 13.68 3.63h-3.36c-.49 0-.97.19-1.32.54L7.17 6H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 13H4V8h3.83l1.83-2h4.68l1.83 2H20v11z"
                   />
                 </Svg>
@@ -324,7 +321,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
         {/* Full-screen Flash Overlay */}
         <FlashOverlay visible={flash} />
       </View>
-    </ScreenContainer>
+    </AppShell>
   );
 };
 
@@ -349,7 +346,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   rebateAmber: {
-    color: '#d97706',
+    color: '#d58b22',
     fontSize: fontSize(9),
     fontWeight: '900',
     letterSpacing: 2,
@@ -362,7 +359,7 @@ const styles = StyleSheet.create({
   },
   barLine: {
     height: 10,
-    backgroundColor: '#d97706',
+    backgroundColor: '#d58b22',
   },
   sprocketRow: {
     flexDirection: 'row',
@@ -412,7 +409,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   placeholderSub: {
-    color: '#a1a1aa',
+    color: '#9b8da4',
     fontSize: fontSize(13),
     marginTop: 4,
   },
@@ -446,7 +443,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   statusDotSim: {
-    backgroundColor: '#f59e0b',
+    backgroundColor: '#d58b22',
   },
   statusText: {
     color: '#ffffff',
@@ -455,11 +452,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   statusDivider: {
-    color: '#71717a',
+    color: '#9b8da4',
     marginHorizontal: 8,
   },
   statusCounter: {
-    color: '#a78bfa',
+    color: '#fa7cb6',
     fontSize: fontSize(11),
     fontWeight: '900',
   },
@@ -470,8 +467,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(44),
     borderRadius: 28,
     borderWidth: 3,
-    borderColor: '#8b5cf6',
-    shadowColor: '#8b5cf6',
+    borderColor: '#ee4c96',
+    shadowColor: '#ee4c96',
     shadowOpacity: 0.8,
     shadowRadius: 24,
     elevation: 10,
@@ -487,13 +484,13 @@ const styles = StyleSheet.create({
     bottom: verticalScale(24),
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#8b5cf6',
+    backgroundColor: '#ee4c96',
     paddingVertical: verticalScale(14),
     paddingHorizontal: scale(32),
     borderRadius: 36,
     borderWidth: 2.5,
     borderColor: '#ffffff',
-    shadowColor: '#8b5cf6',
+    shadowColor: '#ee4c96',
     shadowOpacity: 0.6,
     shadowRadius: 18,
     elevation: 8,
@@ -517,7 +514,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   shutterSub: {
-    color: '#f5f3ff',
+    color: '#281637',
     fontSize: fontSize(11),
     fontWeight: '600',
   },
@@ -578,8 +575,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   thumbCellActive: {
-    borderColor: '#8b5cf6',
-    shadowColor: '#8b5cf6',
+    borderColor: '#ee4c96',
+    shadowColor: '#ee4c96',
     shadowOpacity: 0.7,
     shadowRadius: 8,
     elevation: 4,
@@ -590,7 +587,7 @@ const styles = StyleSheet.create({
   thumbNum: {
     fontSize: fontSize(7),
     fontWeight: '800',
-    color: '#71717a',
+    color: '#9b8da4',
   },
   thumbImage: {
     width: '100%',

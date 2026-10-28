@@ -18,6 +18,7 @@ import {
   scale,
   moderateScale,
   verticalScale,
+  withKioskFonts,
 } from '../../../../packages/ui/src/index';
 import { useBooth } from '../context/BoothProvider';
 import { AppShell } from '../components/AppShell';
@@ -331,7 +332,7 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create(withKioskFonts({
   mainLayout: {
     flex: 1,
     justifyContent: 'center',
@@ -627,5 +628,4 @@ const styles = StyleSheet.create({
     fontSize: fontSize(15),
     fontWeight: '800',
   },
-});
-
+}));

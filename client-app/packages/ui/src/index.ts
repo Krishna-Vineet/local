@@ -6,6 +6,7 @@
 export { BoothButton } from './components/BoothButton';
 export { Button, NextButton, BackButton, Pill, Card, Eyebrow, Title, Subtitle } from './components/Button';
 export type { ButtonProps, ButtonVariant, PillTone } from './components/Button';
+export { withKioskFonts, kioskFontFor } from './utils/typeRamp';
 export { Icon } from './components/Icon';
 export type { IconName, IconProps } from './components/Icon';
 export { AnimatedCard } from './components/AnimatedCard';

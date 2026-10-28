@@ -112,7 +112,10 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
           {/* event copy */}
           <View style={[styles.copy, isLandscape ? styles.copyLeft : styles.copyCenter]}>
             <Text style={[styles.eyebrow, { color: p.pinkDeep }]}>WELCOME TO</Text>
-            <Text style={[styles.eventName, { color: p.ink }]} numberOfLines={2}>
+            <Text
+              style={[styles.eventName, { color: p.ink }, isLandscape ? styles.textLeft : null]}
+              numberOfLines={2}
+            >
               {event?.name || 'The HappyPix Experience'}
             </Text>
             <View style={styles.metaRow}>
@@ -183,6 +186,7 @@ const styles = StyleSheet.create({
   copyLeft: { alignItems: 'flex-start' },
   copyCenter: { alignItems: 'center' },
   eyebrow: { fontFamily: fonts.bodyBlack, fontSize: fontSize(11), letterSpacing: 1.9 },
+  textLeft: { textAlign: 'left' },
   eventName: {
     fontFamily: fonts.display,
     fontSize: fontSize(52),

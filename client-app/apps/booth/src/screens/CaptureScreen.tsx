@@ -23,6 +23,7 @@ import {
   scale,
   moderateScale,
   verticalScale,
+  withKioskFonts,
 } from '../../../../packages/ui/src/index';
 import { AppShell } from '../components/AppShell';
 import { useBooth } from '../context/BoothProvider';
@@ -325,7 +326,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create(withKioskFonts({
   container: {
     flex: 1,
     backgroundColor: '#000000',
@@ -600,4 +601,4 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#1a1a26',
   },
-});
+}));

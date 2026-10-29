@@ -52,8 +52,7 @@ const Polaroid: React.FC<{
   gradient: [string, string];
   gradientId: string;
   caption: string;
-  seal?: React.ReactNode;
-}> = ({ uri, style, rotate, gradient, gradientId, caption, seal }) => {
+}> = ({ uri, style, rotate, gradient, gradientId, caption }) => {
   const [broken, setBroken] = useState(false);
   const showPhoto = Boolean(uri) && !broken;
 
@@ -90,7 +89,6 @@ const Polaroid: React.FC<{
           {caption}
         </Text>
       </View>
-      {seal}
     </View>
   );
 };
@@ -183,11 +181,6 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
             gradient={['#ffd3ae', '#e79a6d']}
             gradientId="start-p3"
             caption={captions[2]}
-            seal={
-              <View style={[styles.seal, { backgroundColor: p.pink, shadowColor: p.pink }]}>
-                <Icon name="heart" size={scale(38)} color="#ffffff" strokeWidth={2} />
-              </View>
-            }
           />
         </Animated.View>
 
@@ -314,21 +307,7 @@ const styles = StyleSheet.create({
     top: '35%',
     bottom: '2%',
   },
-  // `.start-heart { left:47%; top:42%; width:74px; height:74px }`
-  seal: {
-    position: 'absolute',
-    left: '47%',
-    top: '42%',
-    width: scale(74),
-    height: scale(74),
-    borderRadius: scale(37),
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOpacity: 0.36,
-    shadowRadius: scale(16),
-    shadowOffset: { width: 0, height: verticalScale(12) },
-    elevation: 8,
-  },
+
 
   copy: { maxWidth: scale(640) },
   copyLeft: { alignItems: 'flex-start', flexShrink: 1 },

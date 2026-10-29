@@ -209,4 +209,7 @@ export interface PrintOutcome {
   jobId: string | null
   error: string | null
   shareUrl: string | null
+  enqueueFailed?: boolean
+  enqueueError?: string | null
+  isSavedDurable?: boolean
 }

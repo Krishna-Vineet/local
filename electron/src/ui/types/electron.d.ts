@@ -30,6 +30,30 @@ declare global {
         printsTotal: number
         warning: string
       }>
+      /** Durable disk queue — stage a finished session before the UI forgets it. */
+      enqueueSession(value: {
+        sessionId: string
+        eventId?: string | null
+        digitalCopy?: boolean
+        guestConsent?: boolean
+        composite: string
+        photos: string[]
+        apiUrl?: string
+      }): Promise<{ success: boolean; sessionId: string; error?: string }>
+      getQueueStatus(): Promise<{
+        pendingCount: number
+        uploadingCount: number
+        uploadedCount: number
+        failedCount: number
+        totalBytesOnDisk: number
+      }>
+      getSessionStatus(sessionId: string): Promise<{
+        sessionId: string
+        state: 'pending' | 'uploading' | 'uploaded' | 'failed'
+        attempts: number
+        lastError: string | null
+        downloadUrl: string | null
+      } | null>
       canonProbe(ip?: string): Promise<{
         connected: boolean
         model: string | null

@@ -23,6 +23,7 @@ const guestDownloadSchema = new mongoose.Schema({
   eventId: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', default: null },
   deviceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Device', default: null },
   sessionId: { type: String, default: null, index: true },
+  payloadFingerprint: { type: String, default: null },
 
   // Final booth output: the composite (print-ready strip/page) first,
   // plus the individual frames that went into it.

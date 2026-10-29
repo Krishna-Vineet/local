@@ -6,6 +6,7 @@ import { canonCcapi } from './canonCcapi.js'
 import { getPreloadPath } from './pathResolver.js'
 import { isDev } from './util.js'
 import { startPrintServer, stopPrintServer } from './printServer.js'
+import { enqueueSession, getQueueStatus, getSessionStatus, startQueueWorker, stopQueueWorker, type EnqueueSessionPayload } from './uploadQueue.js'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -62,6 +63,9 @@ function registerIpc(): void {
   ipcMain.handle('booth:camera-report', (_event, value: CameraReport) => updateCameraReport(value))
   ipcMain.handle('booth:record-capture', () => recordCapture())
   ipcMain.handle('booth:print', (_event, value: PrintRequest) => printJob(value))
+  ipcMain.handle('booth:enqueue-session', (_event, value: EnqueueSessionPayload) => enqueueSession(value))
+  ipcMain.handle('booth:get-queue-status', () => getQueueStatus())
+  ipcMain.handle('booth:get-session-status', (_event, sessionId: string) => getSessionStatus(sessionId))
   ipcMain.handle('booth:set-kiosk', (_event, enabled: boolean) => {
     if (!mainWindow) return false
     mainWindow.setKiosk(enabled)
@@ -83,6 +87,7 @@ function registerIpc(): void {
 app.whenReady().then(() => {
   registerIpc()
   startPrintServer()
+  startQueueWorker()
   session.defaultSession.setPermissionCheckHandler((_webContents, permission) => permission === 'media')
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media')
@@ -96,6 +101,7 @@ app.on('activate', () => {
 
 app.on('window-all-closed', () => {
   stopPrintServer()
+  stopQueueWorker()
   if (process.platform !== 'darwin') app.quit()
 })
 

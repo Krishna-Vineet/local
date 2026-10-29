@@ -37,10 +37,63 @@ export async function createGuestDownload({
   photoIds = [],
   eventName = '',
   organizationName = '',
+  payloadFingerprint = null,
   now = new Date(),
 } = {}) {
   const urls = [...new Set((photoUrls || []).filter(Boolean).map(String))];
   if (!compositeUrl && urls.length === 0) return null; // nothing to download
+
+  // Idempotency: Return active existing download record for this session if present
+  if (sessionId && organizationId) {
+    const existing = await GuestDownload.findOne({ organizationId, sessionId });
+    if (existing && isDownloadLive(existing, now)) {
+      return existing;
+    }
+  }
+
+  // Atomic findOneAndUpdate with $setOnInsert ensures concurrency safety
+  if (sessionId && organizationId) {
+    try {
+      const generatedDownloadId = newDownloadId();
+      const expiresAt = new Date(now.getTime() + DOWNLOAD_TTL_MS);
+      const download = await GuestDownload.findOneAndUpdate(
+        { organizationId, sessionId },
+        {
+          $setOnInsert: {
+            downloadId: generatedDownloadId,
+            organizationId,
+            eventId,
+            deviceId,
+            sessionId,
+            compositeUrl: compositeUrl || null,
+            photoUrls: urls,
+            photoIds,
+            eventName: String(eventName || ''),
+            organizationName: String(organizationName || ''),
+            payloadFingerprint: payloadFingerprint || null,
+            expiresAt,
+            viewCount: 0,
+            downloadCount: 0,
+            createdAt: now,
+          },
+        },
+        {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        }
+      );
+      return download;
+    } catch (err) {
+      // If concurrent insertion produced a duplicate key error (MongoDB code 11000)
+      if (err.code === 11000 || (err.name === 'MongoServerError' && err.code === 11000)) {
+        const existing = await GuestDownload.findOne({ organizationId, sessionId });
+        if (existing) return existing;
+      }
+      throw err;
+    }
+  }
+
   const download = await GuestDownload.create({
     downloadId: newDownloadId(),
     organizationId,
@@ -52,6 +105,7 @@ export async function createGuestDownload({
     photoIds,
     eventName: String(eventName || ''),
     organizationName: String(organizationName || ''),
+    payloadFingerprint: payloadFingerprint || null,
     expiresAt: new Date(now.getTime() + DOWNLOAD_TTL_MS),
   });
   return download;

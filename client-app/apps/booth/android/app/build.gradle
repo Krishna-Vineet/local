@@ -25,7 +25,6 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
     ndkVersion = rootProject.ext.ndkVersion
-    buildToolsVersion = rootProject.ext.buildToolsVersion
     compileSdk = rootProject.ext.compileSdkVersion
 
     namespace = "com.happypix.booth"
@@ -35,6 +34,7 @@ android {
         targetSdk = rootProject.ext.targetSdkVersion
         versionCode = 1
         versionName = "1.0"
+        manifestPlaceholders = [usesCleartextTraffic: "true"]
 
         ndk {
             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"

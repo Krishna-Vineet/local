@@ -72,8 +72,8 @@ importers:
         specifier: 0.86.0
         version: 0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
       react-native-config:
-        specifier: ^1.5.3
-        version: 1.6.1(react-native@0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
+        specifier: ^1.7.2
+        version: 1.7.2(react-native@0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       react-native-qrcode-svg:
         specifier: ^6.3.3
         version: 6.3.21(react-native-svg@15.15.5(react-native@0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
@@ -242,6 +242,9 @@ importers:
       react-native:
         specifier: '>=0.74.0'
         version: 0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
+      react-native-safe-area-context:
+        specifier: '>=4.0.0'
+        version: 5.8.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
     devDependencies:
       typescript:
         specifier: ^5.4.5
@@ -3372,8 +3375,8 @@ packages:
   react-is@19.2.7:
     resolution: {integrity: sha512-kZFnouyVv7eP/Phmrlo9FK+zcAdriZJvzxXHF1Sl1P377WSGe2G/JxVolhTrB/jeV47lKImhNUsijjHAAbcl/A==}
 
-  react-native-config@1.6.1:
-    resolution: {integrity: sha512-HvKtxr6/Tq3iMdFx5REYZsjCtPi0RxQOMCs15+DqrUPTNFtWHuEuh+zw7fJp+dmuO79YMfdtlsPWIGTHtaXwjg==}
+  react-native-config@1.7.2:
+    resolution: {integrity: sha512-sOzjs2oGPqlgJu7WjlYa/zA8/uShebQeQVYumgPd8pO+l/TrHWhOZPWrDAphxrshpnFVgPgQeXXT3eVSTNQGpg==}
     peerDependencies:
       react: '*'
       react-native: '*'
@@ -8303,7 +8306,7 @@ snapshots:
 
   react-is@19.2.7: {}
 
-  react-native-config@1.6.1(react-native@0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
+  react-native-config@1.7.2(react-native@0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
     dependencies:
       react: 19.2.3
       react-native: 0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
@@ -8326,6 +8329,11 @@ snapshots:
     dependencies:
       react: 19.2.3
       react-native: 0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
+
+  react-native-safe-area-context@5.8.0(react-native@0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
+    dependencies:
+      react: 19.2.3
+      react-native: 0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
 
   react-native-screens@4.25.2(react-native@0.86.0(@babel/core@7.29.7)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/jest-preset@0.87.1(@babel/core@7.29.7)(react@19.2.3))(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
     dependencies:

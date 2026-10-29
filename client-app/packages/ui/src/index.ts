@@ -25,6 +25,7 @@ export * from './utils/filters';
 export * from './utils/responsive';
 export * from './utils/image';
 export * from './utils/photoSlots';
+export * from './utils/printSpec';
 export * from './context/ThemeContext';
 export * from './utils/theme';
 export * from './constants/patterns';

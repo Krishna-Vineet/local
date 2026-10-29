@@ -33,15 +33,12 @@ import {
   resolvePhotoSlots,
   resolveSlotCanvas,
 } from '../../../../packages/ui/src/utils/photoSlots';
+import { buildPrintSpec, STICKER_EM_FRACTION } from '../../../../packages/ui/src/utils/printSpec';
 import { cameraManager } from '../../../../packages/camera-core/src/index';
 import { printerManager, renderEngine, SkiaRenderAdapter } from '../../../../packages/printer-core/src/index';
 import type { PrintTemplate } from '../../../../packages/types/src/index';
 import { photosAsDataUrls } from '../storage/deviceStorage';
 import { enqueueOfflineSession, processOfflineSyncQueue } from '../services/offlineSyncService';
-
-// One em of a sticker as a fraction of the print width — must match
-// `STICKER_EM_FRACTION` in apps/booth/src/screens/CustomizeScreen.tsx.
-const STICKER_EM_FRACTION = 0.096;
 
 // ─── Final-print rendering ─────────────────────────────────────
 // The composite strip/page is rendered ONCE, then (a) printed and
@@ -107,6 +104,14 @@ function formatFriendlyPrintError(rawError?: string | null): string {
   return msg;
 }
 
+/**
+ * Renders the final composite — the bitmap that is printed *and* uploaded.
+ *
+ * It is drawn from `buildPrintSpec`, the same description the customise and
+ * selection screens render as a preview, so every customisation the guest made
+ * (filter, text, logo, stickers) is present in the bitmap by construction
+ * rather than by a second implementation agreeing with the first.
+ */
 async function renderSessionComposite(session: BoothSession): Promise<string | undefined> {
   if (!session.template) return undefined;
   if (!renderAdapterReady) {
@@ -114,61 +119,15 @@ async function renderSessionComposite(session: BoothSession): Promise<string | u
     renderAdapterReady = true;
   }
   const printTemplate = boothTemplateToPrintTemplate(session.template);
-  const PAPER: Record<string, { width: number; height: number }> = {
-    '4x6': { width: 1800, height: 1200 }, '5x7': { width: 2100, height: 1500 },
-    '6x8': { width: 2400, height: 1800 }, '2x6_strip': { width: 1800, height: 600 },
-  };
-  let dims = PAPER[printTemplate.paperSize] || PAPER['4x6'];
-  if (printTemplate.orientation === 'portrait' && dims.height < dims.width) dims = { width: dims.height, height: dims.width };
-  if (printTemplate.orientation === 'landscape' && dims.width < dims.height) dims = { width: dims.height, height: dims.width };
-
-  const design: any = session.template.design || {};
-  const templateAssets: any[] = Array.isArray((session.template as any).assets) ? (session.template as any).assets : [];
-  const bgUrl =
-    design.background?.url ||
-    (typeof design.background === 'string' && (design.background.startsWith('http') || design.background.startsWith('data:') || design.background.startsWith('/'))
-      ? design.background
-      : undefined) ||
-    design.bg?.url ||
-    templateAssets.find((a: any) => a.role === 'background' || a.type === 'background')?.url ||
-    undefined;
-  const bgColors = design.background?.colors || design.bg?.colors || (design.palette?.background ? [design.palette.background] : ['#ffffff']);
-  const gradientColors = (design.background?.type === 'gradient' || design.bg?.type === 'gradient') && bgColors.length >= 2
-    ? bgColors
-    : undefined;
+  const spec = buildPrintSpec({
+    template: session.template,
+    customization: session.customization,
+  });
 
   const output = await renderEngine.compose({
     template: printTemplate,
     photos: (session.selectedPhotos || []) as any,
-    filter: (session.customization?.filter || 'original') as any,
-    backgroundColor: bgColors[0] || '#ffffff',
-    backgroundImageUrl: bgUrl,
-    gradientColors,
-    decorations: Array.isArray(design.decorations) ? design.decorations : [],
-    tagline: session.customization?.subtitle || design.subtitle || design.tagline,
-    logo: session.customization?.logo || undefined,
-    // Stickers follow Electron's model: `x%`/`y%` of the print, sized by
-    // `scale` (0.5–4). The customise preview uses the same em fraction, so a
-    // sticker prints at exactly the size it was placed at.
-    stickers: (session.customization?.stickers || []).map((s: any) => {
-      const xPx = s.x <= 100 ? (Number(s.x) / 100) * dims.width : Number(s.x);
-      const yPx = s.y <= 100 ? (Number(s.y) / 100) * dims.height : Number(s.y);
-      const scaleFactor = Number(s.scale ?? (s.size ? Number(s.size) / 34 : 1));
-      const sizePx = Math.max(24, dims.width * STICKER_EM_FRACTION * scaleFactor);
-      return {
-        id: s.id,
-        emoji: s.emoji,
-        // `RenderEngine` centres the glyph on `x + width/2`, while the preview
-        // and Electron's `.placed-sticker` treat `x`/`y` as the centre. Offset
-        // by half a sticker here, or every sticker printed half a glyph up and
-        // to the left of where the guest put it.
-        x: xPx - sizePx / 2,
-        y: yPx - sizePx / 2,
-        width: sizePx,
-        height: sizePx,
-        rotation: s.rotation ?? 0,
-      };
-    }),
+    spec,
   });
   return output.bitmap;
 }

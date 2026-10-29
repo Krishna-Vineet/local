@@ -30,69 +30,125 @@ interface FilteredImageProps {
 const skiaImageCache = new Map<string, SkImage>();
 const skiaLoadingPromises = new Map<string, Promise<SkImage | null>>();
 
+/**
+ * Reads an image into a Skia bitmap.
+ *
+ * This is the *only* thing standing between the guest and a filter that works:
+ * if decoding fails we silently fall back to the unfiltered `<Image>`, which is
+ * exactly how "the filter only shows up in the final print" happens on a tablet
+ * while the print path (which uses its own loader) succeeds.
+ *
+ * Four strategies, cheapest first, and every failure is reported so the next
+ * report of a missing filter comes with a reason instead of a guess:
+ *
+ *   1. `data:` → base64 decode;
+ *   2. `http(s)` → fetch → bytes (never `fromURI`, which can block on Android);
+ *   3. a local path → `Skia.Data.fromURI`, with and without the `file://` scheme;
+ *   4. anything else (a camera URI React Native itself can read, e.g. `ph://`
+ *      on iOS or a `content://` on Android) → XHR → FileReader → base64.
+ */
 async function loadSkiaImage(uri: string): Promise<SkImage | null> {
   if (!uri) return null;
-  if (skiaImageCache.has(uri)) {
-    return skiaImageCache.get(uri)!;
-  }
-  if (skiaLoadingPromises.has(uri)) {
-    return skiaLoadingPromises.get(uri)!;
-  }
+  if (skiaImageCache.has(uri)) return skiaImageCache.get(uri)!;
+  if (skiaLoadingPromises.has(uri)) return skiaLoadingPromises.get(uri)!;
+
+  const decode = (data: any): SkImage | null => {
+    if (!data) return null;
+    try {
+      return Skia.Image.MakeImageFromEncoded(data) || null;
+    } catch (err) {
+      console.warn('[FilteredImage] could not decode image bytes:', err);
+      return null;
+    }
+  };
+
+  const fromBase64 = (base64: string): SkImage | null => {
+    try {
+      return decode(Skia.Data.fromBase64(base64.replace(/\s/g, '')));
+    } catch (err) {
+      console.warn('[FilteredImage] base64 decode failed:', err);
+      return null;
+    }
+  };
+
+  const fromUri = async (raw: string): Promise<SkImage | null> => {
+    try {
+      return decode(await Skia.Data.fromURI(raw));
+    } catch {
+      return null;
+    }
+  };
+
+  /** Last resort: let React Native's own loader fetch the bytes. */
+  const viaXhr = (): Promise<string | null> =>
+    new Promise((resolve) => {
+      try {
+        const request = new XMLHttpRequest();
+        request.onload = () => {
+          try {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const result = reader.result;
+              resolve(typeof result === 'string' && result.startsWith('data:') ? result : null);
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(request.response);
+          } catch {
+            resolve(null);
+          }
+        };
+        request.onerror = () => resolve(null);
+        request.responseType = 'blob';
+        request.open('GET', uri, true);
+        request.send(null);
+      } catch {
+        resolve(null);
+      }
+    });
 
   const promise = (async () => {
     try {
-      let data: any = null;
+      let image: SkImage | null = null;
 
       if (uri.startsWith('data:')) {
-        const commaIdx = uri.indexOf(',');
-        const b64 = (commaIdx >= 0 ? uri.slice(commaIdx + 1) : uri).replace(/\s/g, '');
-        data = Skia.Data.fromBase64(b64);
+        const comma = uri.indexOf(',');
+        image = fromBase64(comma >= 0 ? uri.slice(comma + 1) : uri);
+      } else if (uri.startsWith('http://') || uri.startsWith('https://')) {
+        try {
+          const response = await fetch(uri);
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          image = decode(Skia.Data.fromBytes(bytes));
+        } catch (err) {
+          console.warn('[FilteredImage] remote fetch failed:', err);
+        }
       } else {
-        // 1. Try POSIX path on Android (Skia Data.fromURI requires raw path without file://)
+        // A local file. Order matters: the scheme-carrying form is what Skia
+        // expects on iOS, the bare path is what it expects on Android.
         if (Platform.OS === 'android' && uri.startsWith('file://')) {
-          const rawPath = uri.replace(/^file:\/\//, '');
-          try {
-            data = await Skia.Data.fromURI(rawPath);
-          } catch {
-            // fallback below
-          }
+          image = await fromUri(uri.replace(/^file:\/\//, ''));
         }
-
-        // 2. Try URI as-is
-        if (!data) {
-          try {
-            data = await Skia.Data.fromURI(uri);
-          } catch {
-            // fallback below
-          }
+        if (!image) image = await fromUri(uri);
+        if (!image && !uri.startsWith('file://') && uri.startsWith('/')) {
+          image = await fromUri(`file://${uri}`);
         }
-
-        // 3. Try React Native fetch (React Native Android fetch supports file:// URIs via OkHttp)
-        if (!data) {
-          try {
-            const resp = await fetch(uri);
-            if (resp.ok || resp.status === 0 || resp.status === 200) {
-              const arrayBuffer = await resp.arrayBuffer();
-              data = Skia.Data.fromBytes(new Uint8Array(arrayBuffer));
-            }
-          } catch (fetchErr) {
-            console.warn('[FilteredImage] fetch fallback failed:', fetchErr);
+        if (!image) {
+          const dataUrl = await viaXhr();
+          if (dataUrl) {
+            const comma = dataUrl.indexOf(',');
+            image = fromBase64(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl);
           }
         }
       }
 
-      if (!data) return null;
-      const img = Skia.Image.MakeImageFromEncoded(data);
-      if (img) {
-        skiaImageCache.set(uri, img);
-        return img;
+      if (image) {
+        skiaImageCache.set(uri, image);
+        return image;
       }
-    } catch (e) {
-      console.warn('[FilteredImage] Failed to load image data for Skia:', e);
+      console.warn('[FilteredImage] no Skia bitmap for uri — filters will not render for this photo:', uri);
+      return null;
     } finally {
       skiaLoadingPromises.delete(uri);
     }
-    return null;
   })();
 
   skiaLoadingPromises.set(uri, promise);

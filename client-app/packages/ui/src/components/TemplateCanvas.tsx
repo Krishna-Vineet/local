@@ -12,6 +12,7 @@ import {
 import type { BoothTemplate, CapturedPhoto, Customization, OrnamentId, FilterId } from '@happypix/types';
 import { FilteredImage } from './FilteredImage';
 import { resolvePhotoSlots, slotFractions } from '../utils/photoSlots';
+import { buildPrintSpec, logoRect, resolveDesign, type PrintSpec } from '../utils/printSpec';
 
 interface TemplateCanvasProps {
   template: BoothTemplate;
@@ -61,126 +62,57 @@ const getFilterOverlay = (filter: FilterId): ViewStyle | null => {
   }
 };
 
-const DESIGNER_PRESETS: Record<string, any> = {
-  ClassicPostcard: {
-    background: { type: 'solid', colors: ['#FFFFFF'] },
-    accent: '#2A2338',
-    textColor: '#191424',
-    ornament: 'frame',
-    slotShape: 'rect',
-    title: 'HAPPYPIX',
-  },
-  MinimalMono: {
-    background: { type: 'solid', colors: ['#FAFAF8'] },
-    accent: '#191424',
-    textColor: '#403952',
-    ornament: 'none',
-    slotShape: 'rect',
-    title: 'UNTITLED',
-  },
-  PanoramaStory: {
-    background: { type: 'gradient', colors: ['#241E33', '#14101F'] },
-    accent: '#A99BE8',
-    textColor: '#FFFFFF',
-    ornament: 'none',
-    slotShape: 'round',
-    title: 'PANORAMA',
-  },
-  RoyalWedding: {
-    background: { type: 'gradient', colors: ['#5F4CAA', '#3A3170'] },
-    accent: '#D9B44A',
-    textColor: '#F3D9A4',
-    ornament: 'flourish',
-    slotShape: 'arch',
-    titleBand: true,
-    title: 'Royal Wedding',
-  },
-  VintageBookmark: {
-    background: { type: 'solid', colors: ['#F5EEDC'] },
-    accent: '#6B5B3E',
-    textColor: '#4C3F26',
-    ornament: 'dots',
-    slotShape: 'rect',
-    title: 'A Keepsake',
-  },
-  GalaGold: {
-    background: { type: 'solid', colors: ['#191420'] },
-    accent: '#D9B44A',
-    textColor: '#F3D9A4',
-    ornament: 'frame',
-    slotShape: 'rect',
-    title: 'Gala Night',
-    subtitle: 'Presented with joy',
-  },
-  FestiveMaroon: {
-    background: { type: 'solid', colors: ['#6E1F2A'] },
-    accent: '#D9B44A',
-    textColor: '#FFE9D6',
-    ornament: 'stripes',
-    slotShape: 'round',
-    titleBand: true,
-    title: 'Festive Wishes',
-  },
-  LegacyGuestbook: {
-    background: { type: 'gradient', colors: ['#1E3E70', '#12264A'] },
-    accent: '#D9B44A',
-    textColor: '#F3D9A4',
-    ornament: 'frame',
-    slotShape: 'round',
-    titleBand: true,
-    title: 'The Guest Book',
-  },
-  NeonParty: {
-    background: { type: 'gradient', colors: ['#EA097F', '#5F4CAA'] },
-    accent: '#FF7AC1',
-    textColor: '#FFFFFF',
-    ornament: 'glow',
-    slotShape: 'round',
-    title: 'NEON NIGHT',
-  },
-  SunsetStrip: {
-    background: { type: 'gradient', colors: ['#F7B733', '#EA097F'] },
-    accent: '#FFFFFF',
-    textColor: '#FFFFFF',
-    ornament: 'dots',
-    slotShape: 'round',
-    title: 'SUNSET',
-  },
-  FilmStrip: {
-    background: { type: 'solid', colors: ['#141414'] },
-    accent: '#FFB000',
-    textColor: '#FFB000',
-    ornament: 'sprockets',
-    slotShape: 'rect',
-    title: 'HAPPYPIX FILM',
-    subtitle: 'FRAME 04 · 2026',
-  },
-  CollectorReel: {
-    background: { type: 'gradient', colors: ['#DFF2F2', '#B7DFDF'] },
-    accent: '#0E7490',
-    textColor: '#0B5D73',
-    ornament: 'frame',
-    slotShape: 'round',
-    title: 'COLLECTOR 2026',
-  },
-  KidsSplash: {
-    background: { type: 'gradient', colors: ['#DDEBFF', '#FFE9F2'] },
-    accent: '#2A6FBE',
-    textColor: '#2A6FBE',
-    ornament: 'dots',
-    slotShape: 'round',
-    title: 'Splash Time!',
-  },
-  CorporateGrid: {
-    background: { type: 'solid', colors: ['#FFFFFF'] },
-    accent: '#3871C1',
-    textColor: '#403952',
-    ornament: 'headerBand',
-    slotShape: 'round',
-    titleBand: true,
-    title: 'Team Offsite 2026',
-    subtitle: 'HappyPix · captured & printed on site',
-  },
+
+/**
+ * A footer logo, placed with the composite's own `contain` maths.
+ *
+ * `resizeMode="contain"` centres the image inside its box, while the print
+ * left-aligns it in the logo cell — so the logo appeared to shift between the
+ * preview and the paper. Measuring the image lets both use `logoRect`, which is
+ * the single source for that box.
+ */
+const FooterLogo: React.FC<{ url: string; spec: PrintSpec; cssWidth: number; cssHeight: number }> = ({
+  url,
+  spec,
+  cssWidth,
+  cssHeight,
+}) => {
+  const [aspect, setAspect] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    Image.getSize(
+      url,
+      (w, h) => {
+        if (alive && w > 0 && h > 0) setAspect(w / h);
+      },
+      () => {
+        /* keep the cell-sized fallback */
+      }
+    );
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+
+  const area = spec.footer.logoArea;
+  const box = aspect ? logoRect(spec, aspect) : area;
+
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: box.x * cssWidth,
+        top: box.y * cssHeight,
+        width: box.width * cssWidth,
+        height: box.height * cssHeight,
+        zIndex: 20,
+      }}
+    >
+      <Image source={{ uri: url }} style={styles.footerLogoImage} resizeMode="contain" />
+    </View>
+  );
 };
 
 export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
@@ -194,18 +126,10 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   activeSlotIndex,
 }) => {
   const { layout } = template;
-  const preset = (template.componentId && DESIGNER_PRESETS[template.componentId]) || null;
-  const rawDesign: any = template.design || {};
-  const isUnstyledWhiteFallback =
-    preset &&
-    rawDesign.background?.type === 'solid' &&
-    rawDesign.background?.colors?.[0]?.toLowerCase() === '#ffffff' &&
-    rawDesign.accent === '#ff4f9a' &&
-    template.componentId !== 'ClassicPostcard';
-
-  const design: any = isUnstyledWhiteFallback
-    ? { ...rawDesign, ...preset }
-    : { ...preset, ...rawDesign };
+  // Preset defaults + the template's own design, merged in one place that the
+  // print shares (see `resolveDesign`) — the two used to merge separately and
+  // disagree about a designer template's background.
+  const design: any = resolveDesign(template);
 
   const canvas = layout?.canvas || { width: 1000, height: 1500 };
   const aspect = canvas.width && canvas.height
@@ -213,7 +137,6 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
     : (layout?.orientation === 'landscape' ? 3 / 2 : 2 / 3);
 
   const title = customization.title || design.title;
-  const subtitle = customization.subtitle || design.subtitle || design.tagline;
   const ornament: OrnamentId = (customization.ornament === 'none' || !customization.ornament)
     ? (design.ornament || 'none')
     : customization.ornament;
@@ -239,15 +162,24 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   const paletteBg = palette.background || design.theme?.background;
   const bgObj = design.background?.colors ? design.background : (design.bg?.colors ? design.bg : null);
   const bgType = isImageBg ? 'image' : (bgObj?.type || (paletteBg ? 'solid' : 'solid'));
-  const bgColors = bgObj?.colors || (paletteBg ? [paletteBg] : (preset?.background?.colors || ['#1e1b2e']));
+  const bgColors = bgObj?.colors || (paletteBg ? [paletteBg] : (design.background?.colors || ['#1e1b2e']));
   const fallbackBgColor = bgColors[0] || paletteBg || '#1e1b2e';
   const secondaryBg = bgColors[1] || fallbackBgColor;
 
-  const accent = design.accent || palette.accent || palette.primary || preset?.accent || '#8b5cf6';
-  const textColor = design.textColor || palette.text || preset?.textColor || '#ffffff';
-  const hasTitleBand = Boolean(design.titleBand || preset?.titleBand);
+  const accent = design.accent || palette.accent || palette.primary || '#8b5cf6';
+  const textColor = design.textColor || palette.text || '#ffffff';
 
-  const shapeKey = String(design.slotShape || preset?.slotShape || 'square').toLowerCase();
+  // One description of the print for this exact customisation. The footer,
+  // stickers and gradient below are drawn from it, and so is the 300 dpi
+  // composite — that is what keeps the two from drifting apart.
+  const spec = buildPrintSpec({ template, customization });
+
+  // The canvas is laid out by aspect ratio, so a measured width gives us the
+  // height (and therefore every pixel position the spec asks for in fractions).
+  const cssWidth = containerWidth || 300;
+  const cssHeight = cssWidth / aspect;
+
+  const shapeKey = String(design.slotShape || 'square').toLowerCase();
   const isArchSlot = shapeKey === 'arch';
   const slotBorderRadius =
     shapeKey === 'rounded' || shapeKey === 'round' ? 10 : shapeKey === 'pill' ? 999 : 4;
@@ -475,8 +407,11 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   const canvasContent = (
     <View style={[styles.innerFrame, { backgroundColor: fallbackBgColor }]}>
       {/* Secondary background layer if gradient */}
-      {!isImageBg && bgType === 'gradient' && bgColors.length > 1 && (
+      {!isImageBg && spec.background.kind === 'gradient' && (
         <>
+          {/* The composite paints these two bands at the same heights and alphas
+              (see `RenderEngine.drawSpec`), so a gradient template resolves the
+              same way on paper. */}
           <View
             pointerEvents="none"
             style={{
@@ -485,7 +420,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
               right: 0,
               bottom: 0,
               height: '65%',
-              backgroundColor: secondaryBg,
+              backgroundColor: spec.background.secondary,
               opacity: 0.65,
               zIndex: 1,
             }}
@@ -498,7 +433,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
               right: 0,
               bottom: 0,
               height: '38%',
-              backgroundColor: secondaryBg,
+              backgroundColor: spec.background.secondary,
               opacity: 0.9,
               zIndex: 1,
             }}
@@ -515,23 +450,43 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
         />
       ) : null}
 
-      {/* Top Title Band when template specifies titleBand (e.g., RoyalWedding, FestiveMaroon, LegacyGuestbook) */}
-      {hasTitleBand && template.componentId !== 'CorporateGrid' && title ? (
+      {/* Top Title Band — geometry from the spec, so the composite prints the
+          guest's title at the same size in the same place (RoyalWedding,
+          FestiveMaroon, LegacyGuestbook). */}
+      {spec.titleBand ? (
         <View
           pointerEvents="none"
           style={{
             position: 'absolute',
-            top: '3.2%',
-            left: '6%',
-            right: '6%',
+            top: spec.titleBand.box.y * cssHeight,
+            left: spec.titleBand.box.x * cssWidth,
+            width: spec.titleBand.box.width * cssWidth,
             alignItems: 'center',
             zIndex: 9,
           }}
         >
-          <Text numberOfLines={1} style={[styles.footerTitle, { color: textColor, fontSize: 12 }]}>
-            {title}
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.footerTitle,
+              {
+                color: spec.titleBand.color,
+                fontSize: spec.titleBand.fontSize * cssWidth,
+                lineHeight: spec.titleBand.fontSize * cssWidth * 1.2,
+              },
+            ]}
+          >
+            {spec.titleBand.text}
           </Text>
-          <View style={{ width: '36%', height: 1.5, backgroundColor: accent, marginTop: 2, opacity: 0.85 }} />
+          <View
+            style={{
+              width: spec.titleBand.ruleWidth * cssWidth,
+              height: Math.max(1, 0.0035 * cssWidth),
+              backgroundColor: spec.titleBand.accent,
+              marginTop: 2,
+              opacity: 0.85,
+            }}
+          />
         </View>
       ) : null}
 
@@ -682,62 +637,74 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
       {/* Overlay Decorations */}
       {renderDecorations(true)}
 
-      {/* Footer Branding & Text */}
-      <View style={[styles.footer, { zIndex: 20 }]} pointerEvents="none">
-        {customization.logo ? (
-          <Image
-            source={{ uri: customization.logo }}
-            style={styles.footerLogo}
-            resizeMode="contain"
-          />
-        ) : null}
-        <View style={styles.footerTextContainer}>
-          {!hasTitleBand && title ? (
-            <Text
-              numberOfLines={1}
-              style={[styles.footerTitle, { color: textColor }]}
-            >
-              {title}
-            </Text>
-          ) : null}
-          {subtitle ? (
-            <Text
-              numberOfLines={1}
-              style={[styles.footerSubtitle, { color: textColor + 'B3' }]}
-            >
-              {subtitle}
-            </Text>
-          ) : null}
-        </View>
-      </View>
+      {/* Footer — logos left, title/subtitle right, every coordinate from the
+          shared spec (Electron's `.template-footer`: 4 % margins, 11 % band).
+          The composite draws these same numbers, so the logo cannot move
+          between the preview and the print. */}
+      {spec.footer.logos.map((url, index) => (
+        <FooterLogo
+          key={`footer-logo-${index}`}
+          url={url}
+          spec={spec}
+          cssWidth={cssWidth}
+          cssHeight={cssHeight}
+        />
+      ))}
 
-      {/* Placed Stickers */}
-      {renderStickers &&
-        customization.stickers.map((st) => (
-          <View
-            key={st.id}
+      {[spec.footer.title, spec.footer.subtitle].map((line, index) => {
+        if (!line) return null;
+        const fontSizePx = line.fontSize * cssWidth;
+        const lineHeightPx = fontSizePx * 1.2;
+        return (
+          <Text
+            key={`footer-line-${index}`}
             pointerEvents="none"
+            numberOfLines={1}
             style={[
-              styles.stickerWrapper,
-              { left: `${st.x}%` as any, top: `${st.y}%` as any, zIndex: 30 },
+              index === 0 ? styles.footerTitle : styles.footerSubtitle,
+              {
+                position: 'absolute',
+                right: (1 - spec.footer.textRight) * cssWidth,
+                top: line.centreY * cssHeight - lineHeightPx / 2,
+                width: spec.footer.maxTextWidth * cssWidth,
+                color: spec.footer.color,
+                fontSize: fontSizePx,
+                lineHeight: lineHeightPx,
+                textAlign: 'right',
+                opacity: index === 0 ? 1 : 0.72,
+                zIndex: 20,
+              },
             ]}
           >
-            {/* Electron `.placed-sticker`: font-size `scale * 8cqw`, where cqw is
-                1% of the print width, and the glyph is centred on (x, y). */}
-            <Text
+            {line.text}
+          </Text>
+        );
+      })}
+
+      {/* Placed Stickers — the spec's centre + em size, the same pair the
+          composite paints, so a sticker sits at the same spot on both. */}
+      {renderStickers &&
+        spec.stickers.map((st) => {
+          const size = Math.max(10, st.size * cssWidth);
+          return (
+            <View
+              key={st.id}
+              pointerEvents="none"
               style={[
-                styles.stickerText,
+                styles.stickerWrapper,
                 {
-                  fontSize: Math.max(10, (containerWidth || 300) * 0.08 * (st.scale ?? 1)),
-                  marginLeft: -((containerWidth || 300) * 0.04 * (st.scale ?? 1)),
-                  marginTop: -((containerWidth || 300) * 0.04 * (st.scale ?? 1)),
+                  left: st.cx * cssWidth,
+                  top: st.cy * cssHeight,
+                  zIndex: 30,
                 },
               ]}
             >
-              {st.emoji}
-            </Text>
-          </View>
-        ))}
+              <Text style={[styles.stickerText, { fontSize: size, marginLeft: -size * 0.5, marginTop: -size * 0.5 }]}>
+                {st.emoji}
+              </Text>
+            </View>
+          );
+        })}
     </View>
   );
 
@@ -834,25 +801,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '13%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  footerLogo: {
-    height: '70%',
-    width: 50,
-    marginRight: 8,
-  },
-  footerTextContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  footerLogoImage: {
+    width: '100%',
+    height: '100%',
   },
   footerTitle: {
     fontSize: 13,

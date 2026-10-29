@@ -20,6 +20,7 @@ import {
   Card,
   Eyebrow,
   Icon,
+  STICKER_EM_FRACTION,
   Pill,
   fonts,
   fontSize,
@@ -84,11 +85,10 @@ const EMOJIS = ['❤️', '✨', '🎉', '📸', '👑', '🦋', '🌸', '🥳',
 
 /**
  * A sticker is positioned at `x% / y%` of the print and sized by `scale`
- * (0.5–4, default 1) — Electron's model exactly. One em is 9.6% of the print
- * width on screen *and* in the 300 dpi composite (`STICKER_EM_FRACTION`), so a
- * sticker prints at the size it was placed at.
+ * (0.5–4, default 1) — Electron's model exactly. One em is 9.6 % of the print
+ * width, and that single constant lives in `utils/printSpec`, which the
+ * preview, this drag layer and the 300 dpi composite all read.
  */
-export const STICKER_EM_FRACTION = 0.096;
 
 /* ── draggable sticker ─────────────────────────────────────────────────── */
 
@@ -141,10 +141,7 @@ const PlacedStickerView: React.FC<{
           top: `${sticker.y}%` as unknown as number,
           // Electron draws the glyph centred on (x, y): `translate(-50%,-50%)`.
           // The em box is square enough to use the font size for both axes.
-          transform: [
-            { translateX: -size * 0.6 },
-            { translateY: -size * 0.6 },
-          ],
+          transform: [{ translateX: -size * 0.5 }, { translateY: -size * 0.5 }],
         },
       ]}
     >

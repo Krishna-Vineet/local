@@ -79,6 +79,27 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
   const [activeSlotIndex, setActiveSlotIndex] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
 
+  /*
+   * The strip used to be a 168 × 126 box with a fixed height, so four
+   * photographs floated in a mostly-empty dark rectangle and each thumb was
+   * smaller than a postage stamp. Now the *images* decide the strip: the frame
+   * is one photo aspect (4:3, what the camera writes), sized from the room the
+   * gallery actually has, and the gallery is only as tall as that frame.
+   */
+  const [galleryWidth, setGalleryWidth] = useState(0);
+  const PHOTO_ASPECT = 4 / 3;
+  const railH = verticalScale(22);
+  const stripPad = verticalScale(9);
+  const stripGap = scale(11);
+  // Cap the frame so at least ~2.2 of them share the column, and never taller
+  // than the screen wants to give this section.
+  const maxFrameHeight = isLandscape ? height * 0.4 : height * 0.28;
+  const widthLimitedFrame =
+    galleryWidth > 0 ? ((galleryWidth - stripPad * 2 - stripGap * 2) / 2.2) / PHOTO_ASPECT : maxFrameHeight;
+  const frameHeight = Math.max(84, Math.min(maxFrameHeight, widthLimitedFrame));
+  const frameWidth = Math.round(frameHeight * PHOTO_ASPECT);
+  const stripHeight = Math.round(frameHeight + stripPad * 2);
+
   useEffect(() => {
     setIdleTimerEnabled(true);
     resetIdleTimer();
@@ -177,8 +198,14 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
     >
       <View style={[styles.layout, isLandscape ? styles.layoutRow : styles.layoutCol]}>
         {/* ── the negative strip ─────────────────────────────────────────── */}
-        <View style={styles.gallery}>
-          <View style={styles.rail}>
+        <View
+          style={[styles.gallery, isLandscape ? null : styles.galleryStacked]}
+          onLayout={(event) => {
+            const w = event.nativeEvent.layout.width;
+            if (w > 0 && Math.abs(w - galleryWidth) > 0.5) setGalleryWidth(w);
+          }}
+        >
+          <View style={[styles.rail, { height: railH }]}>
             <Text style={styles.railText}>YOUR MOMENTS</Text>
             <Text style={styles.railText}>{photos.length} EXPOSURES</Text>
             <Text style={styles.railText}>HAPPYPIX</Text>
@@ -187,7 +214,11 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.track}
+            style={{ height: stripHeight }}
+            contentContainerStyle={[
+              styles.track,
+              { paddingVertical: stripPad, gap: stripGap },
+            ]}
           >
             {photos.map((photo, index) => {
               const assigned = selectedSlots.findIndex((item) => samePhoto(item, photo));
@@ -197,6 +228,7 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
                   onPress={() => handlePhotoTap(photo)}
                   style={[
                     styles.frame,
+                    { width: frameWidth, height: frameHeight },
                     assigned >= 0 ? { borderColor: p.pink } : null,
                   ]}
                   accessibilityRole="button"
@@ -214,7 +246,7 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
             })}
           </ScrollView>
 
-          <View style={[styles.rail, styles.railBottom]}>
+          <View style={[styles.rail, styles.railBottom, { height: railH }]}>
             <Text style={styles.railText}>TAP TO SELECT</Text>
             <Text style={styles.railText}>35MM</Text>
           </View>
@@ -296,12 +328,16 @@ const styles = StyleSheet.create({
   gallery: {
     flex: 1.35,
     minWidth: 0,
-    paddingVertical: verticalScale(10),
+    // Height is content-driven (`stripHeight`); `alignSelf` keeps the dark
+    // film strip hugging its frames instead of stretching into a big empty box.
+    alignSelf: 'center',
     borderRadius: moderateScale(10),
     backgroundColor: '#17131a',
     overflow: 'hidden',
     ...shadows.card,
   },
+  // Portrait: the strip sits above the preview and must not flex vertically.
+  galleryStacked: { flexGrow: 0, flexShrink: 0, width: '100%' },
   rail: {
     height: verticalScale(22),
     paddingHorizontal: scale(16),
@@ -316,10 +352,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1.1,
     color: '#d89d60',
   },
-  track: { paddingHorizontal: scale(11), paddingVertical: verticalScale(9), gap: scale(11), alignItems: 'center' },
+  track: { paddingHorizontal: scale(11), alignItems: 'center' },
   frame: {
-    width: scale(168),
-    height: scale(126),
     borderRadius: moderateScale(3),
     borderWidth: 2,
     borderColor: 'transparent',

@@ -92,7 +92,7 @@ export const WaitingScreen: React.FC<Props> = ({ navigation }) => {
     <View
       style={[
         styles.root,
-        { backgroundColor: p.night, paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, verticalScale(20)) },
+        { backgroundColor: p.night, paddingBottom: Math.max(insets.bottom, verticalScale(20)) },
       ]}
     >
       {/* ambient glow — Electron's `.ambient` blobs */}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { StatusBar, View, BackHandler } from 'react-native';
+import { AppState, NativeModules, Platform, StatusBar, View, BackHandler } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -34,6 +34,38 @@ export type RootStackParamList = {
   Customize: undefined;
   OrderSuccess: undefined;
 };
+
+/**
+ * Keep the window edge-to-edge.
+ *
+ * The shell draws its header from y = 0, so anything the OS reserves at the top
+ * shows up as a band of page background above the bar — it read as "the navbar is
+ * not at the top". `StatusBar hidden` covers the common case, but a device that
+ * re-shows the bar (a swipe, a notification, an OEM quirk) silently reintroduces
+ * the strip *and* the safe-area inset. Re-applying immersive mode at boot and
+ * every time the app returns to the foreground keeps both at zero.
+ */
+function useEdgeToEdge() {
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const kiosk = NativeModules.KioskModule;
+    if (!kiosk?.setImmersiveMode) return;
+
+    const apply = () => {
+      try {
+        kiosk.setImmersiveMode(true).catch?.(() => {});
+      } catch {
+        /* older builds expose the method without a promise */
+      }
+    };
+
+    apply();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') apply();
+    });
+    return () => sub.remove();
+  }, []);
+}
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
@@ -131,6 +163,8 @@ function GlobalInteractionHandler({ children }: { children: React.ReactNode }) {
 }
 
 export function App() {
+  useEdgeToEdge();
+
   useEffect(() => {
     const onHardwareBack = () => {
       if (navigationRef.isReady()) {

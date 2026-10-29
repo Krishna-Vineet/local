@@ -94,6 +94,22 @@ export const AppShell: React.FC<AppShellProps> = ({
   const insets = useSafeAreaInsets();
   const index = step ? FLOW.indexOf(step) : -1;
   const showProgress = !hideProgress && index >= 0;
+  const dims = getScreenDimensions();
+  // Electron: 74px header, 62px with `@media (max-height:720px)`.
+  const headerHeight = Math.min(74, Math.max(58, Math.round(dims.height * 0.11)));
+  const urgent = secondsLeft !== undefined && secondsLeft <= 10;
+  /*
+   * The header starts at y = 0, always.
+   *
+   * Padding it by `insets.top` was a mistake even though the arithmetic looked
+   * right: the window is not edge-to-edge on every device, so the inset we were
+   * "protecting" was a real, visible system strip — the bar simply floated 25-ish
+   * pixels below the top of the screen. A kiosk has no status bar to avoid
+   * (`StatusBar hidden` + `KioskModule.setImmersiveMode`, both re-applied in
+   * App.tsx), and on iPad `UIRequiresFullScreen` leaves the top inset at zero.
+   * So the header owns y = 0 and the top inset is not consumed here at all; the
+   * only inset that still matters is the home indicator at the bottom.
+   */
 
   const surface = night ? p.night : p.background;
   const ink = night ? p.nightText : p.ink;
@@ -117,6 +133,9 @@ export const AppShell: React.FC<AppShellProps> = ({
         style={[
           styles.header,
           {
+            // Flush with y = 0 — see the note above `headerHeight`.
+            paddingTop: 0,
+            height: headerHeight,
             backgroundColor: night ? 'rgba(15,10,21,0.92)' : 'rgba(255,255,255,0.68)',
             borderBottomColor: night ? 'rgba(255,255,255,0.08)' : 'rgba(88,56,105,0.08)',
           },

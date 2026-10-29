@@ -15,11 +15,12 @@ import { useIsFocused } from '@react-navigation/native';
 import type { Customization, FilterId, PlacedSticker } from '@happypix/types';
 import {
   Button,
+  FilteredImage,
+  TemplatePreview,
   Card,
   Eyebrow,
   Icon,
   Pill,
-  TemplateCanvas,
   fonts,
   fontSize,
   moderateScale,
@@ -81,6 +82,17 @@ const FILTERS: { id: FilterId; label: string; swatch: string }[] = [
 
 const EMOJIS = ['❤️', '✨', '🎉', '📸', '👑', '🦋', '🌸', '🥳', '💫', '🌈', '🫶', '🥂'];
 
+/**
+ * A sticker's `size` is a proportion of the print width, not a font size.
+ *
+ * `size / STICKER_UNIT` is the em size as a fraction of the canvas width, which
+ * makes the preview and the 300 dpi composite agree: the same expression
+ * (`dims.width * size / STICKER_UNIT`) drives both. Before this the preview used
+ * `moderateScale(size)` and the print used a hard-coded 90 px, so a sticker was
+ * roughly the right size on screen and a speck on paper.
+ */
+export const STICKER_UNIT = 500;
+
 /* ── draggable sticker ─────────────────────────────────────────────────── */
 
 const PlacedStickerView: React.FC<{
@@ -126,7 +138,9 @@ const PlacedStickerView: React.FC<{
         },
       ]}
     >
-      <Text style={{ fontSize: moderateScale(size) }}>{sticker.emoji}</Text>
+      <Text style={{ fontSize: Math.max(12, (canvasWidth * size) / STICKER_UNIT) }}>
+        {sticker.emoji}
+      </Text>
       {selected ? (
         <View style={styles.stickerTools}>
           <Pressable onPress={() => onScale(sticker.id, -0.2)} style={[styles.stickerTool, { backgroundColor: p.surface }]} hitSlop={6}>
@@ -270,10 +284,11 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
     setIdleTimerEnabled(false);
     SoundManager.play('click');
     try {
-      updateSession({
+      // The final customisation goes in with the same call that renders the
+      // print — a plain `updateSession` first would still be in flight.
+      await finishAndPrint({
         customization: { ...customization, guestConsent: requireGuestConsent ? consent : true },
       });
-      await finishAndPrint();
       navigation.navigate('OrderSuccess');
     } catch {
       navigation.navigate('OrderSuccess');
@@ -309,35 +324,42 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.layout}>
         {/* preview stage */}
         <View style={styles.stage}>
-          <View style={[styles.frame, { aspectRatio: aspect, borderColor: p.line }]}>
-            <TemplateCanvas
+          {/* The frame is measured, not guessed: the sticker layer and the print
+              canvas share one coordinate space (percent of the print). */}
+          <View style={styles.frame}>
+            <TemplatePreview
               template={template}
               photos={photos}
               customization={customization}
               renderStickers={false}
-              style={styles.canvas}
+              maxHeight={verticalScale(400)}
+              maxWidth={scale(300)}
+              radius={moderateScale(14)}
+              style={styles.previewBox}
+              overlay={({ width, height }) => (
+                <>
+                  {customization.stickers.map((st) => (
+                    <PlacedStickerView
+                      key={st.id}
+                      sticker={st}
+                      canvasWidth={width}
+                      canvasHeight={height}
+                      onMove={moveSticker}
+                      onScale={scaleSticker}
+                      onRemove={removeSticker}
+                    />
+                  ))}
+                  {printing ? (
+                    <View style={styles.preparing}>
+                      <View style={styles.preparingPill}>
+                        <ActivityIndicator size="small" color={p.pink} />
+                        <Text style={[styles.preparingText, { color: p.ink }]}>Preparing your print…</Text>
+                      </View>
+                    </View>
+                  ) : null}
+                </>
+              )}
             />
-            <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-              {customization.stickers.map((st) => (
-                <PlacedStickerView
-                  key={st.id}
-                  sticker={st}
-                  canvasWidth={scale(430)}
-                  canvasHeight={scale(430) / aspect}
-                  onMove={moveSticker}
-                  onScale={scaleSticker}
-                  onRemove={removeSticker}
-                />
-              ))}
-            </View>
-            {printing ? (
-              <View style={styles.preparing}>
-                <View style={styles.preparingPill}>
-                  <ActivityIndicator size="small" color={p.pink} />
-                  <Text style={[styles.preparingText, { color: p.ink }]}>Preparing your print…</Text>
-                </View>
-              </View>
-            ) : null}
           </View>
           <View style={styles.hintRow}>
             <Icon name="sparkles" size={fontSize(15)} color={p.muted} />
@@ -389,18 +411,28 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                         accessibilityRole="radio"
                         accessibilityState={{ selected: active }}
                       >
-                        <View
-                          style={[
-                            styles.filterSwatch,
-                            {
-                              backgroundColor: filter.swatch === 'linear-gradient' ? p.surfaceMuted : filter.swatch,
-                              borderColor: p.line,
-                            },
-                          ]}
-                        >
-                          {filter.id === 'original' ? (
-                            <Icon name="image" size={fontSize(16)} color={p.faint} />
-                          ) : null}
+                        <View style={[styles.filterSwatch, { borderColor: active ? '#f6c9de' : p.line }]}>
+                          {photos[0]?.uri ? (
+                            // The guest's own shot with the real colour matrix applied —
+                            // a flat coloured chip told nobody what B&W would look like.
+                            <FilteredImage
+                              uri={photos[0].uri}
+                              filter={filter.id}
+                              style={styles.filterSwatchImage}
+                            />
+                          ) : (
+                            <View
+                              style={[
+                                styles.filterSwatchFallback,
+                                {
+                                  backgroundColor:
+                                    filter.swatch === 'linear-gradient' ? p.surfaceMuted : filter.swatch,
+                                },
+                              ]}
+                            >
+                              <Icon name="image" size={fontSize(16)} color="#ffffffcc" />
+                            </View>
+                          )}
                         </View>
                         <Text style={[styles.filterLabel, { color: active ? p.pinkDeep : p.muted }]}>
                           {filter.label}
@@ -605,7 +637,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </View>
 
-      {secondsLeft <= 25 && !printing ? (
+      {!printing ? (
         <InactivityToast secondsLeft={secondsLeft} onStayActive={resetIdleTimer} />
       ) : null}
     </AppShell>
@@ -622,15 +654,8 @@ const styles = StyleSheet.create({
     paddingBottom: verticalScale(8),
   },
   stage: { flex: 1.05, alignItems: 'center', justifyContent: 'center' },
-  frame: {
-    height: verticalScale(400),
-    maxWidth: '96%',
-    overflow: 'hidden',
-    borderRadius: moderateScale(14),
-    borderWidth: 0,
-    ...shadows.card,
-  },
-  canvas: { flex: 1, width: '100%', height: '100%' },
+  frame: { flex: 1, width: '100%', minHeight: 0, maxHeight: verticalScale(420) },
+  previewBox: { flex: 1 },
   preparing: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
   preparingPill: {
     flexDirection: 'row',
@@ -682,6 +707,15 @@ const styles = StyleSheet.create({
     height: verticalScale(54),
     borderRadius: moderateScale(10),
     borderWidth: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#efe8f2',
+  },
+  filterSwatchImage: { width: '100%', height: '100%' },
+  filterSwatchFallback: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },

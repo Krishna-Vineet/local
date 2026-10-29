@@ -119,3 +119,95 @@ not after the first guest.
 
 Both use the same three states (ready / attention / probing) and the same
 wording, so a support call sounds the same wherever the booth runs.
+
+## 6. Print pipeline parity — the four defects of 2026-10-29
+
+A round of tablet screenshots showed the tablet drifting from the desktop in ways
+that looked cosmetic but were not. Each one is recorded here with its cause, so it
+is not "fixed" back later.
+
+### 6.1 Photo selection — same state machine as Electron
+
+`PhotoSelectionScreen` is a port of `electron/src/ui/screens/PhotoSelectionScreen.tsx`:
+slots start **empty**, tapping a photo fills the active slot and auto-advances,
+tapping a photo already in a *different* slot swaps it with the active slot, and
+tapping the photo in the active slot clears it. Slot tap = activate — or clear,
+when it is the active slot and full. Next stays disabled until the number of
+filled slots equals the template's slot count.
+
+Sizing type is an emoji, and an emoji's size is a *proportion of the print*, not
+a font size. Both the customise preview and `RenderEngine` now compute
+`dims.width * size / STICKER_UNIT` (`STICKER_UNIT = 500`), so a sticker has the
+same footprint on screen and on paper.
+
+### 6.2 Stickers in the final print
+
+`RenderEngine` draws stickers with `ctx.fillText`. `SkiaRenderAdapter.fillText`
+resolved a font with `matchFont({fontSize, fontWeight})` — one family, no
+fallback — and a text face has no emoji glyphs, so every sticker printed as
+blank space even though the preview was correct. The adapter now:
+
+1. parses the CSS family list off `ctx.font`;
+2. for emoji strings, prefers a platform emoji face (`listFontFamilies()` is
+   filtered for `/emoji/`, with the well-known names appended as a belt-and-braces
+   list);
+3. verifies each candidate with `getGlyphIDs(text)` — a candidate with a zero
+   glyph id is a tofu box, so it is rejected;
+4. falls back to `SkParagraph` (`Skia.ParagraphBuilder`), which applies the
+   platform fallback chain and therefore renders what no single family could.
+
+`RenderEngine` also clears the paint's colour filter before the sticker pass:
+Skia colour matrices live on the `Paint`, so `save()/restore()` does not undo
+them and a B&W session printed grey stickers.
+
+### 6.3 Colour — no tinted surfaces, no scrims
+
+* Filters are colour matrices (`packages/ui/src/utils/filters.ts`). B&W is
+  `contrast(1.15) × GRAYSCALE` — a real luma matrix, so it is grey, not brown.
+* Where a platform cannot run Skia, `FilteredImage` / `TemplateCanvas` fall back
+  to a *weak neutral* overlay (`rgba(250,250,252,.08)`). Earlier fallbacks were
+  dark scrims at 55–65 % opacity, which is why "B&W" looked like a grey photo of
+  a dark room.
+* Template cards are white with a transparent 2 px border that turns pink on
+  selection, plus a soft pink shadow — never a pink-filled card.
+* Photo slots are `rgba(255,255,255,.14)` with a `.78` white border. Tinting a
+  slot with the palette produced the black-slot / mustard-card artefacts.
+* Filter swatches in the customise screen render the guest's own photo through
+  the real matrix; a flat coloured chip told nobody what B&W would do.
+* The ambient background is two `react-native-svg` radial gradients (pink bottom
+  left, violet top right). Flat low-opacity circles show their edge on a
+  1280 px-wide tablet — a CSS `radial-gradient` cannot be faked with a `View`.
+
+### 6.4 Layout — content fills the screen
+
+Electron's `.screen-content` is `flex: 1` with `.screen-actions` pinned below, so
+the body owns the full height. `AppShell` now centres its body by default
+(`stretch` opts out for scrolling/table bodies), and each screen wraps its main
+row in a `flex: 1` body with the action row outside it. The hand-computed canvas
+pixels that let a preview overflow its card are gone: `TemplatePreview` measures
+its box and fits the print inside it, and exposes the resolved size through an
+`overlay(size)` render prop so the sticker layer shares the print's coordinate
+space.
+
+### 6.5 One slot resolver
+
+`packages/ui/src/utils/photoSlots.ts` is the only place that decides which photos
+go where. `resolvePhotoSlots`, `resolveSlotCount`, `placeSlot` and
+`slotFractions` are used by the preview (`TemplateCanvas`), the selection screens
+(`PhotoSelection`, `Capture`) and the print mapper
+(`boothTemplateToPrintTemplate`). Before this each derived slot geometry on its
+own — and `layout.slots`, which is a *count*, was mistaken for a slot list — so a
+photo could sit in slot 2 on screen and slot 1 on paper.
+
+### 6.6 Idle timer is invisible until it matters
+
+The header used to render a red `{secondsLeft}s` pill from the first second of a
+session, and the welcome screen printed "returns in Ns" — both read as errors.
+Electron shows no idle clock at all. The countdown now surfaces only through
+`InactivityToast`, which returns `null` unless `0 < secondsLeft <= 20` (red at
+10 s or less), and the header pill and welcome countdown are gone.
+
+Also fixed: `finishAndPrint(patch)` takes the final customisation in the same call
+that renders the print, because a `updateSession(...)` immediately before it is
+still in flight when the composite is built — the last consent/filter/sticker
+edit could miss the print entirely.

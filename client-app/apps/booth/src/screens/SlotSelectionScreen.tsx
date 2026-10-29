@@ -7,7 +7,7 @@ import {
   Button,
   Icon,
   Pill,
-  TemplateCanvas,
+  TemplatePreview,
   fonts,
   fontSize,
   moderateScale,
@@ -148,6 +148,7 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
       subtitle="Filter by final print size and number of photos, then choose one design."
       secondsLeft={secondsLeft}
       testID="template-screen"
+      stretch
     >
       <View style={styles.filterBar}>
         {[
@@ -199,14 +200,19 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
                 accessibilityState={{ selected }}
                 style={[
                   styles.card,
-                  { width: cardWidth, borderColor: selected ? '#f0a6c8' : p.line, backgroundColor: p.surface },
+                  {
+                    width: cardWidth,
+                    borderColor: selected ? p.pink : 'transparent',
+                    backgroundColor: p.surface,
+                  },
                   selected ? styles.cardSelected : null,
                 ]}
               >
-                <View style={[styles.preview, { height: previewHeight, backgroundColor: p.surfaceMuted }]}>
-                  <TemplateCanvas
+                <View style={[styles.preview, { height: previewHeight, backgroundColor: '#efe8f2' }]}>
+                  <TemplatePreview
                     template={item}
-                    style={{ width: '100%', height: '100%', borderRadius: radiiInner }}
+                    maxHeight={previewHeight - scale(10)}
+                    radius={radiiInner}
                   />
                   {selected ? (
                     <View style={[styles.selectedBadge, { backgroundColor: p.pink }]}>
@@ -253,7 +259,7 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
         />
       </View>
 
-      <InactivityToast />
+      <InactivityToast secondsLeft={secondsLeft} onStayActive={resetIdleTimer} />
     </AppShell>
   );
 };
@@ -280,7 +286,13 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(14) },
   card: { borderRadius: moderateScale(20), borderWidth: 1.5, padding: scale(9), ...shadows.soft },
   cardSelected: { borderWidth: 2, shadowColor: '#d83585', shadowOpacity: 0.16 },
-  preview: { width: '100%', borderRadius: radiiInner, overflow: 'hidden', position: 'relative' },
+  preview: {
+    width: '100%',
+    borderRadius: radiiInner,
+    overflow: 'hidden',
+    position: 'relative',
+    padding: scale(5),
+  },
   selectedBadge: {
     position: 'absolute',
     left: scale(8),

@@ -1,68 +1,93 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { fontSize, scale, verticalScale } from '../../../../packages/ui/src/index';
-
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Icon, fonts, fontSize, radii, scale, useAppTheme, verticalScale } from '../../../../packages/ui/src/index';
 import SoundManager from '../utils/SoundManager';
 
+/**
+ * "Session ending soon" pill — the RN counterpart of Electron's `IdleWarning`,
+ * but as a toast rather than a blocking overlay (a guest should still be able
+ * to finish choosing).
+ *
+ * It only exists during the last stretch of the idle timer. Earlier this
+ * rendered unconditionally, so every screen showed a red warning from the first
+ * second, which read like an error. `secondsLeft` is now required for anything
+ * to appear at all, and the default threshold matches the kiosk's own warning
+ * window.
+ */
+
 export interface InactivityToastProps {
-  visible?: boolean;
   secondsLeft?: number;
+  /** seconds remaining at which the toast appears */
+  threshold?: number;
   onStayActive?: () => void;
 }
 
+const WARN_AT = 20;
+
 export const InactivityToast: React.FC<InactivityToastProps> = ({
-  visible = true,
   secondsLeft,
+  threshold = WARN_AT,
   onStayActive,
 }) => {
-  if (!visible) return null;
+  const { theme } = useAppTheme();
+  const p = theme.palette;
 
-  const handlePress = () => {
-    SoundManager.play('click');
-    onStayActive?.();
-  };
+  if (secondsLeft === undefined || secondsLeft > threshold || secondsLeft <= 0) return null;
+
+  const urgent = secondsLeft <= 10;
 
   return (
-    <View style={styles.toastContainer} pointerEvents="box-none">
-      <TouchableOpacity
-        style={styles.toast}
-        onPress={handlePress}
-        activeOpacity={0.8}
-        hitSlop={{ top: 16, bottom: 16, left: 24, right: 24 }}
+    <View style={styles.container} pointerEvents="box-none">
+      <Pressable
+        onPress={() => {
+          SoundManager.play('click');
+          onStayActive?.();
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Keep this session going"
+        style={[
+          styles.toast,
+          {
+            backgroundColor: urgent ? p.red : p.ink,
+            shadowColor: urgent ? p.red : p.ink,
+          },
+        ]}
       >
-        <Text style={styles.toastText}>
-          ⏳ {secondsLeft !== undefined ? `${secondsLeft}s left` : 'Session ending soon'} • Tap anywhere to keep going
+        <Icon name="clock" size={fontSize(15)} color="#ffffff" />
+        <Text style={styles.text}>
+          {secondsLeft}s left — tap to keep going
         </Text>
-      </TouchableOpacity>
+      </Pressable>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  toastContainer: {
+  container: {
     position: 'absolute',
-    bottom: verticalScale(30),
     left: 0,
     right: 0,
+    bottom: verticalScale(10),
     alignItems: 'center',
-    zIndex: 99999,
+    zIndex: 40,
   },
   toast: {
-    backgroundColor: 'rgba(239, 68, 68, 0.95)',
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(22),
-    borderRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 10,
-    maxWidth: '90%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: scale(9),
+    paddingVertical: verticalScale(9),
+    paddingHorizontal: scale(18),
+    borderRadius: radii.pill,
+    shadowOpacity: 0.28,
+    shadowRadius: scale(14),
+    shadowOffset: { width: 0, height: verticalScale(6) },
+    elevation: 8,
   },
-  toastText: {
+  text: {
     color: '#ffffff',
-    fontSize: fontSize(13),
-    fontWeight: '800',
-    textAlign: 'center',
+    fontFamily: fonts.bodyHeavy,
+    fontSize: fontSize(12),
   },
 });
+
+export default InactivityToast;

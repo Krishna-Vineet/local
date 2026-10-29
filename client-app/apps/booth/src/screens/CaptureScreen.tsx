@@ -24,6 +24,7 @@ import {
   moderateScale,
   verticalScale,
   withKioskFonts,
+  resolveSlotCount,
 } from '../../../../packages/ui/src/index';
 import { AppShell } from '../components/AppShell';
 import { useBooth } from '../context/BoothProvider';
@@ -101,7 +102,8 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const [flash, setFlash] = useState(false);
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
 
-  const slots = template?.layout?.slots ?? 1;
+  // Same slot count the selection screen and the print use.
+  const slots = resolveSlotCount(template as any);
   const totalShots = Math.max(3, Math.min(10, slots * 2));
 
   useEffect(() => {

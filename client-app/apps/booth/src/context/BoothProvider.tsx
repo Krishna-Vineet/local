@@ -28,11 +28,19 @@ import {
   type ScreenId,
   uploadBinaryToS3,
 } from '@happypix/api';
+import {
+  placeSlot,
+  resolvePhotoSlots,
+  resolveSlotCanvas,
+} from '../../../../packages/ui/src/utils/photoSlots';
 import { cameraManager } from '../../../../packages/camera-core/src/index';
 import { printerManager, renderEngine, SkiaRenderAdapter } from '../../../../packages/printer-core/src/index';
 import type { PrintTemplate } from '../../../../packages/types/src/index';
 import { photosAsDataUrls } from '../storage/deviceStorage';
 import { enqueueOfflineSession, processOfflineSyncQueue } from '../services/offlineSyncService';
+
+// Sticker size unit — must match `STICKER_UNIT` in apps/booth/src/screens/CustomizeScreen.tsx.
+const STICKER_UNIT = 500;
 
 // ─── Final-print rendering ─────────────────────────────────────
 // The composite strip/page is rendered ONCE, then (a) printed and
@@ -59,13 +67,11 @@ export function boothTemplateToPrintTemplate(template: NonNullable<BoothSession[
   let dims = PAPER[paperSize] || PAPER['4x6'];
   if (layout.orientation === 'portrait' && dims.height < dims.width) dims = { width: dims.height, height: dims.width };
   if (layout.orientation === 'landscape' && dims.width < dims.height) dims = { width: dims.height, height: dims.width };
-  const cw = layout.canvas?.width || dims.width;
-  const ch = layout.canvas?.height || dims.height;
-  const sx = dims.width / cw;
-  const sy = dims.height / ch;
-  const rawSlots = (layout.photoSlots && layout.photoSlots.length > 0)
-    ? layout.photoSlots
-    : ((template as any).slots || []);
+  const canvas = resolveSlotCanvas(template as any);
+  // Shared resolver: the preview and this print pass draw the same slots, and
+  // `placeSlot` is the same mapping the preview uses — so a photo cannot land in
+  // one slot on screen and a different one on paper.
+  const rawSlots = resolvePhotoSlots(template as any);
   return {
     id: template.id,
     name: template.name,
@@ -73,15 +79,7 @@ export function boothTemplateToPrintTemplate(template: NonNullable<BoothSession[
     orientation: layout.orientation,
     frames: layout.slots,
     dpi: 300,
-    slots: rawSlots.map((slot: any) => {
-      const isRel = Number(slot.width) <= 1.0 && Number(slot.height) <= 1.0 && Number(slot.x) <= 1.0 && Number(slot.y) <= 1.0;
-      return {
-        x: isRel ? Number(slot.x) * dims.width : Number(slot.x) * sx,
-        y: isRel ? Number(slot.y) * dims.height : Number(slot.y) * sy,
-        width: isRel ? Number(slot.width) * dims.width : Number(slot.width) * sx,
-        height: isRel ? Number(slot.height) * dims.height : Number(slot.height) * sy,
-      };
-    }),
+    slots: rawSlots.map((slot) => placeSlot(slot, canvas, dims)),
   };
 }
 
@@ -148,10 +146,14 @@ async function renderSessionComposite(session: BoothSession): Promise<string | u
     decorations: Array.isArray(design.decorations) ? design.decorations : [],
     tagline: session.customization?.subtitle || design.subtitle || design.tagline,
     logo: session.customization?.logo || undefined,
+    // Stickers are stored as a percentage of the print plus a size unit that the
+    // customise screen and this renderer both interpret as `dims.width * size /
+    // STICKER_UNIT`. Anything else (the old fixed 90 px) printed as a speck.
     stickers: (session.customization?.stickers || []).map((s: any) => {
       const xPx = s.x <= 100 ? (Number(s.x) / 100) * dims.width : Number(s.x);
       const yPx = s.y <= 100 ? (Number(s.y) / 100) * dims.height : Number(s.y);
-      const sizePx = 90 * (s.scale ?? 1);
+      const unit = STICKER_UNIT;
+      const sizePx = Math.max(24, (dims.width * Number(s.size ?? 34)) / unit);
       return {
         id: s.id,
         emoji: s.emoji,
@@ -211,7 +213,7 @@ interface BoothContextValue {
   paymentStatus: (paymentId: string) => Promise<PaymentOrder['status']>;
   confirmPayment: (paymentId: string, utr?: string) => Promise<PaymentOrder['status']>;
   completeFree: (quote: CheckoutQuote) => Promise<void>;
-  finishAndPrint: () => Promise<PrintOutcome>;
+  finishAndPrint: (patch?: Partial<BoothSession>) => Promise<PrintOutcome>;
   retryPrint: () => Promise<void>;
   retryShare: () => Promise<void>;
   retrying: 'print' | 'share' | null;
@@ -750,19 +752,22 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return 'https://happypix.vercel.app';
   };
 
-  const finishAndPrint = useCallback(async (): Promise<PrintOutcome> => {
+  const finishAndPrint = useCallback(async (patch?: Partial<BoothSession>): Promise<PrintOutcome> => {
     setIdleEnabled(false);
     if (idleTimerRef.current) {
       clearInterval(idleTimerRef.current);
       idleTimerRef.current = null;
     }
 
-    // Session state at the moment Finish was tapped
+    // Session state at the moment Finish was tapped. `patch` carries anything the
+    // screen changed in the same tick as the press (consent, last filter) — React
+    // has not committed that state yet, and the print must not use the old copy.
     setSession((prev) => {
-      const next = { ...prev, state: 'finishing' as ScreenId };
+      const next = { ...prev, ...(patch || {}), state: 'finishing' as ScreenId };
       sessionRef.current = next;
       return next;
     });
+    if (patch) sessionRef.current = { ...sessionRef.current, ...patch };
 
     const inst = installationRef.current;
     const currentSession = sessionRef.current;

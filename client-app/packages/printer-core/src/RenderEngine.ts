@@ -465,6 +465,10 @@ export class RenderEngine {
     }
 
     // 3. Stickers
+    // Clear any photo filter left on the shared paint: Skia colour filters live
+    // on the Paint object, so `save()/restore()` does not undo them, and a B&W
+    // session would otherwise print grey stickers.
+    (ctx as any).filter = 'none';
     for (const sticker of stickers) {
       try {
         ctx.save();

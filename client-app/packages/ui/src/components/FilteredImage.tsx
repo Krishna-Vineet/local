@@ -99,20 +99,28 @@ async function loadSkiaImage(uri: string): Promise<SkImage | null> {
   return promise;
 }
 
+/**
+ * Placeholder tint shown only while the Skia bitmap is still loading.
+ *
+ * It used to be a 65 % dark scrim for "B&W", which made a colour photo look
+ * merely dimmed — the exact complaint that the filter "isn't B&W". The real
+ * conversion is the colour matrix below; keep this hint light and neutral so a
+ * loading frame never looks like the finished effect.
+ */
 const getFilterFallbackOverlay = (filter?: FilterId | null): ViewStyle | null => {
   switch (filter) {
     case 'bw':
-      return { backgroundColor: 'rgba(20, 20, 25, 0.65)' };
+      return { backgroundColor: 'rgba(250, 250, 252, 0.08)' };
     case 'warm':
-      return { backgroundColor: 'rgba(245, 158, 11, 0.22)' };
+      return { backgroundColor: 'rgba(245, 158, 11, 0.10)' };
     case 'cool':
-      return { backgroundColor: 'rgba(14, 165, 233, 0.20)' };
+      return { backgroundColor: 'rgba(14, 165, 233, 0.10)' };
     case 'vintage':
-      return { backgroundColor: 'rgba(180, 115, 50, 0.32)' };
+      return { backgroundColor: 'rgba(180, 115, 50, 0.12)' };
     case 'soft':
-      return { backgroundColor: 'rgba(244, 114, 182, 0.22)' };
+      return { backgroundColor: 'rgba(255, 255, 255, 0.10)' };
     case 'party':
-      return { backgroundColor: 'rgba(236, 72, 153, 0.26)' };
+      return { backgroundColor: 'rgba(236, 72, 153, 0.10)' };
     default:
       return null;
   }

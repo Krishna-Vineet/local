@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { AppLogo } from './AppLogo';
 import { useOptionalBooth } from '../context/BoothProvider';
 import {
@@ -26,7 +27,8 @@ import {
  * Differences from the web version, all deliberate:
  *  · no backdrop blur (RN has no cheap equivalent; a translucent surface reads
  *    the same at kiosk distance);
- *  · the radial-gradient background is three soft tinted circles;
+ *  · the radial gradient is two SVG radial fills instead of CSS, because a flat
+ *    circle at low opacity still shows its edge on a large tablet screen;
  *  · safe-area insets are applied here once so no screen has to think about
  *    the iPad home indicator or an Android status bar.
  */
@@ -41,6 +43,13 @@ export interface AppShellProps {
   step?: FlowStep;
   title?: string;
   subtitle?: string;
+  /**
+   * Seconds left on the idle timer. Only used to decide *when* the warning
+   * appears — never rendered here. The header used to show a red `120s` pill from
+   * the first second of a session, which read as an error; the countdown now
+   * surfaces through `InactivityToast` in the last stretch, and through nothing
+   * at all before that (matching Electron, which shows no idle clock).
+   */
   secondsLeft?: number;
   online?: boolean;
   orgName?: string;
@@ -52,6 +61,8 @@ export interface AppShellProps {
   /** removes the content padding when a screen owns the full canvas */
   bleed?: boolean;
   contentStyle?: object;
+  /** stretch the body instead of centring it (tables, scrolling lists) */
+  stretch?: boolean;
   testID?: string;
 }
 
@@ -60,7 +71,6 @@ export const AppShell: React.FC<AppShellProps> = ({
   step,
   title,
   subtitle,
-  secondsLeft,
   online,
   orgName,
   orgLogoUrl,
@@ -68,6 +78,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   night,
   bleed,
   contentStyle,
+  stretch,
   testID,
 }) => {
   const { theme } = useAppTheme();
@@ -92,11 +103,13 @@ export const AppShell: React.FC<AppShellProps> = ({
       testID={testID}
       style={[styles.shell, { backgroundColor: surface, paddingTop: insets.top }]}
     >
-      {/* ambient tint — the RN stand-in for Electron's radial-gradient */}
+      {/* ambient tint — Electron's
+          `radial-gradient(circle at 10% 100%, #f6e8f3, transparent 35%)` plus its
+          violet neighbour, drawn as real radial fills so the edge never shows. */}
       {!night ? (
         <>
-          <View pointerEvents="none" style={[styles.ambient, styles.ambientA, { backgroundColor: p.pink }]} />
-          <View pointerEvents="none" style={[styles.ambient, styles.ambientB, { backgroundColor: p.violet }]} />
+          <AmbientGlow id="shell-glow-a" color={p.pink} size={scale(760)} style={styles.ambientA} opacity={0.16} />
+          <AmbientGlow id="shell-glow-b" color={p.violet} size={scale(620)} style={styles.ambientB} opacity={0.12} />
         </>
       ) : null}
 
@@ -157,19 +170,6 @@ export const AppShell: React.FC<AppShellProps> = ({
               {isOnline ? 'Connected' : 'Offline'}
             </Text>
           </View>
-          {secondsLeft !== undefined ? (
-            <View
-              style={[
-                styles.statusPill,
-                { backgroundColor: secondsLeft <= 10 ? p.red : p.redSoft },
-              ]}
-            >
-              <Icon name="clock" size={fontSize(13)} color={secondsLeft <= 10 ? p.white : p.red} />
-              <Text style={[styles.statusText, { color: secondsLeft <= 10 ? p.white : p.red }]}>
-                {secondsLeft}s
-              </Text>
-            </View>
-          ) : null}
         </View>
       </View>
 
@@ -187,6 +187,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       <View
         style={[
           styles.content,
+          stretch ? styles.contentStretch : null,
           bleed ? styles.contentBleed : null,
           { paddingBottom: Math.max(insets.bottom, verticalScale(14)) },
           contentStyle,
@@ -198,6 +199,28 @@ export const AppShell: React.FC<AppShellProps> = ({
   );
 };
 
+/** A soft radial wash — the RN equivalent of Electron's CSS radial-gradient. */
+const AmbientGlow: React.FC<{
+  id: string;
+  color: string;
+  size: number;
+  style: object;
+  opacity: number;
+}> = ({ id, color, size, style, opacity }) => (
+  <View pointerEvents="none" style={[style, { width: size, height: size, opacity }]}>
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Defs>
+        <RadialGradient id={id} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={color} stopOpacity={0.9} />
+          <Stop offset="55%" stopColor={color} stopOpacity={0.35} />
+          <Stop offset="100%" stopColor={color} stopOpacity={0} />
+        </RadialGradient>
+      </Defs>
+      <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={`url(#${id})`} />
+    </Svg>
+  </View>
+);
+
 /** Org logo: remote image, rendered small and rounded like Electron's `.org-brand-logo`. */
 const OrgLogo: React.FC<{ url: string }> = ({ url }) => (
   <Image source={{ uri: url }} style={styles.orgLogoImage} resizeMode="contain" />
@@ -205,9 +228,8 @@ const OrgLogo: React.FC<{ url: string }> = ({ url }) => (
 
 const styles = StyleSheet.create({
   shell: { flex: 1 },
-  ambient: { position: 'absolute', width: scale(520), height: scale(520), borderRadius: scale(260), opacity: 0.05 },
-  ambientA: { top: -scale(200), left: -scale(160) },
-  ambientB: { bottom: -scale(240), right: -scale(180) },
+  ambientA: { position: 'absolute', left: -scale(300), bottom: -scale(320) },
+  ambientB: { position: 'absolute', right: -scale(240), top: -scale(280) },
 
   header: {
     flexDirection: 'row',
@@ -265,9 +287,14 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     minHeight: 0,
+    // Electron's `.screen-content` is a full-height flex column and every screen
+    // body inside it is vertically centred (`margin: auto` on the grid). Doing the
+    // same here stops the "everything floats in the top half" look on a tablet.
+    justifyContent: 'center',
     paddingHorizontal: scale(30),
-    paddingTop: verticalScale(14),
+    paddingTop: verticalScale(10),
   },
+  contentStretch: { justifyContent: 'flex-start' },
   contentBleed: { paddingHorizontal: 0, paddingTop: 0 },
 });
 

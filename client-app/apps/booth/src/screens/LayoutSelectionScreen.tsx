@@ -29,6 +29,8 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Orientation'>;
 
+const clampGap = scale(26);
+
 const OPTIONS: {
   value: Orientation;
   title: string;
@@ -90,6 +92,7 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
       secondsLeft={secondsLeft}
       testID="orientation-screen"
     >
+      <View style={styles.body}>
       <View style={[styles.grid, isLandscape ? styles.gridRow : styles.gridCol]}>
         {OPTIONS.map((option) => {
           const active = selected === option.value;
@@ -103,8 +106,8 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
               style={[
                 styles.card,
                 {
-                  borderColor: active ? '#f0a6c8' : p.line,
-                  backgroundColor: active ? p.pinkSoft : p.surface,
+                  borderColor: active ? p.pink : 'transparent',
+                  backgroundColor: 'rgba(255,255,255,0.82)',
                 },
                 active ? styles.cardActive : null,
               ]}
@@ -114,21 +117,15 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
                   style={[
                     styles.paper,
                     portrait ? styles.paperPortrait : styles.paperLandscape,
-                    { borderColor: active ? '#f3bcd5' : p.line },
+                    portrait ? styles.paperTiltLeft : styles.paperTiltRight,
                   ]}
                 >
-                  {Array.from({ length: option.slots }).map((_, i) => (
-                    <View
-                      key={i}
-                      style={[
-                        styles.paperSlot,
-                        { backgroundColor: active ? '#fbd7e7' : p.surfaceMuted },
-                      ]}
-                    />
-                  ))}
-                  <Text style={[styles.paperBrand, { color: active ? p.pinkDeep : p.faint }]}>
-                    HAPPYPIX
-                  </Text>
+                  <View style={styles.paperSlots}>
+                    {Array.from({ length: option.slots }).map((_, i) => (
+                      <View key={i} style={styles.paperSlot} />
+                    ))}
+                  </View>
+                  <Text style={styles.paperBrand}>HAPPYPIX</Text>
                 </View>
               </View>
 
@@ -153,6 +150,8 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
         })}
       </View>
 
+      </View>
+
       <View style={styles.actions}>
         <Button label="Back" variant="secondary" icon="arrow-left" onPress={back} />
         <Button
@@ -165,42 +164,59 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
         />
       </View>
 
-      <InactivityToast />
+      <InactivityToast secondsLeft={secondsLeft} onStayActive={resetIdleTimer} />
     </AppShell>
   );
 };
 
 const styles = StyleSheet.create({
-  grid: { width: '100%', maxWidth: scale(1040), alignSelf: 'center', gap: scale(16) },
-  gridRow: { flexDirection: 'row' },
+  body: { flex: 1, justifyContent: 'center', width: '100%' },
+  grid: { width: '100%', maxWidth: scale(1040), alignSelf: 'center', gap: scale(20) },
+  gridRow: { flexDirection: 'row', alignItems: 'stretch' },
   gridCol: { flexDirection: 'column' },
   card: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(16),
-    minHeight: verticalScale(180),
-    padding: scale(20),
-    borderRadius: scale(24),
-    borderWidth: 1.5,
+    gap: clampGap,
+    minHeight: verticalScale(210),
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(22),
+    borderRadius: moderateScale(28),
+    borderWidth: 2,
     ...shadows.soft,
   },
-  cardActive: { borderWidth: 2 },
-  paperStage: { width: scale(120), height: scale(140), alignItems: 'center', justifyContent: 'center' },
+  cardActive: {
+    shadowColor: '#d83687',
+    shadowOpacity: 0.16,
+    shadowRadius: scale(26),
+    shadowOffset: { width: 0, height: verticalScale(12) },
+    elevation: 6,
+  },
+
+  /* Electron `.paper-shape`: a white mount around a mauve mat, tilted 3°. */
+  paperStage: { width: scale(150), height: scale(160), alignItems: 'center', justifyContent: 'center' },
   paper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: scale(6),
-    padding: scale(8),
-    borderWidth: 1,
-    borderRadius: moderateScale(9),
-    backgroundColor: '#ffffff',
-    ...shadows.soft,
+    padding: scale(9),
+    borderWidth: scale(5),
+    borderColor: '#ffffff',
+    backgroundColor: '#e7dbe9',
+    justifyContent: 'space-between',
   },
-  paperPortrait: { width: scale(82), height: scale(126) },
-  paperLandscape: { width: scale(124), height: scale(96) },
-  paperSlot: { width: '100%', flex: 1, borderRadius: moderateScale(4) },
-  paperBrand: { fontFamily: fonts.bodyBlack, fontSize: fontSize(6), letterSpacing: 0.8 },
+  paperTiltLeft: { transform: [{ rotate: '-3deg' }] },
+  paperTiltRight: { transform: [{ rotate: '3deg' }] },
+  paperPortrait: { width: scale(96), height: scale(146) },
+  paperLandscape: { width: scale(146), height: scale(100) },
+  paperSlots: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: scale(5) },
+  paperSlot: { flexGrow: 1, flexBasis: '40%', borderRadius: moderateScale(3), backgroundColor: '#c9a9c9' },
+  paperBrand: {
+    fontFamily: fonts.bodyBlack,
+    fontSize: fontSize(6),
+    letterSpacing: 0.9,
+    color: '#8a718f',
+    textAlign: 'center',
+    marginTop: verticalScale(4),
+  },
   cardCopy: { flex: 1 },
   cardTitle: { fontFamily: fonts.display, fontSize: fontSize(24), letterSpacing: -0.4 },
   cardBlurb: { fontFamily: fonts.body, fontSize: fontSize(12.5), lineHeight: fontSize(18), marginTop: verticalScale(4) },

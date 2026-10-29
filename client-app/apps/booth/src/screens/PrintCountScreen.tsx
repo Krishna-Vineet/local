@@ -7,7 +7,7 @@ import {
   Card,
   Eyebrow,
   Icon,
-  TemplateCanvas,
+  TemplatePreview,
   fonts,
   fontSize,
   moderateScale,
@@ -82,12 +82,6 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
   const total = session.prints * unitPrice;
   const choices = [1, 2, 4, 6, 8, 10].filter((item) => item <= maxPrints);
 
-  const rawCw = template.layout?.canvas?.width;
-  const rawCh = template.layout?.canvas?.height;
-  const aspect =
-    rawCw && rawCh ? rawCw / rawCh : template.layout.orientation === 'portrait' ? 2 / 3 : 3 / 2;
-  const previewWidth = Math.min(scale(250), Math.round(Math.min(height * 0.34, scale(280)) * aspect));
-
   const selectCount = (count: number) => {
     SoundManager.play('select');
     resetIdleTimer();
@@ -117,6 +111,7 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
       secondsLeft={secondsLeft}
       testID="prints-screen"
     >
+      <View style={styles.body}>
       <View style={[styles.grid, isLandscape ? styles.gridRow : styles.gridCol]}>
         <Card style={styles.panel} elevation="soft">
           <Eyebrow color={p.pinkDeep}>Number of prints</Eyebrow>
@@ -133,8 +128,9 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
                     styles.count,
                     {
                       borderColor: active ? p.pink : p.line,
-                      backgroundColor: active ? p.pink : p.surfaceSoft,
+                      backgroundColor: active ? p.pink : p.surface,
                     },
+                    active ? styles.countActive : null,
                   ]}
                 >
                   <Text style={[styles.countText, { color: active ? '#ffffff' : p.ink }]}>{value}</Text>
@@ -144,7 +140,7 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
           </View>
 
           {digitalAllowed ? (
-            <View style={[styles.digital, { borderColor: p.line, backgroundColor: p.surfaceSoft }]}>
+            <View style={[styles.digital, { backgroundColor: '#f5eff8' }]}>
               <View style={[styles.digitalIcon, { backgroundColor: p.violetSoft }]}>
                 <Icon name="copy" size={fontSize(18)} color={p.violet} />
               </View>
@@ -184,9 +180,11 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
 
         <Card style={styles.previewCard} elevation="card">
           <View style={styles.previewStage}>
-            <TemplateCanvas
+            <TemplatePreview
               template={template}
-              style={{ width: previewWidth, height: Math.round(previewWidth / aspect), borderRadius: moderateScale(10) }}
+              maxHeight={Math.max(120, height * 0.34)}
+              maxWidth={scale(260)}
+              radius={moderateScale(8)}
             />
           </View>
           <View style={styles.previewCopy}>
@@ -211,6 +209,8 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
         </Card>
       </View>
 
+      </View>
+
       <View style={styles.actions}>
         <Button label="Back" variant="secondary" icon="arrow-left" onPress={back} />
         <Button
@@ -222,37 +222,45 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
         />
       </View>
 
-      <InactivityToast />
+      <InactivityToast secondsLeft={secondsLeft} onStayActive={resetIdleTimer} />
     </AppShell>
   );
 };
 
 const styles = StyleSheet.create({
-  grid: { width: '100%', maxWidth: scale(1040), alignSelf: 'center', gap: scale(18) },
+  body: { flex: 1, justifyContent: 'center', width: '100%' },
+  grid: { width: '100%', maxWidth: scale(1060), alignSelf: 'center', gap: scale(20) },
   gridRow: { flexDirection: 'row', alignItems: 'stretch' },
   gridCol: { flexDirection: 'column' },
 
-  panel: { flex: 1, padding: scale(20), borderRadius: moderateScale(22), gap: verticalScale(12) },
-  counts: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(9) },
+  panel: { flex: 1.25, padding: scale(22), borderRadius: moderateScale(27), gap: verticalScale(12) },
+  counts: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(11), marginTop: verticalScale(6) },
   count: {
-    width: scale(58),
-    height: verticalScale(52),
-    borderRadius: moderateScale(16),
+    width: scale(64),
+    height: scale(64),
+    borderRadius: scale(32),
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.soft,
   },
-  countText: { fontFamily: fonts.display, fontSize: fontSize(20) },
+  countActive: {
+    shadowColor: '#e0428f',
+    shadowOpacity: 0.25,
+    shadowRadius: scale(12),
+    shadowOffset: { width: 0, height: verticalScale(6) },
+    elevation: 5,
+    transform: [{ scale: 1.04 }],
+  },
+  countText: { fontFamily: fonts.display, fontSize: fontSize(24), letterSpacing: -0.4 },
 
   digital: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(10),
-    padding: scale(12),
-    borderRadius: moderateScale(16),
-    borderWidth: 1,
-    marginTop: verticalScale(4),
+    gap: scale(12),
+    padding: scale(15),
+    borderRadius: moderateScale(18),
+    marginTop: verticalScale(6),
   },
   digitalIcon: { width: scale(38), height: scale(38), borderRadius: moderateScale(12), alignItems: 'center', justifyContent: 'center' },
   digitalCopy: { flex: 1 },
@@ -270,8 +278,8 @@ const styles = StyleSheet.create({
   },
   ynText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(11) },
 
-  previewCard: { flex: 0.82, padding: scale(18), borderRadius: moderateScale(22), alignItems: 'center', gap: verticalScale(8) },
-  previewStage: { alignItems: 'center', justifyContent: 'center', flex: 1 },
+  previewCard: { flex: 0.75, padding: scale(15), borderRadius: moderateScale(25), alignItems: 'center', gap: verticalScale(8) },
+  previewStage: { alignItems: 'center', justifyContent: 'center', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' },
   previewCopy: { alignItems: 'center', marginTop: verticalScale(6) },
   previewName: { fontFamily: fonts.display, fontSize: fontSize(17), letterSpacing: -0.2 },
   previewMeta: { fontFamily: fonts.bodyBold, fontSize: fontSize(10.5), marginTop: verticalScale(2) },
@@ -294,7 +302,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: scale(12),
     width: '100%',
-    maxWidth: scale(1040),
+    maxWidth: scale(1060),
     alignSelf: 'center',
     marginTop: verticalScale(16),
   },

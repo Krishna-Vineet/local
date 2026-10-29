@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import type { BoothTemplate, CapturedPhoto, Customization, OrnamentId, FilterId } from '@happypix/types';
 import { FilteredImage } from './FilteredImage';
+import { resolvePhotoSlots, slotFractions } from '../utils/photoSlots';
 
 interface TemplateCanvasProps {
   template: BoothTemplate;
@@ -20,6 +21,8 @@ interface TemplateCanvasProps {
   style?: StyleProp<ViewStyle>;
   containerWidth?: number;
   renderStickers?: boolean;
+  /** slot the guest is currently filling; drawn with a pink ring */
+  activeSlotIndex?: number;
 }
 
 const defaultCustomization: Customization = {
@@ -31,20 +34,28 @@ const defaultCustomization: Customization = {
   stickers: [],
 };
 
+/**
+ * Last-resort tint when the Skia colour matrix has not loaded yet.
+ *
+ * Deliberately neutral and weak: a heavy wash over a colour photo is not a
+ * filter, and a dark one made "B&W" read as a dimmed picture rather than a
+ * grayscale one. The real conversion happens in `FilteredImage`; this only
+ * hints at the change for the frame or two before it is ready.
+ */
 const getFilterOverlay = (filter: FilterId): ViewStyle | null => {
   switch (filter) {
     case 'bw':
-      return { backgroundColor: 'rgba(25, 25, 30, 0.55)' };
+      return { backgroundColor: 'rgba(255, 255, 255, 0.06)' };
     case 'warm':
-      return { backgroundColor: 'rgba(245, 158, 11, 0.22)' };
+      return { backgroundColor: 'rgba(245, 158, 11, 0.10)' };
     case 'cool':
-      return { backgroundColor: 'rgba(14, 165, 233, 0.20)' };
+      return { backgroundColor: 'rgba(14, 165, 233, 0.10)' };
     case 'vintage':
-      return { backgroundColor: 'rgba(180, 115, 50, 0.30)' };
+      return { backgroundColor: 'rgba(180, 115, 50, 0.12)' };
     case 'soft':
-      return { backgroundColor: 'rgba(244, 114, 182, 0.22)' };
+      return { backgroundColor: 'rgba(255, 255, 255, 0.10)' };
     case 'party':
-      return { backgroundColor: 'rgba(236, 72, 153, 0.26)' };
+      return { backgroundColor: 'rgba(236, 72, 153, 0.10)' };
     default:
       return null;
   }
@@ -180,6 +191,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
   style,
   containerWidth,
   renderStickers = true,
+  activeSlotIndex,
 }) => {
   const { layout } = template;
   const preset = (template.componentId && DESIGNER_PRESETS[template.componentId]) || null;
@@ -456,9 +468,9 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
       });
   };
 
-  const rawPhotoSlots = (layout?.photoSlots && layout.photoSlots.length > 0)
-    ? layout.photoSlots
-    : ((template as any).slots || []);
+  // One resolver for every consumer (preview, selection screens, print) — see
+  // utils/photoSlots. Index i of `photos` always belongs to slot i.
+  const rawPhotoSlots = resolvePhotoSlots(template as any);
 
   const canvasContent = (
     <View style={[styles.innerFrame, { backgroundColor: fallbackBgColor }]}>
@@ -535,13 +547,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
       {/* Photo Slots */}
       {rawPhotoSlots.map((slot: any, index: number) => {
         const photo = photos[index];
-        const cw = canvas.width || 1200;
-        const ch = canvas.height || 1800;
-        const isRelative = Number(slot.width) <= 1.0 && Number(slot.height) <= 1.0 && Number(slot.x) <= 1.0 && Number(slot.y) <= 1.0;
-        const rx = isRelative ? Number(slot.x) : Number(slot.x) / cw;
-        const ry = isRelative ? Number(slot.y) : Number(slot.y) / ch;
-        const rw = isRelative ? Number(slot.width) : Number(slot.width) / cw;
-        const rh = isRelative ? Number(slot.height) : Number(slot.height) / ch;
+        const { x: rx, y: ry, width: rw, height: rh } = slotFractions(slot, canvas);
 
         const leftPercent = `${rx * 100}%`;
         const topPercent = `${ry * 100}%`;
@@ -626,6 +632,9 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
               ]}
             >
               {slotContent}
+              {activeSlotIndex === index ? (
+                <View pointerEvents="none" style={[styles.activeRing, { borderRadius: slotBorderRadius }]} />
+              ) : null}
             </TouchableOpacity>
           );
         }
@@ -645,6 +654,9 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
             ]}
           >
             {slotContent}
+            {activeSlotIndex === index ? (
+              <View pointerEvents="none" style={[styles.activeRing, { borderRadius: slotBorderRadius }]} />
+            ) : null}
           </View>
         );
       })}
@@ -692,7 +704,7 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
               { left: `${st.x}%` as any, top: `${st.y}%` as any, zIndex: 30 },
             ]}
           >
-            <Text style={[styles.stickerText, st.size ? { fontSize: st.size } : null]}>
+            <Text style={[styles.stickerText, st.size ? { fontSize: st.size } : { fontSize: 34 }]}>
               {st.emoji}
             </Text>
           </View>
@@ -734,6 +746,16 @@ const styles = StyleSheet.create({
   },
   slotPositioner: {
     position: 'absolute',
+  },
+  activeRing: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    bottom: -3,
+    left: -3,
+    borderWidth: 2.5,
+    borderColor: '#ee4c96',
+    zIndex: 16,
   },
   slot: {
     width: '100%',

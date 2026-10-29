@@ -138,11 +138,6 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
           <Icon name="arrow-right" size={fontSize(20)} color="#ffffff" />
         </View>
 
-        {secondsLeft !== undefined && secondsLeft > 0 ? (
-          <Text style={[styles.idle, { color: p.faint }]}>
-            Screen returns to this welcome in {secondsLeft}s
-          </Text>
-        ) : null}
       </Pressable>
     </AppShell>
   );

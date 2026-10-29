@@ -480,7 +480,7 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
 
-        {secondsLeft <= 25 && phase === 'summary' && (
+        {phase === 'summary' && (
           <InactivityToast secondsLeft={secondsLeft} onStayActive={resetIdleTimer} />
         )}
     </AppShell>

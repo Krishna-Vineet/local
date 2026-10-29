@@ -1,0 +1,42 @@
+# ─── HappyPix Root GitIgnore ────────────────────────────────────────
+# Environment variables (NEVER commit secrets to git)
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+dist/
+dist-*/
+build/
+.turbo/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE & Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# Python bytecode (doc generators)
+__pycache__/
+*.pyc

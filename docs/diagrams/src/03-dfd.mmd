@@ -1,0 +1,447 @@
+%%@ d3-0 :: DFD level 0 — context diagram
+%%@ note: One process, the whole product. Every arrow is a real data flow that crosses the system boundary; none of them is a "management" arrow.
+%%@ note: The two payment gateways are drawn as external entities because money and settlement happen outside HappyPix; we only create orders and read status.
+flowchart LR
+  E1["Guest at the event"]
+  E2["Booth operator"]
+  E3["Organization admin / manager"]
+  E4["Platform admin / owner"]
+  E5["Prospect on the website"]
+  P0(("0<br/>HappyPix<br/>platform"))
+  E6["Razorpay"]
+  E7["Cashfree"]
+  E8["SendGrid /<br/>Twilio / WhatsApp"]
+  E9["Groq / Together /<br/>xAI / remove.bg"]
+  D1[("AWS S3<br/>photo objects")]
+
+  E1 -->|"photo selection, consent,<br/>print request, payment"| P0
+  P0 -->|"print, QR code, download link"| E1
+  E2 -->|"pairing credentials,<br/>hardware telemetry"| P0
+  P0 -->|"booth config, event,<br/>prices, templates"| E2
+  E3 -->|"events, devices, prices,<br/>coupons, gateway keys"| P0
+  P0 -->|"dashboard, revenue, gallery,<br/>audit, support threads"| E3
+  E4 -->|"plans, gallery policy,<br/>org status changes"| P0
+  P0 -->|"platform KPIs, audit,<br/>support queue, leads"| E4
+  E5 -->|"plan enquiry, lead form"| P0
+  P0 -->|"pricing, downloads page"| E5
+
+  P0 -->|"create order,<br/>read payment status"| E6
+  E6 -->|"signed webhook"| P0
+  P0 -->|"create order,<br/>read QR"| E7
+  E7 -->|"signed webhook"| P0
+  P0 -->|"OTP, receipts"| E8
+  P0 -->|"prompts, images"| E9
+  E9 -->|"design assets"| P0
+  P0 -->|"presigned upload"| D1
+  D1 -->|"presigned download"| E1
+
+%%@ d3-1 :: DFD level 1 — the nine processes of the platform
+%%@ note: This level is the map of the backend: every mounted router belongs to exactly one of these processes.
+%%@ note: Process 9 is cross-cutting — it is drawn as a process because audit writes are an explicit step in every state change, not an implicit side effect.
+flowchart TB
+  E1["Guest"]
+  E2["Booth app<br/>(Electron / Android)"]
+  E3["Org admin / manager"]
+  E4["Platform admin / owner"]
+  E5["Razorpay / Cashfree"]
+  E6["Messaging and AI<br/>providers"]
+
+  P1(("1.0<br/>Booth session<br/>capture, compose, print"))
+  P2(("2.0<br/>Payment and<br/>settlement"))
+  P3(("3.0<br/>Digital delivery<br/>downloads and shares"))
+  P4(("4.0<br/>Gallery<br/>publishing"))
+  P5(("5.0<br/>Event and device<br/>management"))
+  P6(("6.0<br/>Tenant onboarding,<br/>plans and limits"))
+  P7(("7.0<br/>Templates and<br/>AI design"))
+  P8(("8.0<br/>Support<br/>handling"))
+  P9(("9.0<br/>Audit and<br/>reporting"))
+
+  D1[("D1 devices")]
+  D2[("D2 events")]
+  D3[("D3 photos")]
+  D4[("D4 payments")]
+  D5[("D5 coupons")]
+  D6[("D6 organizations")]
+  D7[("D7 users")]
+  D8[("D8 subscription plans<br/>and subscriptions")]
+  D9[("D9 templates")]
+  D10[("D10 guest downloads,<br/>shares, tokens")]
+  D11[("D11 support tickets")]
+  D12[("D12 audit log")]
+  D13[("D13 settings and<br/>org defaults")]
+  D14[("D14 S3 objects")]
+
+  E2 -->|"pairing, heartbeat,<br/>session payload"| P1
+  P1 -->|"snapshot, revision,<br/>quote, upload URLs"| E2
+  E1 -->|"selected photos, consent"| P1
+  P1 --> D3
+  P1 --> D14
+  P1 -->|"session complete"| P2
+  P2 -->|"amount, order"| E5
+  E5 -->|"paid / failed, webhook"| P2
+  P2 --> D4
+  P2 -->|"coupon usage"| D5
+  P1 -->|"download request"| P3
+  P3 --> D10
+  P3 --> D3
+  P3 -->|"link, QR, file"| E1
+  P3 -->|"email, SMS, WhatsApp"| E6
+  P4 --> D3
+  P4 -->|"signed image URLs,<br/>session feed"| E3
+  E3 -->|"event, device, price,<br/>coupon changes"| P5
+  P5 --> D1
+  P5 --> D2
+  P5 --> D5
+  P5 -->|"revision bump"| P1
+  E3 -->|"plan purchase, defaults"| P6
+  P6 --> D6
+  P6 --> D8
+  P6 --> D13
+  P6 -->|"limits and status"| P5
+  E4 -->|"plan catalog, gallery policy,<br/>suspend / ban / restore"| P6
+  E3 -->|"design prompt, layout"| P7
+  P7 --> D9
+  P7 --> E6
+  E3 -->|"ticket reply, escalation"| P8
+  E1 -->|"issue report"| P8
+  E4 -->|"accept, deny, resolve"| P8
+  P8 --> D11
+  P1 --> P9
+  P2 --> P9
+  P5 --> P9
+  P6 --> P9
+  P8 --> P9
+  P9 --> D12
+  P9 -->|"dashboards, revenue,<br/>audit pages"| E3
+  P9 -->|"platform KPIs,<br/>audit trail"| E4
+  D7 --> P2
+
+%%@ d3-2 :: DFD level 2 — process 1.0 booth session
+%%@ note: The important detail is that the heavy media work happens on the booth, not the server: the API only issues presigned URLs and writes thin Photo rows.
+flowchart LR
+  E1["Booth app"]
+  E2["Guest"]
+  P11(("1.1<br/>Pair device"))
+  P12(("1.2<br/>Serve config<br/>snapshot"))
+  P13(("1.3<br/>Heartbeat and<br/>revision check"))
+  P14(("1.4<br/>Issue presigned<br/>upload URLs"))
+  P15(("1.5<br/>Persist session<br/>records"))
+  P16(("1.6<br/>Capture and compose<br/>on device"))
+  P17(("1.7<br/>Record consent"))
+  D1[("D1 devices")]
+  D2[("D2 events")]
+  D3[("D3 photos")]
+  D6[("D6 organizations")]
+  D13[("D13 settings<br/>and defaults")]
+  D14[("D14 S3 objects")]
+  D12[("D12 audit log")]
+
+  E1 -->|"email, password,<br/>deviceUuid"| P11
+  P11 -->|"raw device token,<br/>snapshot"| E1
+  P11 -->|"plan limit check"| D6
+  P11 --> D1
+  E1 -->|"device token,<br/>knownRevision"| P12
+  P12 -->|"org branding, event,<br/>prices, templates"| E1
+  P12 --> D2
+  P12 --> D13
+  E1 -->|"hardware patch,<br/>knownRevision"| P13
+  P13 -->|"changed flag,<br/>snapshot or null"| E1
+  P13 --> D1
+  P13 -->|"hardware counters"| D1
+  E1 -->|"sessionId,<br/>file list"| P14
+  P14 -->|"30 presigned PUT URLs"| E1
+  P14 --> D14
+  E1 -->|"files upload<br/>directly to S3"| D14
+  E2 -->|"frames and filters"| P16
+  P16 -->|"composited strip"| E1
+  E1 -->|"photo keys, composite,<br/>sessionId"| P15
+  P15 --> D3
+  P15 -->|"one guest download"| P15
+  E2 -->|"publish consent"| P17
+  P17 --> D3
+  P15 --> D12
+  P13 --> D12
+
+%%@ d3-3 :: DFD level 2 — process 2.0 payment and settlement
+%%@ note: The server is the price authority: the booth asks for a quote, and any amount that does not match the resolved price chain is rejected with PRICE_MISMATCH before an order exists.
+flowchart TB
+  E1["Booth app"]
+  E2["Razorpay / Cashfree"]
+  E3["Org admin"]
+  P21(("2.1<br/>Quote and price<br/>resolution"))
+  P22(("2.2<br/>Coupon<br/>validation"))
+  P23(("2.3<br/>Create payment<br/>and order"))
+  P24(("2.4<br/>Generate UPI QR<br/>or payment link"))
+  P25(("2.5<br/>Poll or webhook<br/>status"))
+  P26(("2.6<br/>Confirm and<br/>record redemption"))
+  P27(("2.7<br/>Free or offline<br/>completion"))
+  D4[("D4 payments")]
+  D5[("D5 coupons")]
+  D2[("D2 events")]
+  D13[("D13 defaults<br/>and settings")]
+  D12[("D12 audit log")]
+
+  E1 -->|"templateId, prints,<br/>couponCode"| P21
+  P21 -->|"unitPrice, discount,<br/>finalAmount, settlement"| E1
+  P21 --> D2
+  P21 --> D13
+  P21 -->|"gross amount"| P22
+  P22 -->|"discount or reason"| P21
+  P22 --> D5
+  E1 -->|"complete quote"| P23
+  P23 -->|"pending payment row"| D4
+  P23 --> P24
+  P24 -->|"create order"| E2
+  E2 -->|"order id, QR image,<br/>UPI payload"| P24
+  P24 -->|"qrPayload, qrImageUrl,<br/>gateway"| E1
+  E1 -->|"poll paymentId"| P25
+  P25 -->|"fetch order status"| E2
+  E2 -->|"status"| P25
+  P25 -->|"paid, pending or failed"| E1
+  E2 -->|"signed webhook"| P26
+  E1 -->|"device confirm + UTR"| P26
+  P26 --> D4
+  P26 -->|"usedCount + 1, once"| D5
+  P26 --> D12
+  E1 -->|"zero-amount quote,<br/>or UTR"| P27
+  P27 --> D4
+  P27 -->|"coupon usage"| D5
+  E3 -->|"gateway keys,<br/>payout mode"| P23
+  P23 --> D13
+
+%%@ d3-4 :: DFD level 2 — process 3.0 digital delivery
+%%@ note: Security detail: the guest never receives an S3 URL. They receive an unguessable 144-bit download id, and the API signs short-lived URLs only after checking expiry.
+flowchart LR
+  E1["Guest phone"]
+  E2["Booth success screen"]
+  E3["Email / SMS /<br/>WhatsApp"]
+  P31(("3.1<br/>Create guest<br/>download"))
+  P32(("3.2<br/>Resolve download<br/>page"))
+  P33(("3.3<br/>Sign and stream<br/>file"))
+  P34(("3.4<br/>Create share<br/>token"))
+  P35(("3.5<br/>Deliver over<br/>a channel"))
+  D10[("D10 guest downloads,<br/>shares, tokens")]
+  D3[("D3 photos")]
+  D14[("D14 S3 objects")]
+  D15[("D15 delivery records")]
+
+  E2 -->|"session photos,<br/>composite"| P31
+  P31 -->|"downloadId, expiresAt"| E2
+  P31 --> D10
+  E2 -->|"QR code of<br/>/download/:id"| E1
+  E1 -->|"GET /downloads/:id"| P32
+  P32 -->|"composite and frame<br/>signed URLs, TTL left"| E1
+  P32 --> D10
+  P32 --> P33
+  E1 -->|"GET file kind"| P33
+  P33 -->|"presigned GET"| D14
+  P33 -->|"stream or redirect"| E1
+  P33 --> D10
+  E1 -->|"create share"| P34
+  P34 -->|"token, shareUrl"| E1
+  P34 --> D10
+  E2 -->|"channel and<br/>destination"| P35
+  P35 -->|"message"| E3
+  P35 --> D15
+  P35 --> D10
+  E1 -->|"send to WhatsApp"| P35
+  D3 --> P31
+  D3 --> P32
+
+%%@ d3-5 :: DFD level 2 — process 4.0 gallery publishing
+%%@ note: Publication is a three-way AND: platform gallery policy, guest consent (only if required), and the photo belonging to the organisation. Any one being false hides the photo.
+flowchart TB
+  E1["Platform admin"]
+  E2["Org admin"]
+  E3["Guest"]
+  P41(("4.1<br/>Read gallery<br/>policy"))
+  P42(("4.2<br/>Capture guest<br/>consent"))
+  P43(("4.3<br/>Filter visible<br/>photos"))
+  P44(("4.4<br/>Collapse to one<br/>row per session"))
+  P45(("4.5<br/>Sign and serve<br/>image"))
+  D13[("D13 global setting<br/>row")]
+  D3[("D3 photos")]
+  D14[("D14 S3 objects")]
+  D16[("D16 in-process<br/>15 s cache")]
+
+  E1 -->|"galleryEnabled,<br/>requireGuestConsent"| P41
+  P41 --> D13
+  P41 --> D16
+  P41 -->|"policy"| P43
+  E3 -->|"publish yes / no"| P42
+  P42 --> D3
+  P43 --> D3
+  P43 -->|"visible photo set"| P44
+  P44 -->|"one row per session,<br/>composite preferred"| E2
+  E2 -->|"GET /api/org/gallery"| P43
+  P44 -->|"signed URLs"| P45
+  P45 --> D14
+  P45 -->|"image bytes"| E2
+  P44 -->|"galleryPhotoIds"| E3
+
+%%@ d3-6 :: DFD level 2 — process 5.0 event and device management
+%%@ note: Every write here either consumes a plan limit or invalidates a booth snapshot. The revision bump is what makes a change reach the fleet without polling every booth.
+flowchart TB
+  E1["Org admin /<br/>manager"]
+  E2["Booth app"]
+  P51(("5.1<br/>Create or edit<br/>event"))
+  P52(("5.2<br/>Enforce plan<br/>limits"))
+  P53(("5.3<br/>Register<br/>device"))
+  P54(("5.4<br/>Assign or unassign<br/>event"))
+  P55(("5.5<br/>Pause, resume,<br/>delete"))
+  P56(("5.6<br/>Bump snapshot<br/>revision"))
+  P57(("5.7<br/>Manage<br/>coupons"))
+  D2[("D2 events")]
+  D1[("D1 devices")]
+  D6[("D6 organizations")]
+  D8[("D8 subscription<br/>plans")]
+  D5[("D5 coupons")]
+  D12[("D12 audit log")]
+
+  E1 -->|"name, dates, prices,<br/>branding, templates"| P51
+  P51 -->|"plan limit check"| P52
+  P52 --> D6
+  P52 --> D8
+  P52 -->|"allowed or 409"| P51
+  P51 --> D2
+  P51 --> P56
+  E1 -->|"deviceName,<br/>eventId"| P53
+  P53 -->|"limit check"| P52
+  P53 -->|"device + token hash"| D1
+  E1 -->|"deviceId, eventId"| P54
+  P54 -->|"assignedEventId"| D1
+  P54 --> P56
+  E1 -->|"pause / resume / delete"| P55
+  P55 -->|"paused flag or<br/>row removed"| D2
+  P55 -->|"detach devices,<br/>pull coupon refs"| D1
+  P55 --> P56
+  P56 -->|"changed revision"| E2
+  E2 -->|"GET /revision"| P56
+  E1 -->|"code, type, value,<br/>quantity, events"| P57
+  P57 --> D5
+  P51 --> D12
+  P53 --> D12
+  P54 --> D12
+  P55 --> D12
+
+%%@ d3-7 :: DFD level 2 — process 6.0 tenant onboarding, plans and limits
+%%@ note: Limits live in exactly one place (services/planService.js). A plan edit in the platform console propagates allowedDevices and allowedEvents to every organisation on that plan key.
+flowchart TB
+  E1["Prospect"]
+  E2["Org admin"]
+  E3["Platform owner"]
+  E4["Razorpay"]
+  P61(("6.1<br/>Capture lead"))
+  P62(("6.2<br/>Serve plan<br/>catalog"))
+  P63(("6.3<br/>Purchase plan,<br/>issue invoice"))
+  P64(("6.4<br/>Resolve plan<br/>and limits"))
+  P65(("6.5<br/>Expiry sweep<br/>hourly"))
+  P66(("6.6<br/>Suspend, ban,<br/>restore"))
+  D6[("D6 organizations")]
+  D8[("D8 plans and<br/>subscriptions")]
+  D7[("D7 users")]
+  D17[("D17 website leads")]
+  D12[("D12 audit log")]
+
+  E1 -->|"name, email,<br/>phone, message"| P61
+  P61 --> D17
+  E2 -->|"GET plans"| P62
+  E3 -->|"price, duration,<br/>discount campaign"| P62
+  P62 -->|"four billing<br/>durations"| E1
+  P62 --> D8
+  E2 -->|"plan choice"| P63
+  P63 -->|"create order"| E4
+  E4 -->|"signature, payment id"| P63
+  P63 -->|"invoice, dates"| D8
+  P63 -->|"plan, expiry"| D6
+  P64 --> D6
+  P64 --> D8
+  P64 -->|"deviceLimit,<br/>eventLimit, status"| E2
+  P65 -->|"trial ended or<br/>plan expired"| D6
+  E3 -->|"reason"| P66
+  P66 -->|"status + sessionVersion"| D6
+  P66 -->|"forge all sessions<br/>invalid on ban"| D7
+  P66 --> D12
+  P61 --> D12
+
+%%@ d3-8 :: DFD level 2 — process 7.0 templates and AI design
+%%@ note: AI generation is metered: 5 credits per template generation, 1 credit per background removal. Credits are decremented only after a successful provider response.
+flowchart LR
+  E1["Org admin"]
+  E2["Platform admin"]
+  E3["Groq"]
+  E4["Together / xAI"]
+  E5["remove.bg"]
+  P71(("7.1<br/>List layouts<br/>and templates"))
+  P72(("7.2<br/>Parse prompt<br/>and build design"))
+  P73(("7.3<br/>Debit AI<br/>credits"))
+  P74(("7.4<br/>Save template<br/>and price"))
+  P75(("7.5<br/>Remove image<br/>background"))
+  P76(("7.6<br/>Publish global<br/>template"))
+  D9[("D9 templates,<br/>layouts, org AI templates")]
+  D6[("D6 organizations<br/>aiCredits")]
+  D13[("D13 template<br/>prices")]
+  D14[("D14 S3 assets")]
+  D12[("D12 audit log")]
+
+  E1 -->|"GET layouts"| P71
+  P71 -->|"layout grid and slots"| E1
+  P71 --> D9
+  E1 -->|"prompt, layout,<br/>current design"| P72
+  P72 -->|"intent and slots"| E3
+  E3 -->|"structured design plan"| P72
+  P72 -->|"asset prompts"| E4
+  E4 -->|"generated artwork"| P72
+  P72 -->|"design, assets,<br/>credits used"| E1
+  P72 --> P73
+  P73 -->|"balance >= 5"| D6
+  P73 -->|"decrement"| D6
+  E1 -->|"design, name, price"| P74
+  P74 --> D9
+  P74 -->|"template price map"| D13
+  P74 --> D14
+  P74 --> D12
+  E1 -->|"image, tolerance"| P75
+  P75 --> E5
+  E5 -->|"cutout"| P75
+  P75 -->|"1 credit"| P73
+  E2 -->|"name, layoutId,<br/>design"| P76
+  P76 --> D9
+  P76 --> D12
+
+%%@ d3-9 :: DFD level 2 — process 8.0 support handling
+%%@ note: Two lanes: guest tickets are handled by the organisation; org tickets are handled by HappyPix. A denied platform request can be re-applied, which resets the ticket number and clears the decision.
+flowchart TB
+  E1["Guest"]
+  E2["Org admin"]
+  E3["Support manager /<br/>platform admin"]
+  P81(("8.1<br/>Create guest<br/>ticket"))
+  P82(("8.2<br/>Triage and reply<br/>as org"))
+  P83(("8.3<br/>Raise platform<br/>request"))
+  P84(("8.4<br/>Accept or deny<br/>request"))
+  P85(("8.5<br/>Reply and<br/>resolve"))
+  P86(("8.6<br/>Re-apply<br/>denied request"))
+  D11[("D11 support tickets<br/>and platform requests")]
+  D18[("D18 held photo<br/>references")]
+  D12[("D12 audit log")]
+
+  E1 -->|"subject, message,<br/>sessionId"| P81
+  P81 -->|"ticket id"| E1
+  P81 --> D11
+  P81 -->|"holdPhotos = true"| D18
+  E2 -->|"GET queue"| P82
+  P82 -->|"reply, resolve,<br/>reopen"| D11
+  P82 --> D12
+  E2 -->|"subject, category,<br/>priority, images"| P83
+  P83 -->|"ticket no. new"| D11
+  P83 --> D12
+  E3 -->|"accept or<br/>deny + reason"| P84
+  P84 -->|"status open or<br/>denied, ticketNo"| D11
+  P84 -->|"thread message"| E2
+  P84 --> D12
+  E3 -->|"reply, resolve"| P85
+  E2 -->|"reply"| P85
+  P85 -->|"messages,<br/>resolution"| D11
+  P85 --> D12
+  E2 -->|"explain what<br/>changed"| P86
+  P86 -->|"status new,<br/>ticketNo null,<br/>reapplyCount + 1"| D11

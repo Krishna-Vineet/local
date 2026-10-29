@@ -1,0 +1,565 @@
+%%@ d4-1 :: HLD — the system as four layers plus one control plane
+%%@ note: The rule that keeps this maintainable: no presentation code contains business rules, and no route contains pricing, permission or limit logic — those three always come from a shared module.
+%%@ note: The control plane (right column) is not a separate deployment; it is the same API and database, filtered by role.
+flowchart TB
+  subgraph L1["1 · Presentation layer"]
+    W["Website SPA<br/>8 routes · public"]
+    C["CRM SPA<br/>org + platform workspaces"]
+    B1["Electron booth<br/>React UI in Chromium"]
+    B2["Android booth<br/>React Native"]
+  end
+
+  subgraph L2["2 · Interface layer (API surface)"]
+    R1["/api/auth · /api/org<br/>/api/platform"]
+    R2["/api/booth · /api/devices<br/>/api/events · /api/settings"]
+    R3["/api/payments · /api/share<br/>/api/downloads · /api/coupons"]
+    R4["/api/upload · /api/proxy/logo<br/>/api/leads · /api/support"]
+  end
+
+  subgraph L3["3 · Domain layer (services, no HTTP)"]
+    S1["planService<br/>limits and status"]
+    S2["boothSnapshotService<br/>config + revision"]
+    S3["couponService<br/>discount rules"]
+    S4["gallerySettingsService<br/>policy + visibility"]
+    S5["guestDownloadService<br/>24 h links"]
+    S6["photoUrlService<br/>S3 signing"]
+    S7["DeliveryService<br/>email, SMS, WhatsApp"]
+    S8["TemplateGenerationService<br/>AI design"]
+    S9["eventService<br/>status and views"]
+  end
+
+  subgraph L4["4 · Data layer"]
+    M[("MongoDB Atlas<br/>23 Mongoose models")]
+    O[("AWS S3<br/>private bucket")]
+    K[("In-process caches<br/>gallery 15 s, printer 30 s")]
+  end
+
+  subgraph CP["Cross-cutting control plane"]
+    P1["permissions.js<br/>fixed role matrix"]
+    P2["middleware/auth.js<br/>authenticate, requirePerm"]
+    P3["middleware/deviceAuth.js<br/>token hash, booth states"]
+    P4["auditLogger.js<br/>append-only trail"]
+    P5["CronService<br/>expiry and cleanup"]
+  end
+
+  X["External providers<br/>Razorpay · Cashfree · SendGrid · Twilio · Groq · image APIs"]
+
+  W --> R4
+  C --> R1
+  B1 --> R2
+  B2 --> R2
+  C --> R3
+  R1 --> S1
+  R1 --> S9
+  R2 --> S2
+  R2 --> S3
+  R2 --> S4
+  R3 --> S5
+  R3 --> S6
+  R3 --> S7
+  R1 --> S8
+  S1 --> M
+  S2 --> M
+  S3 --> M
+  S4 --> M
+  S5 --> M
+  S6 --> O
+  S7 --> X
+  S8 --> X
+  S9 --> M
+  S2 --> K
+  S4 --> K
+  P2 --> R1
+  P3 --> R2
+  P1 --> P2
+  P4 --> M
+  P5 --> M
+
+%%@ d4-2 :: HLD — deployment topology, regions and failure domains
+%%@ note: Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an S3 outage only breaks images and uploads, and a gateway outage blocks checkout but not capture and printing.
+flowchart TB
+  subgraph USER["Customer and guest networks"]
+    U1["Booth PC<br/>Electron + printer"]
+    U2["Android tablet<br/>booth"]
+    U3["Org admin browser"]
+    U4["Guest phone"]
+  end
+
+  subgraph DNS["DNS + TLS"]
+    N1["happypix.in<br/>www.happypix.in"]
+    N2["crm.happypix.in"]
+    N3["api.happypix.in"]
+  end
+
+  subgraph VERCEL["Vercel · functions pinned to bom1 (Mumbai)"]
+    V1["website project<br/>static SPA"]
+    V2["crm project<br/>static SPA"]
+    V3["backend project<br/>Express app, default export<br/>serverless-safe Mongo connect"]
+    V4["website-backend project<br/>plans, checkout, downloads, leads"]
+  end
+
+  subgraph AWS["AWS · ap-south-1"]
+    A1[("S3 bucket — private<br/>photos/, happypix/org/logos/")]
+    A2["S3 lifecycle rules<br/>NOT CONFIGURED YET"]
+  end
+
+  subgraph ATLAS["MongoDB Atlas · ap-south-1"]
+    M1[("Primary")]
+    M2[("Secondary 1")]
+    M3[("Secondary 2")]
+    M4["Automated backups<br/>restore-tested monthly"]
+  end
+
+  subgraph THIRD["Third parties"]
+    T1["Razorpay"]
+    T2["Cashfree"]
+    T3["SendGrid"]
+    T4["Twilio / WhatsApp"]
+    T5["Groq / Together / xAI"]
+  end
+
+  U1 -->|"HTTPS"| N3
+  U2 -->|"HTTPS"| N3
+  U3 -->|"HTTPS"| N2
+  U4 -->|"HTTPS"| N1
+  N1 --> V1
+  N2 --> V2
+  N3 --> V3
+  V1 --> V4
+  V3 --> M1
+  V4 --> M1
+  M1 --> M2
+  M1 --> M3
+  M1 --> M4
+  V3 --> A1
+  V4 --> A1
+  A1 --> A2
+  V3 --> T1
+  V3 --> T2
+  V3 --> T3
+  V3 --> T4
+  V3 --> T5
+  T1 -->|"webhook"| V3
+  T2 -->|"webhook"| V3
+  V1 -->|"presigned GET<br/>direct from browser"| A1
+
+%%@ d4-3 :: LLD — the exact request pipeline and middleware order
+%%@ note: Order is load-bearing. The origin check runs before any body parsing, and the Mongo gate runs after static assets so /uploads keeps working during a database incident.
+%%@ note: Rate limiters are per-scope: global 1200/15 min, then per-route limiters on leads, pairing, OTP, coupons, gallery delivery, AI and downloads.
+flowchart TB
+  A0["Incoming request"] --> A1["Security headers<br/>nosniff, DENY frame, HSTS in prod"]
+  A1 --> A2["globalLimiter<br/>1200 requests / 15 min / IP"]
+  A2 --> A3["cors origin function<br/>5 static + env + dev + vercel pattern"]
+  A3 --> A4{"Origin allowed?"}
+  A4 -->|"no"| A5["403 CORS_FORBIDDEN"]
+  A4 -->|"yes or no Origin header"| A6["express.json 50 mb<br/>captures req.rawBody"]
+  A6 --> A7["cookieParser<br/>hp_admin_token"]
+  A7 --> A8["express.static /uploads<br/>local asset fallback"]
+  A8 --> A9["Request logger"]
+  A9 --> A10["GET / health string"]
+  A10 --> A11["connectDB gate<br/>awaits cached Atlas connection"]
+  A11 -->|"fail"| A12["503 Database unavailable"]
+  A11 --> A13{"Route mount"}
+  A13 --> A14["/api/auth → crm/auth.js<br/>+ authLimiter, OTP limiters"]
+  A13 --> A15["/api/org → crm/org.js<br/>router.use authenticate + authorize"]
+  A13 --> A16["/api/platform → crm/platform.js<br/>router.use authenticate + requirePerm"]
+  A13 --> A17["/api/booth → boothRoutes.js<br/>soft or strict device auth"]
+  A13 --> A18["/api/payments → paymentRoutes.js"]
+  A14 --> B1["authenticate<br/>cookie, bearer or query token"]
+  B1 --> B2["jwt.verify HS256<br/>12 h TTL"]
+  B2 --> B3["Load user, strip password<br/>compare sessionVersion"]
+  B3 --> B4{"sessionVersion equal?"}
+  B4 -->|"no"| B5["401 SESSION_REVOKED"]
+  B4 -->|"yes"| B6{"user.status active?"}
+  B6 -->|"no"| B7["403 ACCOUNT_DEACTIVATED"]
+  B6 -->|"yes"| B8["normalise role<br/>attach permissions"]
+  B8 --> B9{"organizationId?"}
+  B9 -->|"yes"| B10["Load org<br/>banned → 403 + bumpSessionVersion"]
+  B10 --> B11["suspended → req.orgReadOnly = true"]
+  B9 -->|"no"| B12["platform scope"]
+  B11 --> C1["requirePerm<br/>roleHasPermission"]
+  B12 --> C1
+  C1 -->|"deny"| C2["403 FORBIDDEN_PERMISSION"]
+  C1 -->|"allow"| C3{"write route?"}
+  C3 -->|"yes"| C4["requireWritableOrg<br/>403 ORG_SUSPENDED"]
+  C3 -->|"no"| C5["Handler"]
+  C4 --> C5
+  C5 --> D1["Domain service"]
+  D1 --> D2["Mongoose model"]
+  D2 --> D3["JSON response"]
+  C5 -->|"throws"| D4["asyncRoute → HttpError"]
+  D4 --> D5["Global error handler<br/>5xx message masked in prod"]
+  A17 --> E1["resolveDevice<br/>token hash, uuid match"]
+  E1 --> E2{"device state"}
+  E2 -->|"unpaired"| E3["401 UNPAIRED"]
+  E2 -->|"deleted"| E4["410 DEVICE_DELETED"]
+  E2 -->|"blocked"| E5["403 DEVICE_BLOCKED"]
+  E2 -->|"org suspended"| E6["403 SUSPENDED"]
+  E2 -->|"org banned"| E7["403 BANNED"]
+  E2 -->|"active"| E8["boothStateFor + requireOperationalBooth"]
+  E8 --> E9{"plan expired?"}
+  E9 -->|"yes"| E10["402 PLAN_EXPIRED"]
+  E9 -->|"no"| C5
+
+%%@ d4-4 :: LLD — backend module dependency graph
+%%@ note: Arrows point from caller to callee. Nothing in services/ or utils/ imports a route, which is why the same logic can be reached from a booth route, a CRM route and a cron job.
+flowchart LR
+  subgraph ROUTES["routes/"]
+    RA["crm/auth.js"]
+    RO["crm/org.js"]
+    RP["crm/platform.js"]
+    RB["boothRoutes.js"]
+    RE["eventRoutes.js"]
+    RY["paymentRoutes.js"]
+    RD["downloadRoutes.js"]
+    RS["photoShareRoutes.js"]
+    RC["couponRoutes.js"]
+    RG["settingRoutes.js"]
+    RU["supportRoutes.js"]
+    RV["deviceRoutes.js"]
+  end
+
+  subgraph MW["middleware/"]
+    MA["auth.js"]
+    MD["deviceAuth.js"]
+  end
+
+  subgraph SVC["services/"]
+    SP["planService"]
+    SB["boothSnapshotService"]
+    SC["couponService"]
+    SG["gallerySettingsService"]
+    SD["guestDownloadService"]
+    SU["photoUrlService"]
+    SE["eventService"]
+    SL["DeliveryService"]
+    ST["TemplateGenerationService"]
+    SX["backgroundRemovalService"]
+    SZ["CronService"]
+    SAI["ai/ providers"]
+  end
+
+  subgraph UTIL["utils/"]
+    UA["auditLogger"]
+    UC["crypto"]
+    UH["httpError"]
+    US["s3"]
+    UP["printHelper"]
+  end
+
+  subgraph MODELS["models/ — 23"]
+    M1["User, Organization,<br/>OrganizationDefaults, Setting"]
+    M2["Event, Device, Template,<br/>TemplateLayout, OrgAiTemplate"]
+    M3["Payment, Coupon, Subscription,<br/>SubscriptionPlan, Withdrawal"]
+    M4["Photo, PhotoShare, DigitalToken,<br/>GuestDownload, DeliveryRecord"]
+    M5["SupportTicket, Ticket,<br/>PlatformSupportRequest, WebsiteLead"]
+    M6["AuditLog, RoleConfig"]
+  end
+
+  CFG["config/<br/>permissions.js · layouts.js"]
+
+  RA --> MA
+  RA --> SP
+  RA --> UA
+  RO --> MA
+  RO --> SP
+  RO --> SE
+  RO --> SC
+  RO --> SG
+  RO --> SU
+  RO --> ST
+  RO --> SX
+  RO --> UA
+  RP --> MA
+  RP --> SP
+  RP --> SG
+  RP --> UA
+  RB --> MD
+  RB --> SB
+  RB --> SC
+  RB --> SD
+  RB --> SP
+  RB --> SE
+  RB --> SG
+  RB --> US
+  RB --> UA
+  RE --> MD
+  RE --> SE
+  RE --> SB
+  RY --> MD
+  RY --> SC
+  RY --> UP
+  RY --> UC
+  RD --> SU
+  RS --> SL
+  RS --> MD
+  RV --> MD
+  RV --> SP
+  RV --> SB
+  RC --> MD
+  RC --> SC
+  RG --> SG
+  RG --> SB
+  RU --> MD
+  MA --> CFG
+  MA --> UC
+  MA --> M1
+  MD --> UC
+  MD --> SB
+  MD --> M1
+  SP --> M3
+  SB --> SG
+  SB --> SU
+  SB --> M1
+  SD --> M4
+  SU --> US
+  SL --> M4
+  ST --> SAI
+  SZ --> M1
+  UA --> M6
+  RO --> M2
+  RO --> M4
+  RB --> M4
+  RA --> M3
+
+%%@ d4-5 :: LLD sequence — device pairing, snapshot and revision sync
+%%@ note: The device token is returned exactly once and stored only as a hash. Every later call proves identity with it, and the booth only refetches configuration when the revision string changes.
+sequenceDiagram
+  autonumber
+  participant OP as Operator
+  participant BO as Booth app
+  participant API as Main API
+  participant DB as MongoDB
+  participant S3 as S3
+
+  OP->>BO: enter org email, password, device name
+  BO->>API: POST /api/booth/login
+  API->>DB: User.findOne role in ORG_ADMIN, ORG_MANAGER
+  API->>API: bcrypt.compare password
+  API->>DB: Organization.findById
+  API->>API: boothStateFor — banned or suspended
+  API->>DB: Device.findOne deviceUuid + organizationId
+  alt new installation
+    API->>DB: countDocuments devices, assertDeviceLimit
+    API->>DB: Device.create with SHA-256 token hash
+  else re-pair
+    API->>DB: rotate deviceTokenHash, save
+  end
+  API->>DB: load event, defaults, settings, gallery policy
+  API->>API: buildBoothSnapshot + computeRevision
+  API-->>BO: installation token, snapshot, state ACTIVE
+  BO->>BO: persist token in OS keystore and snapshot in IndexedDB
+  loop every 10 s while idle
+    BO->>API: GET /api/booth/revision
+    API->>DB: read device, event, defaults
+    API-->>BO: revision, serverTime
+    alt revision changed
+      BO->>API: GET /api/booth/bootstrap
+      API->>DB: full snapshot read
+      API-->>BO: snapshot with new revision
+      BO->>BO: replace cached config, reload templates
+    end
+  end
+  loop every 30 s during a session
+    BO->>API: POST /api/booth/heartbeat with hardwarePatch and knownRevision
+    API->>API: mergeHardware — accept only changed fields
+    API->>DB: update lastSeenAt, ip, telemetry, connections
+    API-->>BO: changed, snapshot or null, canOperate
+  end
+  Note over BO,API: network failure is a client state, never a server response
+  BO->>BO: keep operating from cache, queue uploads locally
+
+%%@ d4-6 :: LLD sequence — checkout, payment, print and download
+%%@ note: Two paths reach the same end state: gateway-paid (poll or webhook) and free/offline (quote with finalAmount 0, or a 12-digit UTR). Both create exactly one paid Payment row and one guest download.
+sequenceDiagram
+  autonumber
+  participant G as Guest
+  participant BO as Booth app
+  participant API as Main API
+  participant GW as Razorpay / Cashfree
+  participant DB as MongoDB
+  participant S3 as S3
+
+  G->>BO: choose template and print count
+  BO->>API: POST /api/booth/checkout/quote
+  API->>DB: event, templates, org defaults
+  API->>API: resolveTemplateUnitPrice event to org to platform
+  API->>DB: Coupon.findOne, applyCoupon
+  API-->>BO: unitPrice, gross, discount, finalAmount, settlement
+  alt finalAmount is 0
+    BO->>API: POST /api/booth/checkout/free-complete
+    API->>DB: Payment.create status paid, settlement wallet
+    API->>DB: recordCouponRedemption once
+    API-->>BO: paymentId
+  else paid
+    BO->>API: POST /api/booth/payments with full quote
+    API->>DB: Payment.create status pending
+    API->>API: resolveGatewayConfig event to settings to defaults
+    API->>GW: orders.create or PGCreateOrder
+    GW-->>API: order id
+    API->>GW: qrCode.create or PGOrderFetchQRCode
+    GW-->>API: QR image URL or UPI payload
+    API-->>BO: paymentId, qrPayload, qrImageUrl, gateway
+    BO->>G: render QR, start 5 min countdown
+    loop every 3 s
+      BO->>API: GET /api/booth/payments/:id
+      API->>GW: fetch order or QR status
+      GW-->>API: status
+      API-->>BO: paid, pending or failed
+    end
+    GW-->>API: signed webhook payment.captured
+    API->>DB: Payment.updateOne status paid, paidAt
+    API->>DB: Coupon usedCount + 1
+  end
+  BO->>API: POST /api/booth/sessions/upload-urls
+  API-->>BO: presigned PUT URLs, 900 s
+  BO->>S3: PUT frames and composite directly
+  BO->>API: POST /api/booth/sessions/complete
+  API->>DB: Photo.create per file, compositeUrl on all rows
+  API->>DB: GuestDownload.create 24 h TTL
+  API-->>BO: shareUrl, downloadId, galleryPhotoIds
+  BO->>G: print strip, show QR of the download page
+  G->>API: GET /api/downloads/:id
+  API->>S3: presign composite and frames
+  API-->>G: signed URLs, expiresAt
+
+%%@ d4-7 :: LLD sequence — sign-in, session revocation and organisation lifecycle
+%%@ note: The sessionVersion integer is the whole revocation mechanism: bumping it on the user or across the organisation invalidates every previously issued token without a session store.
+sequenceDiagram
+  autonumber
+  participant U as User browser
+  participant CRM as CRM SPA
+  participant API as Main API
+  participant DB as MongoDB
+  participant PA as Platform admin
+
+  U->>CRM: email and password
+  CRM->>API: POST /api/auth/login
+  API->>DB: User.findOne email
+  API->>API: bcrypt compare, status active
+  API->>DB: Organization.findById when org user
+  alt organization banned
+    API->>DB: audit login blocked
+    API-->>CRM: 403 ORG_BANNED
+  else allowed
+    API->>DB: lastLoginAt = now
+    API->>API: issueToken id, role, org, ver
+    API-->>CRM: token plus Set-Cookie hp_admin_token HttpOnly
+    API-->>CRM: permissions, organization, readOnly flag
+  end
+  CRM->>API: GET /api/auth/me on every reload
+  API->>DB: reload user and compare sessionVersion
+  alt mismatch
+    API-->>CRM: 401 SESSION_REVOKED
+  else match
+    API-->>CRM: session payload with permissions
+  end
+  PA->>API: POST /api/platform/organizations/:id/ban
+  API->>DB: Organization.status = banned
+  API->>DB: User.updateMany sessionVersion + 1
+  API->>DB: Organization.sessionVersion + 1
+  API-->>PA: ok
+  Note over U,API: next request from any user of that org returns 401 SESSION_REVOKED, then 403 ORG_BANNED on retry
+  PA->>API: POST /api/platform/organizations/:id/suspend
+  API->>DB: status suspended, reason, suspendedAt
+  Note over U,API: users can still sign in read-only, booths are locked and answer 403 SUSPENDED
+  U->>API: POST /api/auth/password
+  API->>DB: password hash, sessionVersion + 1
+  API-->>U: new token, other sessions invalidated
+  U->>API: POST /api/auth/logout
+  API->>DB: sessionVersion + 1
+  API-->>U: clear cookie
+
+%%@ d4-8 :: LLD — booth state machine and front-end structure
+%%@ note: The booth machine is the contract the UI must follow: no screen can run unless a device token, a snapshot and an active event exist. Offline is a first-class state, not an error path.
+flowchart TB
+  S0(("Boot")) --> S1["Load token from<br/>keystore"]
+  S1 --> S2{"token present?"}
+  S2 -->|"no"| S3["Pairing screen<br/>email + password<br/>+ device name"]
+  S3 -->|"POST /api/booth/login"| S4["Persist token<br/>and snapshot"]
+  S2 -->|"yes"| S5["GET /api/booth/bootstrap"]
+  S5 -->|"active"| S6{"event assigned<br/>and live?"}
+  S5 -->|"suspended, banned,<br/>deleted, blocked"| S7["Locked screen<br/>shows exact reason<br/>and code"]
+  S4 --> S6
+  S6 -->|"no"| S8["Waiting screen<br/>revision polling"]
+  S8 -->|"revision changed"| S5
+  S6 -->|"yes"| S9["Attract screen<br/>org + event branding"]
+  S9 -->|"guest touches"| S10["Entry screen<br/>org name, logo, event,<br/>template logos, event type"]
+  S10 -->|"Start Session"| S11["Capture<br/>N shots per layout"]
+  S11 --> S12["Photo selection<br/>filter and retake"]
+  S12 --> S13["Customize<br/>stickers, text, layout"]
+  S13 --> S14["Checkout<br/>quote, QR, countdown"]
+  S14 -->|"paid or free"| S15["Upload<br/>presigned PUT to S3"]
+  S15 -->|"session complete"| S16["Print<br/>copies per payment"]
+  S16 --> S17["Success<br/>download QR,<br/>raise-issue action"]
+  S17 -->|"issue raised"| S18["POST /api/booth/support<br/>ticket created"]
+  S17 -->|"timeout"| S9
+  S18 --> S9
+  S14 -->|"gateway failure"| S19["Payment error<br/>retry or pay-at-desk"]
+  S19 --> S14
+  S15 -->|"network down"| S20["Offline queue<br/>retry with backoff"]
+  S20 --> S15
+
+%%@ d4-9 :: LLD — front-end application structure and route guards
+%%@ note: Guards are declarative and derive from the same permission keys the API enforces, so a hidden button and a rejected request always agree.
+flowchart LR
+  subgraph WS["Website — happypix.in"]
+    W1["/ Home"]
+    W2["/booth /software<br/>/hardware"]
+    W3["/pricing"]
+    W4["/business /contact"]
+    W5["/download/:id<br/>guest page"]
+  end
+
+  subgraph CR["CRM — crm.happypix.in"]
+    L["/login"]
+    OG{"role guard<br/>permission keys"}
+    O1["Dashboard"]
+    O2["Events and devices"]
+    O3["Revenue and wallet"]
+    O4["Coupons"]
+    O5["Gallery"]
+    O6["Templates and AI"]
+    O7["Defaults<br/>gateway, UPI, prices"]
+    O8["Team"]
+    O9["Support tickets"]
+    O10["Platform support"]
+    O11["Audit"]
+    P1["Organizations"]
+    P2["Subscription plans"]
+    P3["Gallery policy"]
+    P4["Platform team"]
+    P5["Support queue"]
+    P6["Global templates"]
+    P7["Template layouts"]
+    P8["Website leads"]
+    P9["Platform audit"]
+  end
+
+  W1 --> W2
+  W1 --> W3
+  W1 --> W4
+  W5 -->|"GET /api/website/downloads/:id"| API["website-backend"]
+  L --> OG
+  OG -->|"ORG_ADMIN or ORG_MANAGER"| O1
+  OG --> O2
+  OG --> O6
+  OG --> O9
+  OG -->|"ORG_ADMIN only"| O3
+  O3 --> O4
+  O3 --> O8
+  O3 --> O11
+  OG --> O5
+  OG --> O7
+  OG --> O10
+  OG -->|"OWNER, PLATFORM_ADMIN,<br/>SUPPORT_MANAGER"| P1
+  P1 --> P2
+  P1 --> P3
+  P1 --> P5
+  P1 --> P6
+  P1 --> P7
+  P1 -->|"OWNER only"| P4
+  P1 -->|"OWNER only"| P8
+  P1 --> P9
+  O1 --> API2["Main API<br/>/api/org/*"]
+  P1 --> API3["Main API<br/>/api/platform/*"]

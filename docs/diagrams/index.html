@@ -1,0 +1,3935 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HappyPix — System Diagrams</title>
+<style>
+  :root {
+    --ink: #12101a; --surface: #1a1724; --surface-2: #221e2e; --line: #332d42;
+    --text: #ece9f2; --muted: #a29bb4; --gold: #d9b44a; --gold-dim: #8a7330;
+    --ok: #6cc48f; --shadow: 0 12px 40px rgba(0,0,0,.45);
+  }
+  html[data-theme="light"] {
+    --ink: #f7f5f0; --surface: #ffffff; --surface-2: #f1eee7; --line: #ded8ca;
+    --text: #1b1822; --muted: #6a6474; --gold: #9a7b18; --gold-dim: #cbb463;
+    --ok: #2f7d52; --shadow: 0 10px 30px rgba(28,22,12,.10);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ink); color: var(--text);
+    font: 15px/1.6 ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, pre { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+
+  path { fill: black;}
+  .shell { display: grid; grid-template-columns: 310px minmax(0, 1fr); min-height: 100vh; }
+  @media (max-width: 900px) { .shell { grid-template-columns: 1fr; } }
+
+  aside {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    background: var(--surface); border-right: 1px solid var(--line); padding: 22px 18px 40px;
+  }
+  @media (max-width: 900px) { aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); } }
+  .brand { display: flex; align-items: baseline; gap: 9px; margin-bottom: 4px; }
+  .brand b { font-size: 17px; letter-spacing: .2px; }
+  .brand span { font-size: 11px; text-transform: uppercase; letter-spacing: .16em; color: var(--gold); }
+  aside p.sub { color: var(--muted); font-size: 12.5px; margin: 0 0 18px; }
+  .search {
+    width: 100%; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--text); font-size: 13px; margin-bottom: 16px;
+  }
+  .search:focus { outline: 2px solid var(--gold-dim); outline-offset: 1px; }
+  nav h4 {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--gold);
+    margin: 20px 0 8px; font-weight: 700;
+  }
+  nav a {
+    display: block; padding: 7px 10px; border-radius: 8px; color: var(--text);
+    text-decoration: none; font-size: 13px; border-left: 2px solid transparent;
+  }
+  nav a:hover { background: var(--surface-2); border-left-color: var(--gold-dim); }
+  nav a .id { color: var(--muted); font-size: 11px; font-family: ui-monospace, monospace; margin-right: 6px; }
+  nav a.hide { display: none; }
+  .tools { display: flex; gap: 8px; margin-top: 22px; flex-wrap: wrap; }
+  .tools button {
+    flex: 1 1 auto; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 12px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--text);
+  }
+  .tools button:hover { border-color: var(--gold-dim); }
+
+  main { padding: 34px clamp(18px, 4vw, 56px) 90px; max-width: 1500px; }
+  header.hero { border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 30px; }
+  header.hero h1 { font-size: clamp(24px, 3vw, 34px); margin: 0 0 8px; letter-spacing: -.02em; }
+  header.hero p { color: var(--muted); margin: 0; max-width: 78ch; font-size: 14px; }
+  .meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .pill {
+    font-size: 11.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+    color: var(--muted); background: var(--surface);
+  }
+  .pill b { color: var(--text); font-weight: 600; }
+
+  section.family { margin: 42px 0 0; }
+  section.family > h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .16em; color: var(--gold);
+    margin: 0 0 4px; font-weight: 700;
+  }
+  section.family > .blurb { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+
+  article.card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px 22px; margin-bottom: 26px; box-shadow: var(--shadow); scroll-margin-top: 20px;
+  }
+  article.card > h3 { margin: 0 0 2px; font-size: 17.5px; letter-spacing: -.01em; }
+  article.card > h3 .id { color: var(--gold); font-family: ui-monospace, monospace; font-size: 13px; margin-right: 8px; }
+  .notes { color: var(--muted); font-size: 13.5px; margin: 8px 0 14px; max-width: 100ch; }
+  .notes p { margin: 0 0 6px; }
+  .canvas {
+    background: var(--ink); border: 1px solid var(--line); border-radius: 11px;
+    padding: 16px; overflow: auto; min-height: 120px;
+  }
+  html[data-theme="light"] .canvas { background: #fbfaf6; }
+  .canvas .mermaid { display: flex; justify-content: center; }
+  .canvas svg { max-width: 100%; height: auto; }
+  .cardbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .cardbar .src { color: var(--muted); font-size: 11.5px; margin-left: auto; font-family: ui-monospace, monospace; }
+  .cardbar button {
+    font-size: 11.5px; padding: 5px 9px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--muted);
+  }
+  .cardbar button:hover { color: var(--text); border-color: var(--gold-dim); }
+  pre.raw { display: none; white-space: pre; overflow-x: auto; font-size: 12px; color: var(--muted);
+    background: var(--surface-2); padding: 12px; border-radius: 9px; margin: 12px 0 0; }
+  pre.raw.show { display: block; }
+  .banner {
+    border: 1px solid var(--gold-dim); background: rgba(217,180,74,.09); color: var(--text);
+    padding: 12px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 22px;
+  }
+  .banner code { background: rgba(0,0,0,.25); padding: 1px 5px; border-radius: 4px; }
+  footer { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); margin-top: 50px; padding-top: 18px; }
+  @media print {
+    aside, .cardbar, .search { display: none !important; }
+    .shell { grid-template-columns: 1fr; }
+    article.card { break-inside: avoid; box-shadow: none; }
+    body { background: #fff; color: #000; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside>
+    <div class="brand"><b>HappyPix</b><span>diagrams</span></div>
+    <p class="sub">29 diagrams generated from <code>docs/diagrams/src</code>.</p>
+    <input class="search" id="search" type="search" placeholder="Filter diagrams…  ( / )" autocomplete="off">
+    <nav id="nav"><h4>1 · Ecosystem</h4>
+<a href="#d1-1"><span class="id">d1-1</span>Complete HappyPix ecosystem — every component and how it connects</a>
+<a href="#d1-2"><span class="id">d1-2</span>Trust boundaries, credentials and data ownership</a>
+<h4>2 · Database (ER)</h4>
+<a href="#d2-1"><span class="id">d2-1</span>ER overview — 23 collections and their foreign keys</a>
+<a href="#d2-2"><span class="id">d2-2</span>ER detail — identity, tenancy, subscription and configuration</a>
+<a href="#d2-3"><span class="id">d2-3</span>ER detail — events, booths, templates and coupons</a>
+<a href="#d2-4"><span class="id">d2-4</span>ER detail — money: payments, subscriptions, coupons and payouts</a>
+<a href="#d2-5"><span class="id">d2-5</span>ER detail — media, digital delivery and TTL lifecycle</a>
+<a href="#d2-6"><span class="id">d2-6</span>ER detail — support, leads and the audit trail</a>
+<h4>3 · Data flow (DFD 0/1/2)</h4>
+<a href="#d3-0"><span class="id">d3-0</span>DFD level 0 — context diagram</a>
+<a href="#d3-1"><span class="id">d3-1</span>DFD level 1 — the nine processes of the platform</a>
+<a href="#d3-2"><span class="id">d3-2</span>DFD level 2 — process 1.0 booth session</a>
+<a href="#d3-3"><span class="id">d3-3</span>DFD level 2 — process 2.0 payment and settlement</a>
+<a href="#d3-4"><span class="id">d3-4</span>DFD level 2 — process 3.0 digital delivery</a>
+<a href="#d3-5"><span class="id">d3-5</span>DFD level 2 — process 4.0 gallery publishing</a>
+<a href="#d3-6"><span class="id">d3-6</span>DFD level 2 — process 5.0 event and device management</a>
+<a href="#d3-7"><span class="id">d3-7</span>DFD level 2 — process 6.0 tenant onboarding, plans and limits</a>
+<a href="#d3-8"><span class="id">d3-8</span>DFD level 2 — process 7.0 templates and AI design</a>
+<a href="#d3-9"><span class="id">d3-9</span>DFD level 2 — process 8.0 support handling</a>
+<h4>4 · HLD / LLD</h4>
+<a href="#d4-1"><span class="id">d4-1</span>HLD — the system as four layers plus one control plane</a>
+<a href="#d4-2"><span class="id">d4-2</span>HLD — deployment topology, regions and failure domains</a>
+<a href="#d4-3"><span class="id">d4-3</span>LLD — the exact request pipeline and middleware order</a>
+<a href="#d4-4"><span class="id">d4-4</span>LLD — backend module dependency graph</a>
+<a href="#d4-5"><span class="id">d4-5</span>LLD sequence — device pairing, snapshot and revision sync</a>
+<a href="#d4-6"><span class="id">d4-6</span>LLD sequence — checkout, payment, print and download</a>
+<a href="#d4-7"><span class="id">d4-7</span>LLD sequence — sign-in, session revocation and organisation lifecycle</a>
+<a href="#d4-8"><span class="id">d4-8</span>LLD — booth state machine and front-end structure</a>
+<a href="#d4-9"><span class="id">d4-9</span>LLD — front-end application structure and route guards</a>
+<h4>5 · Future architecture</h4>
+<a href="#d5-1"><span class="id">d5-1</span>Target architecture at full load — what the system must become</a>
+<a href="#d5-2"><span class="id">d5-2</span>Migration roadmap — when each change becomes necessary</a></nav>
+    <div class="tools">
+      <button id="theme" type="button">Toggle theme</button>
+      <button id="expand" type="button">Wide mode</button>
+    </div>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <h1>HappyPix system diagrams</h1>
+      <p>Ecosystem, database, data flow at three levels, high- and low-level design, and the target
+      architecture. Every diagram is Mermaid source kept next to the code it describes.</p>
+      <div class="meta">
+        <span class="pill"><b>29</b> diagrams</span>
+        <span class="pill"><b>23</b> collections</span>
+        <span class="pill"><b>DFD</b> level 0, 1, 2</span>
+        <span class="pill">source: <b>docs/diagrams/src/*.mmd</b></span>
+      </div>
+    </header>
+
+    <div class="banner" id="fallback" hidden>
+      Diagrams could not be rendered because the Mermaid library could not be loaded
+      (offline or blocked network). Press <code>Show source</code> on any card to read the
+      definition, or open <code>docs/DIAGRAMS.md</code> on GitHub where rendering is built in.
+    </div>
+
+    <section class="family">
+<h2>1 · Ecosystem</h2>
+<p class="blurb">Whole-system component and trust maps.</p>
+<article class="card" id="d1-1"><h3><span class="id">D1-1</span>Complete HappyPix ecosystem — every component and how it connects</h3><div class=notes><p>Solid arrows are request/response over HTTPS or local IPC. An edge label names the protocol or the purpose of the call.</p><p>Everything inside &quot;HappyPix production platform&quot; is code we deploy. Everything else is a customer site, a guest device, or a third-party provider.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  subgraph ACT[&quot;Actors&quot;]
+    A1[&quot;Prospect /&lt;br/&gt;website visitor&quot;]
+    A2[&quot;Guest at&lt;br/&gt;an event&quot;]
+    A3[&quot;Booth operator&quot;]
+    A4[&quot;Organization admin&lt;br/&gt;or manager&quot;]
+    A5[&quot;Platform admin /&lt;br/&gt;support manager&quot;]
+    A6[&quot;Owner / founder&quot;]
+  end
+
+  subgraph CLIENTS[&quot;Client applications&quot;]
+    C1[&quot;Website SPA&lt;br/&gt;React + Vite&lt;br/&gt;happypix.in&quot;]
+    C2[&quot;CRM console SPA&lt;br/&gt;React + Vite&lt;br/&gt;crm.happypix.in&quot;]
+    C3[&quot;Electron booth&lt;br/&gt;Windows + macOS&lt;br/&gt;electron/&quot;]
+    C4[&quot;Android booth&lt;br/&gt;client-app/&quot;]
+    C5[&quot;Guest phone&lt;br/&gt;browser&quot;]
+    C6[&quot;Print bridge&lt;br/&gt;printServer.ts&quot;]
+  end
+
+  subgraph EDGE[&quot;Vercel edge + serverless (bom1 / Mumbai)&quot;]
+    E1[&quot;CDN + static hosting&lt;br/&gt;3 SPA projects&quot;]
+    E2[&quot;Main API&lt;br/&gt;Express 5 · /api/*&quot;]
+    E3[&quot;Website API&lt;br/&gt;Express 5 · /api/*&quot;]
+  end
+
+  subgraph CORE[&quot;In-process platform services (inside the API functions)&quot;]
+    S1[&quot;Auth and&lt;br/&gt;permission matrix&quot;]
+    S2[&quot;Booth snapshot&lt;br/&gt;+ revision engine&quot;]
+    S3[&quot;Plan and limit&lt;br/&gt;enforcement&quot;]
+    S4[&quot;Pricing and coupon&lt;br/&gt;engine&quot;]
+    S5[&quot;Gallery policy&lt;br/&gt;+ signing&quot;]
+    S6[&quot;Guest download&lt;br/&gt;service&quot;]
+    S7[&quot;AI template&lt;br/&gt;generation&quot;]
+    S8[&quot;Delivery service&lt;br/&gt;email, SMS, WhatsApp&quot;]
+    S9[&quot;CronService&lt;br/&gt;hourly: expiry + cleanup&quot;]
+  end
+
+  subgraph DATA[&quot;Data stores&quot;]
+    D1[(&quot;MongoDB Atlas&lt;br/&gt;23 collections&quot;)]
+    D2[(&quot;AWS S3 bucket&lt;br/&gt;photos, logos, artwork&quot;)]
+    D3[(&quot;Local disk uploads/&lt;br/&gt;dev and S3 fallback&quot;)]
+    D4[(&quot;Process caches&lt;br/&gt;gallery 15 s, printer 30 s&quot;)]
+  end
+
+  subgraph HW[&quot;Customer hardware at the venue&quot;]
+    H1[&quot;DNP dye-sub&lt;br/&gt;photo printer&quot;]
+    H2[&quot;DSLR or USB&lt;br/&gt;camera&quot;]
+    H3[&quot;Touchscreen&lt;br/&gt;kiosk display&quot;]
+  end
+
+  subgraph EXT[&quot;Third-party providers&quot;]
+    X1[&quot;Razorpay&lt;br/&gt;orders, UPI QR,&lt;br/&gt;payment links&quot;]
+    X2[&quot;Cashfree&lt;br/&gt;UPI QR orders&quot;]
+    X3[&quot;SendGrid&lt;br/&gt;OTP and email&quot;]
+    X4[&quot;Twilio&lt;br/&gt;SMS&quot;]
+    X5[&quot;WhatsApp&lt;br/&gt;Cloud API&quot;]
+    X6[&quot;Groq&lt;br/&gt;LLM prompt parsing&quot;]
+    X7[&quot;Together FLUX&lt;br/&gt;+ xAI&lt;br/&gt;image generation&quot;]
+    X8[&quot;remove.bg&lt;br/&gt;background removal&quot;]
+    X9[&quot;GitHub Releases&lt;br/&gt;installers and APKs&quot;]
+  end
+
+  A1 --&gt; C1
+  A2 --&gt; C5
+  A2 --&gt; C3
+  A3 --&gt; C3
+  A3 --&gt; C4
+  A4 --&gt; C2
+  A5 --&gt; C2
+  A6 --&gt; C2
+
+  C1 --&gt;|&quot;HTTPS: plans, checkout,&lt;br/&gt;downloads, leads&quot;| E3
+  C2 --&gt;|&quot;HTTPS + HttpOnly cookie&quot;| E2
+  C3 --&gt;|&quot;HTTPS: pair, snapshot,&lt;br/&gt;quote, upload, session&quot;| E2
+  C4 --&gt;|&quot;HTTPS: same booth contract&quot;| E2
+  C5 --&gt;|&quot;HTTPS: /download/:id&quot;| E3
+  C3 --&gt;|&quot;USB / OS spooler&quot;| C6
+  C6 --&gt;|&quot;IPP, CUPS,&lt;br/&gt;PowerShell PrintDocument&quot;| H1
+  C3 --&gt;|&quot;USB Video / AVFoundation&quot;| H2
+  C3 --&gt; H3
+  C4 --&gt;|&quot;CameraX&lt;br/&gt;USB or network&quot;| H2
+  C4 --&gt;|&quot;IPP / raw socket&quot;| H1
+
+  E1 --&gt; C1
+  E1 --&gt; C2
+  E2 --&gt; S1
+  E2 --&gt; S2
+  E2 --&gt; S3
+  E2 --&gt; S4
+  E2 --&gt; S5
+  E2 --&gt; S6
+  E2 --&gt; S7
+  E2 --&gt; S8
+  E2 --&gt; S9
+  E3 --&gt; S6
+  E3 --&gt; S4
+
+  S1 --&gt; D1
+  S2 --&gt; D1
+  S2 --&gt; D4
+  S3 --&gt; D1
+  S4 --&gt; D1
+  S5 --&gt; D1
+  S5 --&gt; D4
+  S6 --&gt; D1
+  S6 --&gt; D2
+  S7 --&gt; D1
+  S8 --&gt; D1
+  S9 --&gt; D1
+  S9 --&gt; D3
+  E2 --&gt;|&quot;presigned PUT&lt;br/&gt;booth uploads directly&quot;| D2
+  D2 --&gt;|&quot;presigned GET&lt;br/&gt;1 h gallery, 24 h download&quot;| C5
+  D2 --&gt;|&quot;presigned GET&quot;| C2
+  D3 --&gt; D2
+
+  S4 --&gt;|&quot;create order,&lt;br/&gt;poll status&quot;| X1
+  S4 --&gt;|&quot;create order,&lt;br/&gt;fetch QR&quot;| X2
+  X1 --&gt;|&quot;webhook HMAC&lt;br/&gt;payment.captured&quot;| E2
+  X2 --&gt;|&quot;webhook HMAC&lt;br/&gt;PAYMENT_SUCCESS&quot;| E2
+  S1 --&gt;|&quot;OTP mail&quot;| X3
+  S8 --&gt; X3
+  S8 --&gt; X4
+  S8 --&gt; X5
+  S7 --&gt; X6
+  S7 --&gt; X7
+  S7 --&gt; X8
+
+  CLIENTS -.-&gt;|&quot;download and update&quot;| X9
+  C2 --&gt;|&quot;subscribe plan via&lt;br/&gt;Razorpay checkout&quot;| E3</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d1-1-raw">Show source</button><span class="src">docs/diagrams/src/01-ecosystem.mmd</span></div><pre class="raw" id="d1-1-raw">flowchart TB
+  subgraph ACT[&quot;Actors&quot;]
+    A1[&quot;Prospect /&lt;br/&gt;website visitor&quot;]
+    A2[&quot;Guest at&lt;br/&gt;an event&quot;]
+    A3[&quot;Booth operator&quot;]
+    A4[&quot;Organization admin&lt;br/&gt;or manager&quot;]
+    A5[&quot;Platform admin /&lt;br/&gt;support manager&quot;]
+    A6[&quot;Owner / founder&quot;]
+  end
+
+  subgraph CLIENTS[&quot;Client applications&quot;]
+    C1[&quot;Website SPA&lt;br/&gt;React + Vite&lt;br/&gt;happypix.in&quot;]
+    C2[&quot;CRM console SPA&lt;br/&gt;React + Vite&lt;br/&gt;crm.happypix.in&quot;]
+    C3[&quot;Electron booth&lt;br/&gt;Windows + macOS&lt;br/&gt;electron/&quot;]
+    C4[&quot;Android booth&lt;br/&gt;client-app/&quot;]
+    C5[&quot;Guest phone&lt;br/&gt;browser&quot;]
+    C6[&quot;Print bridge&lt;br/&gt;printServer.ts&quot;]
+  end
+
+  subgraph EDGE[&quot;Vercel edge + serverless (bom1 / Mumbai)&quot;]
+    E1[&quot;CDN + static hosting&lt;br/&gt;3 SPA projects&quot;]
+    E2[&quot;Main API&lt;br/&gt;Express 5 · /api/*&quot;]
+    E3[&quot;Website API&lt;br/&gt;Express 5 · /api/*&quot;]
+  end
+
+  subgraph CORE[&quot;In-process platform services (inside the API functions)&quot;]
+    S1[&quot;Auth and&lt;br/&gt;permission matrix&quot;]
+    S2[&quot;Booth snapshot&lt;br/&gt;+ revision engine&quot;]
+    S3[&quot;Plan and limit&lt;br/&gt;enforcement&quot;]
+    S4[&quot;Pricing and coupon&lt;br/&gt;engine&quot;]
+    S5[&quot;Gallery policy&lt;br/&gt;+ signing&quot;]
+    S6[&quot;Guest download&lt;br/&gt;service&quot;]
+    S7[&quot;AI template&lt;br/&gt;generation&quot;]
+    S8[&quot;Delivery service&lt;br/&gt;email, SMS, WhatsApp&quot;]
+    S9[&quot;CronService&lt;br/&gt;hourly: expiry + cleanup&quot;]
+  end
+
+  subgraph DATA[&quot;Data stores&quot;]
+    D1[(&quot;MongoDB Atlas&lt;br/&gt;23 collections&quot;)]
+    D2[(&quot;AWS S3 bucket&lt;br/&gt;photos, logos, artwork&quot;)]
+    D3[(&quot;Local disk uploads/&lt;br/&gt;dev and S3 fallback&quot;)]
+    D4[(&quot;Process caches&lt;br/&gt;gallery 15 s, printer 30 s&quot;)]
+  end
+
+  subgraph HW[&quot;Customer hardware at the venue&quot;]
+    H1[&quot;DNP dye-sub&lt;br/&gt;photo printer&quot;]
+    H2[&quot;DSLR or USB&lt;br/&gt;camera&quot;]
+    H3[&quot;Touchscreen&lt;br/&gt;kiosk display&quot;]
+  end
+
+  subgraph EXT[&quot;Third-party providers&quot;]
+    X1[&quot;Razorpay&lt;br/&gt;orders, UPI QR,&lt;br/&gt;payment links&quot;]
+    X2[&quot;Cashfree&lt;br/&gt;UPI QR orders&quot;]
+    X3[&quot;SendGrid&lt;br/&gt;OTP and email&quot;]
+    X4[&quot;Twilio&lt;br/&gt;SMS&quot;]
+    X5[&quot;WhatsApp&lt;br/&gt;Cloud API&quot;]
+    X6[&quot;Groq&lt;br/&gt;LLM prompt parsing&quot;]
+    X7[&quot;Together FLUX&lt;br/&gt;+ xAI&lt;br/&gt;image generation&quot;]
+    X8[&quot;remove.bg&lt;br/&gt;background removal&quot;]
+    X9[&quot;GitHub Releases&lt;br/&gt;installers and APKs&quot;]
+  end
+
+  A1 --&gt; C1
+  A2 --&gt; C5
+  A2 --&gt; C3
+  A3 --&gt; C3
+  A3 --&gt; C4
+  A4 --&gt; C2
+  A5 --&gt; C2
+  A6 --&gt; C2
+
+  C1 --&gt;|&quot;HTTPS: plans, checkout,&lt;br/&gt;downloads, leads&quot;| E3
+  C2 --&gt;|&quot;HTTPS + HttpOnly cookie&quot;| E2
+  C3 --&gt;|&quot;HTTPS: pair, snapshot,&lt;br/&gt;quote, upload, session&quot;| E2
+  C4 --&gt;|&quot;HTTPS: same booth contract&quot;| E2
+  C5 --&gt;|&quot;HTTPS: /download/:id&quot;| E3
+  C3 --&gt;|&quot;USB / OS spooler&quot;| C6
+  C6 --&gt;|&quot;IPP, CUPS,&lt;br/&gt;PowerShell PrintDocument&quot;| H1
+  C3 --&gt;|&quot;USB Video / AVFoundation&quot;| H2
+  C3 --&gt; H3
+  C4 --&gt;|&quot;CameraX&lt;br/&gt;USB or network&quot;| H2
+  C4 --&gt;|&quot;IPP / raw socket&quot;| H1
+
+  E1 --&gt; C1
+  E1 --&gt; C2
+  E2 --&gt; S1
+  E2 --&gt; S2
+  E2 --&gt; S3
+  E2 --&gt; S4
+  E2 --&gt; S5
+  E2 --&gt; S6
+  E2 --&gt; S7
+  E2 --&gt; S8
+  E2 --&gt; S9
+  E3 --&gt; S6
+  E3 --&gt; S4
+
+  S1 --&gt; D1
+  S2 --&gt; D1
+  S2 --&gt; D4
+  S3 --&gt; D1
+  S4 --&gt; D1
+  S5 --&gt; D1
+  S5 --&gt; D4
+  S6 --&gt; D1
+  S6 --&gt; D2
+  S7 --&gt; D1
+  S8 --&gt; D1
+  S9 --&gt; D1
+  S9 --&gt; D3
+  E2 --&gt;|&quot;presigned PUT&lt;br/&gt;booth uploads directly&quot;| D2
+  D2 --&gt;|&quot;presigned GET&lt;br/&gt;1 h gallery, 24 h download&quot;| C5
+  D2 --&gt;|&quot;presigned GET&quot;| C2
+  D3 --&gt; D2
+
+  S4 --&gt;|&quot;create order,&lt;br/&gt;poll status&quot;| X1
+  S4 --&gt;|&quot;create order,&lt;br/&gt;fetch QR&quot;| X2
+  X1 --&gt;|&quot;webhook HMAC&lt;br/&gt;payment.captured&quot;| E2
+  X2 --&gt;|&quot;webhook HMAC&lt;br/&gt;PAYMENT_SUCCESS&quot;| E2
+  S1 --&gt;|&quot;OTP mail&quot;| X3
+  S8 --&gt; X3
+  S8 --&gt; X4
+  S8 --&gt; X5
+  S7 --&gt; X6
+  S7 --&gt; X7
+  S7 --&gt; X8
+
+  CLIENTS -.-&gt;|&quot;download and update&quot;| X9
+  C2 --&gt;|&quot;subscribe plan via&lt;br/&gt;Razorpay checkout&quot;| E3</pre></article>
+<article class="card" id="d1-2"><h3><span class="id">D1-2</span>Trust boundaries, credentials and data ownership</h3><div class=notes><p>This is the security view of the same system: who holds which credential, and which data crosses which boundary.</p><p>A booth holds a device token that is stored server-side only as a SHA-256 hash; organisation gateway secrets are AES-256-GCM encrypted at rest.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+  subgraph PUB[&quot;Untrusted: public internet&quot;]
+    U1[&quot;Prospect&quot;]
+    U2[&quot;Guest phone&quot;]
+    U3[&quot;Guest support&lt;br/&gt;ticket sender&quot;]
+  end
+
+  subgraph TENANT[&quot;Semi-trusted: customer organization&quot;]
+    T1[&quot;Org admin browser&lt;br/&gt;JWT in HttpOnly cookie&quot;]
+    T2[&quot;Booth installation&lt;br/&gt;device token hp_dev_* + deviceUuid&quot;]
+    T3[&quot;Org gateway keys&lt;br/&gt;entered in CRM&quot;]
+  end
+
+  subgraph PLAT[&quot;Highly trusted: HappyPix platform roles&quot;]
+    P1[&quot;Owner&quot;]
+    P2[&quot;Platform admin&quot;]
+    P3[&quot;Support manager&quot;]
+  end
+
+  subgraph API[&quot;API boundary — enforcement points&quot;]
+    F1[&quot;CORS allowlist&lt;br/&gt;+ global rate limit&quot;]
+    F2[&quot;authenticate&lt;br/&gt;JWT + sessionVersion&quot;]
+    F3[&quot;authenticateDevice&lt;br/&gt;token hash + org status&quot;]
+    F4[&quot;requirePerm&lt;br/&gt;fixed role matrix&quot;]
+    F5[&quot;requireWritableOrg&lt;br/&gt;suspended org = read-only&quot;]
+    F6[&quot;Tenant scoping&lt;br/&gt;getOrgFilter fails closed&quot;]
+  end
+
+  subgraph SEC[&quot;Secrets and protected data&quot;]
+    D1[(&quot;User.password&lt;br/&gt;bcrypt&quot;)]
+    D2[(&quot;Device token&lt;br/&gt;SHA-256 hash&quot;)]
+    D3[(&quot;Gateway secrets&lt;br/&gt;enc:v1 AES-256-GCM&quot;)]
+    D4[(&quot;Guest download id&lt;br/&gt;144-bit unguessable&quot;)]
+    D5[(&quot;AuditLog&lt;br/&gt;actor + ip + severity&quot;)]
+  end
+
+  subgraph OUT[&quot;External processors&quot;]
+    O1[&quot;Razorpay&lt;br/&gt;PCI scope&quot;]
+    O2[&quot;Cashfree&lt;br/&gt;PCI scope&quot;]
+    O3[&quot;SendGrid&lt;br/&gt;email PII&quot;]
+    O4[&quot;Twilio / WhatsApp&lt;br/&gt;phone PII&quot;]
+    O5[&quot;Groq / Together / xAI&lt;br/&gt;prompt and image data&quot;]
+  end
+
+  U1 --&gt;|&quot;leads, pricing&quot;| F1
+  U2 --&gt;|&quot;download id only&quot;| F1
+  U3 --&gt;|&quot;ticket, no auth&quot;| F1
+  T1 --&gt; F1 --&gt; F2 --&gt; F4
+  T2 --&gt; F1 --&gt; F3
+  F2 --&gt; F5
+  F2 --&gt; F6
+  F3 --&gt; F5
+  F3 --&gt; F6
+  P1 --&gt; F2
+  P2 --&gt; F2
+  P3 --&gt; F2
+
+  F2 --&gt; D1
+  F3 --&gt; D2
+  T3 --&gt;|&quot;written once&quot;| D3
+  F1 --&gt; D4
+  F2 --&gt; D5
+  F3 --&gt; D5
+
+  D3 --&gt;|&quot;decrypted per request,&lt;br/&gt;never returned&quot;| O1
+  D3 --&gt; O2
+  D1 --&gt; O3
+  O3 --&gt; O4
+  F6 --&gt; O5</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d1-2-raw">Show source</button><span class="src">docs/diagrams/src/01-ecosystem.mmd</span></div><pre class="raw" id="d1-2-raw">flowchart LR
+  subgraph PUB[&quot;Untrusted: public internet&quot;]
+    U1[&quot;Prospect&quot;]
+    U2[&quot;Guest phone&quot;]
+    U3[&quot;Guest support&lt;br/&gt;ticket sender&quot;]
+  end
+
+  subgraph TENANT[&quot;Semi-trusted: customer organization&quot;]
+    T1[&quot;Org admin browser&lt;br/&gt;JWT in HttpOnly cookie&quot;]
+    T2[&quot;Booth installation&lt;br/&gt;device token hp_dev_* + deviceUuid&quot;]
+    T3[&quot;Org gateway keys&lt;br/&gt;entered in CRM&quot;]
+  end
+
+  subgraph PLAT[&quot;Highly trusted: HappyPix platform roles&quot;]
+    P1[&quot;Owner&quot;]
+    P2[&quot;Platform admin&quot;]
+    P3[&quot;Support manager&quot;]
+  end
+
+  subgraph API[&quot;API boundary — enforcement points&quot;]
+    F1[&quot;CORS allowlist&lt;br/&gt;+ global rate limit&quot;]
+    F2[&quot;authenticate&lt;br/&gt;JWT + sessionVersion&quot;]
+    F3[&quot;authenticateDevice&lt;br/&gt;token hash + org status&quot;]
+    F4[&quot;requirePerm&lt;br/&gt;fixed role matrix&quot;]
+    F5[&quot;requireWritableOrg&lt;br/&gt;suspended org = read-only&quot;]
+    F6[&quot;Tenant scoping&lt;br/&gt;getOrgFilter fails closed&quot;]
+  end
+
+  subgraph SEC[&quot;Secrets and protected data&quot;]
+    D1[(&quot;User.password&lt;br/&gt;bcrypt&quot;)]
+    D2[(&quot;Device token&lt;br/&gt;SHA-256 hash&quot;)]
+    D3[(&quot;Gateway secrets&lt;br/&gt;enc:v1 AES-256-GCM&quot;)]
+    D4[(&quot;Guest download id&lt;br/&gt;144-bit unguessable&quot;)]
+    D5[(&quot;AuditLog&lt;br/&gt;actor + ip + severity&quot;)]
+  end
+
+  subgraph OUT[&quot;External processors&quot;]
+    O1[&quot;Razorpay&lt;br/&gt;PCI scope&quot;]
+    O2[&quot;Cashfree&lt;br/&gt;PCI scope&quot;]
+    O3[&quot;SendGrid&lt;br/&gt;email PII&quot;]
+    O4[&quot;Twilio / WhatsApp&lt;br/&gt;phone PII&quot;]
+    O5[&quot;Groq / Together / xAI&lt;br/&gt;prompt and image data&quot;]
+  end
+
+  U1 --&gt;|&quot;leads, pricing&quot;| F1
+  U2 --&gt;|&quot;download id only&quot;| F1
+  U3 --&gt;|&quot;ticket, no auth&quot;| F1
+  T1 --&gt; F1 --&gt; F2 --&gt; F4
+  T2 --&gt; F1 --&gt; F3
+  F2 --&gt; F5
+  F2 --&gt; F6
+  F3 --&gt; F5
+  F3 --&gt; F6
+  P1 --&gt; F2
+  P2 --&gt; F2
+  P3 --&gt; F2
+
+  F2 --&gt; D1
+  F3 --&gt; D2
+  T3 --&gt;|&quot;written once&quot;| D3
+  F1 --&gt; D4
+  F2 --&gt; D5
+  F3 --&gt; D5
+
+  D3 --&gt;|&quot;decrypted per request,&lt;br/&gt;never returned&quot;| O1
+  D3 --&gt; O2
+  D1 --&gt; O3
+  O3 --&gt; O4
+  F6 --&gt; O5</pre></article>
+</section>
+<section class="family">
+<h2>2 · Database (ER)</h2>
+<p class="blurb">The 23 Mongoose collections and their foreign keys.</p>
+<article class="card" id="d2-1"><h3><span class="id">D2-1</span>ER overview — 23 collections and their foreign keys</h3><div class=notes><p>Read this first, then open the five detail diagrams. Cardinality is as enforced by the code, not as declared: MongoDB has no real FK constraints, so every arrow is enforced by an application check.</p><p>Three relations are deliberately nullable and matter operationally — AuditLog.organizationId (null = platform scope), Photo.organizationId (null = legacy/unscoped capture) and PhotoShare.organizationId (required only for org-scoped shares).</p></div><div class="canvas"><div class="mermaid">erDiagram
+  ORGANIZATION ||--o{ USER : &quot;employs&quot;
+  ORGANIZATION ||--o{ DEVICE : &quot;owns&quot;
+  ORGANIZATION ||--o{ EVENT : &quot;runs&quot;
+  ORGANIZATION ||--o{ COUPON : &quot;issues&quot;
+  ORGANIZATION ||--o{ PAYMENT : &quot;earns&quot;
+  ORGANIZATION ||--o{ SUBSCRIPTION : &quot;buys&quot;
+  ORGANIZATION ||--o| ORGANIZATION_DEFAULTS : &quot;configures&quot;
+  ORGANIZATION ||--o{ SETTING : &quot;overrides&quot;
+  ORGANIZATION ||--o{ WITHDRAWAL : &quot;requests&quot;
+  ORGANIZATION ||--o{ ORG_AI_TEMPLATE : &quot;authors&quot;
+  ORGANIZATION ||--o{ AUDIT_LOG : &quot;scopes&quot;
+  ORGANIZATION ||--o{ PHOTO : &quot;publishes&quot;
+  ORGANIZATION ||--o{ PLATFORM_SUPPORT_REQUEST : &quot;raises&quot;
+  ORGANIZATION ||--o{ TICKET : &quot;reports&quot;
+  ORGANIZATION ||--o{ SUPPORT_TICKET : &quot;reports&quot;
+  SUBSCRIPTION_PLAN ||--o{ SUBSCRIPTION : &quot;priced by&quot;
+  EVENT ||--o{ DEVICE : &quot;assigned to&quot;
+  EVENT ||--o{ PHOTO : &quot;captures&quot;
+  EVENT ||--o{ COUPON : &quot;restricted to&quot;
+  EVENT ||--o{ PAYMENT : &quot;earns&quot;
+  EVENT ||--o{ PHOTO_SHARE : &quot;shares&quot;
+  EVENT ||--o{ GUEST_DOWNLOAD : &quot;delivers&quot;
+  EVENT ||--o{ DELIVERY_RECORD : &quot;delivers&quot;
+  TEMPLATE ||--o{ EVENT : &quot;selected by&quot;
+  TEMPLATE_LAYOUT ||--o{ TEMPLATE : &quot;layout of&quot;
+  DEVICE ||--o{ PAYMENT : &quot;collects&quot;
+  DEVICE ||--o{ PHOTO : &quot;captures&quot;
+  PAYMENT ||--o{ DIGITAL_TOKEN : &quot;unlocks&quot;
+  PHOTO_SHARE ||--o{ DELIVERY_RECORD : &quot;delivered as&quot;
+  PHOTO ||--o{ PHOTO_SHARE : &quot;referenced by&quot;
+  PHOTO ||--o{ GUEST_DOWNLOAD : &quot;referenced by&quot;
+  USER ||--o{ AUDIT_LOG : &quot;acts in&quot;
+  USER ||--o{ PLATFORM_SUPPORT_REQUEST : &quot;creates&quot;
+  USER ||--o{ ROLE_CONFIG : &quot;matrix for&quot;</div></div><div class="cardbar"><span class="pill">erDiagram</span><button type="button" data-raw="d2-1-raw">Show source</button><span class="src">docs/diagrams/src/02-er.mmd</span></div><pre class="raw" id="d2-1-raw">erDiagram
+  ORGANIZATION ||--o{ USER : &quot;employs&quot;
+  ORGANIZATION ||--o{ DEVICE : &quot;owns&quot;
+  ORGANIZATION ||--o{ EVENT : &quot;runs&quot;
+  ORGANIZATION ||--o{ COUPON : &quot;issues&quot;
+  ORGANIZATION ||--o{ PAYMENT : &quot;earns&quot;
+  ORGANIZATION ||--o{ SUBSCRIPTION : &quot;buys&quot;
+  ORGANIZATION ||--o| ORGANIZATION_DEFAULTS : &quot;configures&quot;
+  ORGANIZATION ||--o{ SETTING : &quot;overrides&quot;
+  ORGANIZATION ||--o{ WITHDRAWAL : &quot;requests&quot;
+  ORGANIZATION ||--o{ ORG_AI_TEMPLATE : &quot;authors&quot;
+  ORGANIZATION ||--o{ AUDIT_LOG : &quot;scopes&quot;
+  ORGANIZATION ||--o{ PHOTO : &quot;publishes&quot;
+  ORGANIZATION ||--o{ PLATFORM_SUPPORT_REQUEST : &quot;raises&quot;
+  ORGANIZATION ||--o{ TICKET : &quot;reports&quot;
+  ORGANIZATION ||--o{ SUPPORT_TICKET : &quot;reports&quot;
+  SUBSCRIPTION_PLAN ||--o{ SUBSCRIPTION : &quot;priced by&quot;
+  EVENT ||--o{ DEVICE : &quot;assigned to&quot;
+  EVENT ||--o{ PHOTO : &quot;captures&quot;
+  EVENT ||--o{ COUPON : &quot;restricted to&quot;
+  EVENT ||--o{ PAYMENT : &quot;earns&quot;
+  EVENT ||--o{ PHOTO_SHARE : &quot;shares&quot;
+  EVENT ||--o{ GUEST_DOWNLOAD : &quot;delivers&quot;
+  EVENT ||--o{ DELIVERY_RECORD : &quot;delivers&quot;
+  TEMPLATE ||--o{ EVENT : &quot;selected by&quot;
+  TEMPLATE_LAYOUT ||--o{ TEMPLATE : &quot;layout of&quot;
+  DEVICE ||--o{ PAYMENT : &quot;collects&quot;
+  DEVICE ||--o{ PHOTO : &quot;captures&quot;
+  PAYMENT ||--o{ DIGITAL_TOKEN : &quot;unlocks&quot;
+  PHOTO_SHARE ||--o{ DELIVERY_RECORD : &quot;delivered as&quot;
+  PHOTO ||--o{ PHOTO_SHARE : &quot;referenced by&quot;
+  PHOTO ||--o{ GUEST_DOWNLOAD : &quot;referenced by&quot;
+  USER ||--o{ AUDIT_LOG : &quot;acts in&quot;
+  USER ||--o{ PLATFORM_SUPPORT_REQUEST : &quot;creates&quot;
+  USER ||--o{ ROLE_CONFIG : &quot;matrix for&quot;</pre></article>
+<article class="card" id="d2-2"><h3><span class="id">D2-2</span>ER detail — identity, tenancy, subscription and configuration</h3><div class=notes><p>The tenant root is ORGANIZATION. Every organisation-scoped document carries organizationId and every query is pinned to req.organization._id — internal roles are never given an empty filter.</p><p>SETTING with organizationId = null is the global row that holds the platform gallery policy, which is why the same collection appears both org-scoped and platform-scoped.</p></div><div class="canvas"><div class="mermaid">erDiagram
+  ORGANIZATION {
+    objectId _id PK
+    string name &quot;shown to guests and on payment QR&quot;
+    string ownerName
+    string email UK
+    string country &quot;IN or AU — drives gateway&quot;
+    string plan &quot;trial, basic, pro, premium, custom&quot;
+    string currency &quot;INR or AUD&quot;
+    string billingCycle &quot;monthly, quarterly, semiannual, annual&quot;
+    date planStartedAt
+    date planExpiresAt
+    date nextBillingDate
+    string paymentGateway &quot;razorpay or stripe&quot;
+    string status &quot;active, suspended, banned, expired&quot;
+    string suspendReason
+    objectId suspendedBy FK
+    date trialEndsAt
+    number allowedDevices &quot;mirrored from plan&quot;
+    number allowedEvents &quot;mirrored from plan&quot;
+    number aiCredits
+    array addons &quot;key, activatedAt, expiresAt&quot;
+    number sessionVersion &quot;org-wide token revocation&quot;
+    object gallerySettings &quot;per-org override&quot;
+    objectId createdBy FK
+  }
+  USER {
+    objectId _id PK
+    string name
+    string email UK
+    string password &quot;bcrypt hash&quot;
+    string role &quot;OWNER, PLATFORM_ADMIN, SUPPORT_MANAGER, ORG_ADMIN, ORG_MANAGER&quot;
+    objectId organizationId FK &quot;null for platform staff&quot;
+    string status &quot;active or inactive&quot;
+    date lastLoginAt
+    number sessionVersion
+    string forgotPasswordCodeHash
+    date forgotPasswordCodeExpires
+    number forgotPasswordAttempts
+    string emailChangeCodeHash
+    string emailChangePending
+  }
+  SUBSCRIPTION_PLAN {
+    objectId _id PK
+    string key UK &quot;trial, basic, pro, premium, addon-*&quot;
+    string name
+    string kind &quot;plan or addon&quot;
+    number price &quot;mirror of monthly INR&quot;
+    number priceMonthly
+    number priceQuarterly
+    number priceSemiannual
+    number priceAnnual
+    number devices
+    number events
+    number aiCredits
+    string discountType &quot;none, percent, flat&quot;
+    number discountValue
+    date discountStartsAt
+    date discountEndsAt
+    number discountMaxRedemptions
+    number discountRedemptions
+    boolean active
+    boolean isDeleted &quot;soft delete&quot;
+  }
+  SUBSCRIPTION {
+    objectId _id PK
+    objectId organizationId FK
+    string plan
+    number amount
+    number originalAmount
+    number discountAmount
+    string invoiceNo UK
+    string razorpayOrderId
+    string razorpayPaymentId
+    date startDate
+    date endDate
+    string status &quot;paid, pending, failed&quot;
+    objectId createdBy FK
+  }
+  ROLE_CONFIG {
+    objectId _id PK
+    string role &quot;legacy matrix — writes not mounted&quot;
+    array permissions
+    date updatedAt
+  }
+  SETTING {
+    objectId _id PK
+    objectId organizationId FK &quot;null = platform/global row&quot;
+    boolean enableMobilePrinting
+    boolean galleryEnabled
+    boolean requireGuestConsent
+    date galleryUpdatedAt
+    objectId galleryUpdatedBy FK
+    string razorpayKeyId
+    string razorpayKeySecret &quot;encrypted&quot;
+    string cashfreeAppId
+    string cashfreeSecretKey &quot;encrypted&quot;
+    string cashfreeEnv
+    string gatewayPriority
+    string upiId
+  }
+  ORGANIZATION_DEFAULTS {
+    objectId _id PK
+    objectId organizationId FK,UK
+    string name
+    string logoUrl
+    number boothTimeoutSec &quot;10 to 86400&quot;
+    number qrTimeoutMinutes
+    string upiId
+    string payoutMode &quot;upi or wallet&quot;
+    string paymentDisplayName
+    string razorpayKeySecret &quot;encrypted&quot;
+    string cashfreeSecretKey &quot;encrypted&quot;
+    string gatewayPriority
+    object layoutPrices
+    object templatePrices
+  }
+  AUDIT_LOG {
+    objectId _id PK
+    objectId organizationId FK &quot;null = platform scope&quot;
+    objectId actorId FK &quot;null = booth or system&quot;
+    string actorName &quot;denormalised&quot;
+    string actorRole
+    string action &quot;dotted event name&quot;
+    string entity
+    string severity &quot;info, warn, danger&quot;
+    string ip
+    date at &quot;the only timestamp&quot;
+  }
+  ORGANIZATION ||--o{ USER : &quot;employs&quot;
+  ORGANIZATION ||--o| ORGANIZATION_DEFAULTS : &quot;has&quot;
+  ORGANIZATION ||--o{ SETTING : &quot;has&quot;
+  ORGANIZATION ||--o{ SUBSCRIPTION : &quot;billed&quot;
+  SUBSCRIPTION_PLAN ||--o{ SUBSCRIPTION : &quot;defines&quot;
+  ORGANIZATION ||--o{ AUDIT_LOG : &quot;scopes&quot;
+  USER ||--o{ AUDIT_LOG : &quot;acts in&quot;
+  USER ||--o{ ROLE_CONFIG : &quot;matrix&quot;</div></div><div class="cardbar"><span class="pill">erDiagram</span><button type="button" data-raw="d2-2-raw">Show source</button><span class="src">docs/diagrams/src/02-er.mmd</span></div><pre class="raw" id="d2-2-raw">erDiagram
+  ORGANIZATION {
+    objectId _id PK
+    string name &quot;shown to guests and on payment QR&quot;
+    string ownerName
+    string email UK
+    string country &quot;IN or AU — drives gateway&quot;
+    string plan &quot;trial, basic, pro, premium, custom&quot;
+    string currency &quot;INR or AUD&quot;
+    string billingCycle &quot;monthly, quarterly, semiannual, annual&quot;
+    date planStartedAt
+    date planExpiresAt
+    date nextBillingDate
+    string paymentGateway &quot;razorpay or stripe&quot;
+    string status &quot;active, suspended, banned, expired&quot;
+    string suspendReason
+    objectId suspendedBy FK
+    date trialEndsAt
+    number allowedDevices &quot;mirrored from plan&quot;
+    number allowedEvents &quot;mirrored from plan&quot;
+    number aiCredits
+    array addons &quot;key, activatedAt, expiresAt&quot;
+    number sessionVersion &quot;org-wide token revocation&quot;
+    object gallerySettings &quot;per-org override&quot;
+    objectId createdBy FK
+  }
+  USER {
+    objectId _id PK
+    string name
+    string email UK
+    string password &quot;bcrypt hash&quot;
+    string role &quot;OWNER, PLATFORM_ADMIN, SUPPORT_MANAGER, ORG_ADMIN, ORG_MANAGER&quot;
+    objectId organizationId FK &quot;null for platform staff&quot;
+    string status &quot;active or inactive&quot;
+    date lastLoginAt
+    number sessionVersion
+    string forgotPasswordCodeHash
+    date forgotPasswordCodeExpires
+    number forgotPasswordAttempts
+    string emailChangeCodeHash
+    string emailChangePending
+  }
+  SUBSCRIPTION_PLAN {
+    objectId _id PK
+    string key UK &quot;trial, basic, pro, premium, addon-*&quot;
+    string name
+    string kind &quot;plan or addon&quot;
+    number price &quot;mirror of monthly INR&quot;
+    number priceMonthly
+    number priceQuarterly
+    number priceSemiannual
+    number priceAnnual
+    number devices
+    number events
+    number aiCredits
+    string discountType &quot;none, percent, flat&quot;
+    number discountValue
+    date discountStartsAt
+    date discountEndsAt
+    number discountMaxRedemptions
+    number discountRedemptions
+    boolean active
+    boolean isDeleted &quot;soft delete&quot;
+  }
+  SUBSCRIPTION {
+    objectId _id PK
+    objectId organizationId FK
+    string plan
+    number amount
+    number originalAmount
+    number discountAmount
+    string invoiceNo UK
+    string razorpayOrderId
+    string razorpayPaymentId
+    date startDate
+    date endDate
+    string status &quot;paid, pending, failed&quot;
+    objectId createdBy FK
+  }
+  ROLE_CONFIG {
+    objectId _id PK
+    string role &quot;legacy matrix — writes not mounted&quot;
+    array permissions
+    date updatedAt
+  }
+  SETTING {
+    objectId _id PK
+    objectId organizationId FK &quot;null = platform/global row&quot;
+    boolean enableMobilePrinting
+    boolean galleryEnabled
+    boolean requireGuestConsent
+    date galleryUpdatedAt
+    objectId galleryUpdatedBy FK
+    string razorpayKeyId
+    string razorpayKeySecret &quot;encrypted&quot;
+    string cashfreeAppId
+    string cashfreeSecretKey &quot;encrypted&quot;
+    string cashfreeEnv
+    string gatewayPriority
+    string upiId
+  }
+  ORGANIZATION_DEFAULTS {
+    objectId _id PK
+    objectId organizationId FK,UK
+    string name
+    string logoUrl
+    number boothTimeoutSec &quot;10 to 86400&quot;
+    number qrTimeoutMinutes
+    string upiId
+    string payoutMode &quot;upi or wallet&quot;
+    string paymentDisplayName
+    string razorpayKeySecret &quot;encrypted&quot;
+    string cashfreeSecretKey &quot;encrypted&quot;
+    string gatewayPriority
+    object layoutPrices
+    object templatePrices
+  }
+  AUDIT_LOG {
+    objectId _id PK
+    objectId organizationId FK &quot;null = platform scope&quot;
+    objectId actorId FK &quot;null = booth or system&quot;
+    string actorName &quot;denormalised&quot;
+    string actorRole
+    string action &quot;dotted event name&quot;
+    string entity
+    string severity &quot;info, warn, danger&quot;
+    string ip
+    date at &quot;the only timestamp&quot;
+  }
+  ORGANIZATION ||--o{ USER : &quot;employs&quot;
+  ORGANIZATION ||--o| ORGANIZATION_DEFAULTS : &quot;has&quot;
+  ORGANIZATION ||--o{ SETTING : &quot;has&quot;
+  ORGANIZATION ||--o{ SUBSCRIPTION : &quot;billed&quot;
+  SUBSCRIPTION_PLAN ||--o{ SUBSCRIPTION : &quot;defines&quot;
+  ORGANIZATION ||--o{ AUDIT_LOG : &quot;scopes&quot;
+  USER ||--o{ AUDIT_LOG : &quot;acts in&quot;
+  USER ||--o{ ROLE_CONFIG : &quot;matrix&quot;</pre></article>
+<article class="card" id="d2-3"><h3><span class="id">D2-3</span>ER detail — events, booths, templates and coupons</h3><div class=notes><p>EVENT is the unit of booth work; DEVICE.assignedEventId is the single pointer that decides which event a booth is shooting. Deleting an event clears that pointer and detaches coupons.</p><p>Event-level gateway keys are overrides of the organisation defaults, which is why the same credential columns exist on both documents.</p></div><div class="canvas"><div class="mermaid">erDiagram
+  EVENT {
+    objectId _id PK
+    objectId organizationId FK
+    string name
+    string clientName
+    string location
+    date startDate
+    date endDate
+    string status &quot;upcoming, live, finished&quot;
+    boolean paused &quot;paused beats live&quot;
+    array templateIds FK
+    array filters
+    boolean digitalCopy
+    object layoutPrices
+    object branding &quot;logoUrl, tagline, up to 15 logos&quot;
+    string shortCode
+    array assignedDeviceIds FK
+    string passkey &quot;booth join secret&quot;
+    number printPrice
+    array printOptions
+    boolean downloadEnabled
+    boolean printingEnabled
+    number boothTimeout
+    number qrTimeoutMinutes
+    string razorpayKeySecret &quot;encrypted override&quot;
+    string cashfreeSecretKey &quot;encrypted override&quot;
+    string gatewayPriority
+    string upiId
+    object sharingConfig &quot;enabled, expirationDays&quot;
+    array enabledLayouts
+    objectId assignedManagerId FK
+    objectId createdBy FK
+  }
+  DEVICE {
+    objectId _id PK
+    objectId organizationId FK
+    string deviceUuid UK &quot;installation identity&quot;
+    string deviceName
+    string location
+    string deviceToken &quot;legacy plaintext — migrated away&quot;
+    string deviceTokenHash &quot;SHA-256&quot;
+    string operatorName
+    string operatorPhone
+    objectId assignedEventId FK
+    date lastSeenAt
+    string ipAddress
+    string platform
+    string appVersion
+    object telemetry &quot;prints, shutters, batteryPct&quot;
+    object connections &quot;camera, printer, kioskScreen&quot;
+    string status &quot;active, inactive, blocked&quot;
+  }
+  TEMPLATE {
+    objectId _id PK
+    string name
+    string category
+    number price
+    string layoutId FK
+    string componentId
+    object design
+    string source &quot;designer, playground, ai_generated&quot;
+    boolean active
+    number usage
+    objectId createdBy FK
+  }
+  TEMPLATE_LAYOUT {
+    objectId _id PK
+    string codeword UK
+    object grid
+    objectId createdBy FK
+  }
+  ORG_AI_TEMPLATE {
+    objectId _id PK
+    objectId organizationId FK
+    string name
+    string category
+    number price
+    object layout &quot;code, familyId, slots, printSize&quot;
+    array slots
+    object design
+    array assets
+    array versions
+    string prompt
+    string source
+    object cache &quot;indexedDb&quot;
+    objectId createdBy FK
+  }
+  COUPON {
+    objectId _id PK
+    objectId organizationId FK
+    string code &quot;unique per org&quot;
+    string type &quot;percentage or fixed&quot;
+    number value
+    number quantity
+    number usedCount
+    date expiryDate
+    array eventIds FK
+    string status &quot;active or paused&quot;
+  }
+  ORGANIZATION ||--o{ EVENT : &quot;runs&quot;
+  ORGANIZATION ||--o{ DEVICE : &quot;owns&quot;
+  ORGANIZATION ||--o{ ORG_AI_TEMPLATE : &quot;authors&quot;
+  ORGANIZATION ||--o{ COUPON : &quot;issues&quot;
+  EVENT ||--o{ DEVICE : &quot;assigned to&quot;
+  EVENT }o--o{ TEMPLATE : &quot;uses&quot;
+  EVENT }o--o{ COUPON : &quot;restricted to&quot;
+  TEMPLATE_LAYOUT ||--o{ TEMPLATE : &quot;layout of&quot;</div></div><div class="cardbar"><span class="pill">erDiagram</span><button type="button" data-raw="d2-3-raw">Show source</button><span class="src">docs/diagrams/src/02-er.mmd</span></div><pre class="raw" id="d2-3-raw">erDiagram
+  EVENT {
+    objectId _id PK
+    objectId organizationId FK
+    string name
+    string clientName
+    string location
+    date startDate
+    date endDate
+    string status &quot;upcoming, live, finished&quot;
+    boolean paused &quot;paused beats live&quot;
+    array templateIds FK
+    array filters
+    boolean digitalCopy
+    object layoutPrices
+    object branding &quot;logoUrl, tagline, up to 15 logos&quot;
+    string shortCode
+    array assignedDeviceIds FK
+    string passkey &quot;booth join secret&quot;
+    number printPrice
+    array printOptions
+    boolean downloadEnabled
+    boolean printingEnabled
+    number boothTimeout
+    number qrTimeoutMinutes
+    string razorpayKeySecret &quot;encrypted override&quot;
+    string cashfreeSecretKey &quot;encrypted override&quot;
+    string gatewayPriority
+    string upiId
+    object sharingConfig &quot;enabled, expirationDays&quot;
+    array enabledLayouts
+    objectId assignedManagerId FK
+    objectId createdBy FK
+  }
+  DEVICE {
+    objectId _id PK
+    objectId organizationId FK
+    string deviceUuid UK &quot;installation identity&quot;
+    string deviceName
+    string location
+    string deviceToken &quot;legacy plaintext — migrated away&quot;
+    string deviceTokenHash &quot;SHA-256&quot;
+    string operatorName
+    string operatorPhone
+    objectId assignedEventId FK
+    date lastSeenAt
+    string ipAddress
+    string platform
+    string appVersion
+    object telemetry &quot;prints, shutters, batteryPct&quot;
+    object connections &quot;camera, printer, kioskScreen&quot;
+    string status &quot;active, inactive, blocked&quot;
+  }
+  TEMPLATE {
+    objectId _id PK
+    string name
+    string category
+    number price
+    string layoutId FK
+    string componentId
+    object design
+    string source &quot;designer, playground, ai_generated&quot;
+    boolean active
+    number usage
+    objectId createdBy FK
+  }
+  TEMPLATE_LAYOUT {
+    objectId _id PK
+    string codeword UK
+    object grid
+    objectId createdBy FK
+  }
+  ORG_AI_TEMPLATE {
+    objectId _id PK
+    objectId organizationId FK
+    string name
+    string category
+    number price
+    object layout &quot;code, familyId, slots, printSize&quot;
+    array slots
+    object design
+    array assets
+    array versions
+    string prompt
+    string source
+    object cache &quot;indexedDb&quot;
+    objectId createdBy FK
+  }
+  COUPON {
+    objectId _id PK
+    objectId organizationId FK
+    string code &quot;unique per org&quot;
+    string type &quot;percentage or fixed&quot;
+    number value
+    number quantity
+    number usedCount
+    date expiryDate
+    array eventIds FK
+    string status &quot;active or paused&quot;
+  }
+  ORGANIZATION ||--o{ EVENT : &quot;runs&quot;
+  ORGANIZATION ||--o{ DEVICE : &quot;owns&quot;
+  ORGANIZATION ||--o{ ORG_AI_TEMPLATE : &quot;authors&quot;
+  ORGANIZATION ||--o{ COUPON : &quot;issues&quot;
+  EVENT ||--o{ DEVICE : &quot;assigned to&quot;
+  EVENT }o--o{ TEMPLATE : &quot;uses&quot;
+  EVENT }o--o{ COUPON : &quot;restricted to&quot;
+  TEMPLATE_LAYOUT ||--o{ TEMPLATE : &quot;layout of&quot;</pre></article>
+<article class="card" id="d2-4"><h3><span class="id">D2-4</span>ER detail — money: payments, subscriptions, coupons and payouts</h3><div class=notes><p>There is no single &quot;revenue&quot; collection. Payment rows are per booth transaction; Subscription rows are per platform plan purchase; Withdrawal rows are organisation payouts from the wallet balance.</p><p>Payment.settlement decides whether money goes to the organisation UPI directly or into the HappyPix wallet — the revenue dashboard splits every total on this field.</p></div><div class="canvas"><div class="mermaid">erDiagram
+  PAYMENT {
+    objectId _id PK
+    objectId organizationId FK
+    string razorpayOrderId
+    string paymentLinkId &quot;qr_* or plink_*&quot;
+    string paymentLinkUrl
+    string razorpayPaymentId
+    string razorpaySignature
+    string gateway &quot;razorpay or cashfree&quot;
+    string cashfreeOrderId
+    string cashfreePaymentId
+    string cashfreeQrData &quot;raw UPI string&quot;
+    objectId eventId FK
+    string eventName
+    objectId deviceId FK
+    string sessionId
+    string guestPhone
+    string settlement &quot;upi or wallet&quot;
+    number amount &quot;rupees&quot;
+    string currency
+    number printCount
+    boolean digitalCopy
+    array photoUrls
+    string compositeUrl
+    string couponCode
+    boolean couponCounted &quot;idempotency for redemption&quot;
+    number discountApplied
+    string status &quot;created, pending, paid, failed&quot;
+    string utr &quot;12-digit offline UPI reference&quot;
+    date createdAt
+    date paidAt
+  }
+  SUBSCRIPTION {
+    objectId _id PK
+    objectId organizationId FK
+    string plan
+    number amount
+    string invoiceNo UK
+    date startDate
+    date endDate
+    string status
+  }
+  COUPON {
+    objectId _id PK
+    objectId organizationId FK
+    string code
+    string type
+    number value
+    number quantity
+    number usedCount
+    date expiryDate
+    array eventIds FK
+  }
+  WITHDRAWAL {
+    objectId _id PK
+    objectId organizationId FK
+    number amount &quot;minimum 500&quot;
+    string status &quot;processing, paid, failed&quot;
+    string upiId
+    string reference
+    objectId requestedBy FK
+    date requestedAt
+    date processedAt
+    string note
+  }
+  ORGANIZATION ||--o{ PAYMENT : &quot;earns&quot;
+  ORGANIZATION ||--o{ SUBSCRIPTION : &quot;billed&quot;
+  ORGANIZATION ||--o{ WITHDRAWAL : &quot;payouts&quot;
+  ORGANIZATION ||--o{ COUPON : &quot;issues&quot;
+  EVENT ||--o{ PAYMENT : &quot;earns&quot;
+  DEVICE ||--o{ PAYMENT : &quot;collects&quot;
+  COUPON ||--o{ PAYMENT : &quot;discounts&quot;</div></div><div class="cardbar"><span class="pill">erDiagram</span><button type="button" data-raw="d2-4-raw">Show source</button><span class="src">docs/diagrams/src/02-er.mmd</span></div><pre class="raw" id="d2-4-raw">erDiagram
+  PAYMENT {
+    objectId _id PK
+    objectId organizationId FK
+    string razorpayOrderId
+    string paymentLinkId &quot;qr_* or plink_*&quot;
+    string paymentLinkUrl
+    string razorpayPaymentId
+    string razorpaySignature
+    string gateway &quot;razorpay or cashfree&quot;
+    string cashfreeOrderId
+    string cashfreePaymentId
+    string cashfreeQrData &quot;raw UPI string&quot;
+    objectId eventId FK
+    string eventName
+    objectId deviceId FK
+    string sessionId
+    string guestPhone
+    string settlement &quot;upi or wallet&quot;
+    number amount &quot;rupees&quot;
+    string currency
+    number printCount
+    boolean digitalCopy
+    array photoUrls
+    string compositeUrl
+    string couponCode
+    boolean couponCounted &quot;idempotency for redemption&quot;
+    number discountApplied
+    string status &quot;created, pending, paid, failed&quot;
+    string utr &quot;12-digit offline UPI reference&quot;
+    date createdAt
+    date paidAt
+  }
+  SUBSCRIPTION {
+    objectId _id PK
+    objectId organizationId FK
+    string plan
+    number amount
+    string invoiceNo UK
+    date startDate
+    date endDate
+    string status
+  }
+  COUPON {
+    objectId _id PK
+    objectId organizationId FK
+    string code
+    string type
+    number value
+    number quantity
+    number usedCount
+    date expiryDate
+    array eventIds FK
+  }
+  WITHDRAWAL {
+    objectId _id PK
+    objectId organizationId FK
+    number amount &quot;minimum 500&quot;
+    string status &quot;processing, paid, failed&quot;
+    string upiId
+    string reference
+    objectId requestedBy FK
+    date requestedAt
+    date processedAt
+    string note
+  }
+  ORGANIZATION ||--o{ PAYMENT : &quot;earns&quot;
+  ORGANIZATION ||--o{ SUBSCRIPTION : &quot;billed&quot;
+  ORGANIZATION ||--o{ WITHDRAWAL : &quot;payouts&quot;
+  ORGANIZATION ||--o{ COUPON : &quot;issues&quot;
+  EVENT ||--o{ PAYMENT : &quot;earns&quot;
+  DEVICE ||--o{ PAYMENT : &quot;collects&quot;
+  COUPON ||--o{ PAYMENT : &quot;discounts&quot;</pre></article>
+<article class="card" id="d2-5"><h3><span class="id">D2-5</span>ER detail — media, digital delivery and TTL lifecycle</h3><div class=notes><p>Four collections carry a MongoDB TTL index on expiresAt: PHOTO_SHARE, GUEST_DOWNLOAD, DIGITAL_TOKEN (and the index is declared, not cron-driven). Data disappears without any application write, so every reader must also check expiry explicitly.</p><p>PHOTO has no TTL — photo rows are permanent by design (a legacy TTL index on createdAt is actively dropped at boot). Its URL points at a private bucket, so readers must sign.</p></div><div class="canvas"><div class="mermaid">erDiagram
+  PHOTO {
+    objectId _id PK
+    objectId organizationId FK &quot;nullable for legacy captures&quot;
+    string s3Key
+    string url &quot;private bucket URL&quot;
+    string compositeUrl &quot;final print strip&quot;
+    objectId eventId FK
+    objectId deviceId FK
+    string sessionId &quot;dedupe key for gallery&quot;
+    boolean guestConsent &quot;controls gallery visibility&quot;
+    date generatedAt
+    boolean finalised
+    string printStatus
+    string digitalStatus
+    date createdAt
+  }
+  PHOTO_SHARE {
+    objectId _id PK
+    objectId eventId FK
+    objectId organizationId FK
+    string tokenHash UK &quot;32 random bytes, hex&quot;
+    array photoUrls
+    string compositeUrl
+    array photoIds FK
+    date expiresAt &quot;TTL&quot;
+    string status &quot;active, expired, disabled&quot;
+    number viewCount
+    number downloadCount
+    number shareCount
+    date createdAt
+  }
+  DIGITAL_TOKEN {
+    objectId _id PK
+    string token UK
+    objectId paymentId FK
+    array photoUrls
+    string compositeUrl
+    date expiresAt &quot;TTL — 24 h&quot;
+    number downloadCount
+    date createdAt
+  }
+  GUEST_DOWNLOAD {
+    objectId _id PK
+    string downloadId UK &quot;18 random bytes base64url&quot;
+    objectId organizationId FK
+    objectId eventId FK
+    objectId deviceId FK
+    string sessionId
+    string compositeUrl
+    array photoUrls
+    array photoIds FK
+    string eventName
+    string organizationName
+    date expiresAt &quot;TTL — 24 h from session&quot;
+    number viewCount
+    number downloadCount
+    date createdAt
+  }
+  DELIVERY_RECORD {
+    objectId _id PK
+    objectId photoShareId FK
+    objectId eventId FK
+    objectId organizationId FK
+    string method &quot;QR, DOWNLOAD, WHATSAPP, EMAIL, SMS, NATIVE_SHARE, COPY_LINK&quot;
+    string destinationMasked
+    string status &quot;pending, sent, failed&quot;
+    string provider
+    string providerMessageId
+    string errorCode
+    date sentAt
+    date failedAt
+  }
+  EVENT ||--o{ PHOTO : &quot;captures&quot;
+  EVENT ||--o{ PHOTO_SHARE : &quot;shares&quot;
+  EVENT ||--o{ GUEST_DOWNLOAD : &quot;delivers&quot;
+  EVENT ||--o{ DELIVERY_RECORD : &quot;delivers&quot;
+  DEVICE ||--o{ PHOTO : &quot;captures&quot;
+  PAYMENT ||--o| DIGITAL_TOKEN : &quot;unlocks&quot;
+  PHOTO_SHARE ||--o{ DELIVERY_RECORD : &quot;delivered as&quot;
+  PHOTO }o--o{ PHOTO_SHARE : &quot;included in&quot;
+  PHOTO }o--o{ GUEST_DOWNLOAD : &quot;included in&quot;</div></div><div class="cardbar"><span class="pill">erDiagram</span><button type="button" data-raw="d2-5-raw">Show source</button><span class="src">docs/diagrams/src/02-er.mmd</span></div><pre class="raw" id="d2-5-raw">erDiagram
+  PHOTO {
+    objectId _id PK
+    objectId organizationId FK &quot;nullable for legacy captures&quot;
+    string s3Key
+    string url &quot;private bucket URL&quot;
+    string compositeUrl &quot;final print strip&quot;
+    objectId eventId FK
+    objectId deviceId FK
+    string sessionId &quot;dedupe key for gallery&quot;
+    boolean guestConsent &quot;controls gallery visibility&quot;
+    date generatedAt
+    boolean finalised
+    string printStatus
+    string digitalStatus
+    date createdAt
+  }
+  PHOTO_SHARE {
+    objectId _id PK
+    objectId eventId FK
+    objectId organizationId FK
+    string tokenHash UK &quot;32 random bytes, hex&quot;
+    array photoUrls
+    string compositeUrl
+    array photoIds FK
+    date expiresAt &quot;TTL&quot;
+    string status &quot;active, expired, disabled&quot;
+    number viewCount
+    number downloadCount
+    number shareCount
+    date createdAt
+  }
+  DIGITAL_TOKEN {
+    objectId _id PK
+    string token UK
+    objectId paymentId FK
+    array photoUrls
+    string compositeUrl
+    date expiresAt &quot;TTL — 24 h&quot;
+    number downloadCount
+    date createdAt
+  }
+  GUEST_DOWNLOAD {
+    objectId _id PK
+    string downloadId UK &quot;18 random bytes base64url&quot;
+    objectId organizationId FK
+    objectId eventId FK
+    objectId deviceId FK
+    string sessionId
+    string compositeUrl
+    array photoUrls
+    array photoIds FK
+    string eventName
+    string organizationName
+    date expiresAt &quot;TTL — 24 h from session&quot;
+    number viewCount
+    number downloadCount
+    date createdAt
+  }
+  DELIVERY_RECORD {
+    objectId _id PK
+    objectId photoShareId FK
+    objectId eventId FK
+    objectId organizationId FK
+    string method &quot;QR, DOWNLOAD, WHATSAPP, EMAIL, SMS, NATIVE_SHARE, COPY_LINK&quot;
+    string destinationMasked
+    string status &quot;pending, sent, failed&quot;
+    string provider
+    string providerMessageId
+    string errorCode
+    date sentAt
+    date failedAt
+  }
+  EVENT ||--o{ PHOTO : &quot;captures&quot;
+  EVENT ||--o{ PHOTO_SHARE : &quot;shares&quot;
+  EVENT ||--o{ GUEST_DOWNLOAD : &quot;delivers&quot;
+  EVENT ||--o{ DELIVERY_RECORD : &quot;delivers&quot;
+  DEVICE ||--o{ PHOTO : &quot;captures&quot;
+  PAYMENT ||--o| DIGITAL_TOKEN : &quot;unlocks&quot;
+  PHOTO_SHARE ||--o{ DELIVERY_RECORD : &quot;delivered as&quot;
+  PHOTO }o--o{ PHOTO_SHARE : &quot;included in&quot;
+  PHOTO }o--o{ GUEST_DOWNLOAD : &quot;included in&quot;</pre></article>
+<article class="card" id="d2-6"><h3><span class="id">D2-6</span>ER detail — support, leads and the audit trail</h3><div class=notes><p>Three different support models exist and none of them is a duplicate: SUPPORT_TICKET is a guest or client ticket raised from a booth or website, TICKET is the org-side operational ticket, PLATFORM_SUPPORT_REQUEST is the org-to-platform escalation with an accept/deny/apply lifecycle.</p><p>AUDIT_LOG is append-only in practice: no route updates or deletes a row, and the actor name and role are denormalised so deleting a user never blanks history.</p></div><div class="canvas"><div class="mermaid">erDiagram
+  SUPPORT_TICKET {
+    objectId _id PK
+    string ticketType &quot;end_user or client&quot;
+    objectId organizationId FK
+    string name
+    string email
+    string subject
+    string message
+    objectId eventId FK
+    string eventShortCode
+    objectId deviceId FK
+    string sessionId
+    string paymentReference
+    boolean holdPhotos &quot;blocks photo deletion&quot;
+    string status &quot;open, in-progress, resolved, closed&quot;
+    string priority &quot;low, normal, high, urgent&quot;
+    array adminNotes &quot;text, createdAt&quot;
+    date resolvedAt
+  }
+  TICKET {
+    objectId _id PK
+    objectId organizationId FK
+    objectId eventId FK
+    objectId deviceId FK
+    string category &quot;device, payment, photo, event, general&quot;
+    string subject
+    string priority
+    string status &quot;open, in_progress, resolved, closed&quot;
+    object guest &quot;name, contact&quot;
+    object session
+    array messages &quot;author, at, text&quot;
+    string resolution
+  }
+  PLATFORM_SUPPORT_REQUEST {
+    objectId _id PK
+    string ticketNo &quot;assigned on accept&quot;
+    objectId organizationId FK
+    objectId createdBy FK
+    string subject
+    string category &quot;technical, billing, account, feature, other&quot;
+    string priority &quot;low, medium, high, urgent&quot;
+    string status &quot;new, denied, open, in_progress, resolved&quot;
+    object decision &quot;accepted or denied, reason, by, at&quot;
+    array messages &quot;side org or platform, text, images&quot;
+    number reapplyCount
+    object lastReapplication
+    string resolution
+    date acceptedAt
+    date resolvedAt
+  }
+  WEBSITE_LEAD {
+    objectId _id PK
+    string name
+    string email
+    string phone
+    string company
+    string message
+    string type &quot;contact, demo, hardware, support&quot;
+    string status &quot;new, contacted, closed&quot;
+    string notes
+    date contactedAt
+    date closedAt
+  }
+  AUDIT_LOG {
+    objectId _id PK
+    objectId organizationId FK &quot;null = platform&quot;
+    objectId actorId FK &quot;null = booth or system&quot;
+    string actorName
+    string actorRole
+    string action
+    string entity
+    string summary
+    string severity
+    string ip
+    date at
+  }
+  ORGANIZATION ||--o{ SUPPORT_TICKET : &quot;receives&quot;
+  ORGANIZATION ||--o{ TICKET : &quot;receives&quot;
+  ORGANIZATION ||--o{ PLATFORM_SUPPORT_REQUEST : &quot;raises&quot;
+  USER ||--o{ PLATFORM_SUPPORT_REQUEST : &quot;creates&quot;
+  USER ||--o{ AUDIT_LOG : &quot;acts in&quot;
+  ORGANIZATION ||--o{ AUDIT_LOG : &quot;scopes&quot;
+  EVENT ||--o{ SUPPORT_TICKET : &quot;about&quot;
+  DEVICE ||--o{ SUPPORT_TICKET : &quot;raised at&quot;
+  EVENT ||--o{ TICKET : &quot;about&quot;</div></div><div class="cardbar"><span class="pill">erDiagram</span><button type="button" data-raw="d2-6-raw">Show source</button><span class="src">docs/diagrams/src/02-er.mmd</span></div><pre class="raw" id="d2-6-raw">erDiagram
+  SUPPORT_TICKET {
+    objectId _id PK
+    string ticketType &quot;end_user or client&quot;
+    objectId organizationId FK
+    string name
+    string email
+    string subject
+    string message
+    objectId eventId FK
+    string eventShortCode
+    objectId deviceId FK
+    string sessionId
+    string paymentReference
+    boolean holdPhotos &quot;blocks photo deletion&quot;
+    string status &quot;open, in-progress, resolved, closed&quot;
+    string priority &quot;low, normal, high, urgent&quot;
+    array adminNotes &quot;text, createdAt&quot;
+    date resolvedAt
+  }
+  TICKET {
+    objectId _id PK
+    objectId organizationId FK
+    objectId eventId FK
+    objectId deviceId FK
+    string category &quot;device, payment, photo, event, general&quot;
+    string subject
+    string priority
+    string status &quot;open, in_progress, resolved, closed&quot;
+    object guest &quot;name, contact&quot;
+    object session
+    array messages &quot;author, at, text&quot;
+    string resolution
+  }
+  PLATFORM_SUPPORT_REQUEST {
+    objectId _id PK
+    string ticketNo &quot;assigned on accept&quot;
+    objectId organizationId FK
+    objectId createdBy FK
+    string subject
+    string category &quot;technical, billing, account, feature, other&quot;
+    string priority &quot;low, medium, high, urgent&quot;
+    string status &quot;new, denied, open, in_progress, resolved&quot;
+    object decision &quot;accepted or denied, reason, by, at&quot;
+    array messages &quot;side org or platform, text, images&quot;
+    number reapplyCount
+    object lastReapplication
+    string resolution
+    date acceptedAt
+    date resolvedAt
+  }
+  WEBSITE_LEAD {
+    objectId _id PK
+    string name
+    string email
+    string phone
+    string company
+    string message
+    string type &quot;contact, demo, hardware, support&quot;
+    string status &quot;new, contacted, closed&quot;
+    string notes
+    date contactedAt
+    date closedAt
+  }
+  AUDIT_LOG {
+    objectId _id PK
+    objectId organizationId FK &quot;null = platform&quot;
+    objectId actorId FK &quot;null = booth or system&quot;
+    string actorName
+    string actorRole
+    string action
+    string entity
+    string summary
+    string severity
+    string ip
+    date at
+  }
+  ORGANIZATION ||--o{ SUPPORT_TICKET : &quot;receives&quot;
+  ORGANIZATION ||--o{ TICKET : &quot;receives&quot;
+  ORGANIZATION ||--o{ PLATFORM_SUPPORT_REQUEST : &quot;raises&quot;
+  USER ||--o{ PLATFORM_SUPPORT_REQUEST : &quot;creates&quot;
+  USER ||--o{ AUDIT_LOG : &quot;acts in&quot;
+  ORGANIZATION ||--o{ AUDIT_LOG : &quot;scopes&quot;
+  EVENT ||--o{ SUPPORT_TICKET : &quot;about&quot;
+  DEVICE ||--o{ SUPPORT_TICKET : &quot;raised at&quot;
+  EVENT ||--o{ TICKET : &quot;about&quot;</pre></article>
+</section>
+<section class="family">
+<h2>3 · Data flow (DFD 0/1/2)</h2>
+<p class="blurb">Context, level 1, and one level 2 diagram per business process.</p>
+<article class="card" id="d3-0"><h3><span class="id">D3-0</span>DFD level 0 — context diagram</h3><div class=notes><p>One process, the whole product. Every arrow is a real data flow that crosses the system boundary; none of them is a &quot;management&quot; arrow.</p><p>The two payment gateways are drawn as external entities because money and settlement happen outside HappyPix; we only create orders and read status.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+  E1[&quot;Guest at the event&quot;]
+  E2[&quot;Booth operator&quot;]
+  E3[&quot;Organization admin / manager&quot;]
+  E4[&quot;Platform admin / owner&quot;]
+  E5[&quot;Prospect on the website&quot;]
+  P0((&quot;0&lt;br/&gt;HappyPix&lt;br/&gt;platform&quot;))
+  E6[&quot;Razorpay&quot;]
+  E7[&quot;Cashfree&quot;]
+  E8[&quot;SendGrid /&lt;br/&gt;Twilio / WhatsApp&quot;]
+  E9[&quot;Groq / Together /&lt;br/&gt;xAI / remove.bg&quot;]
+  D1[(&quot;AWS S3&lt;br/&gt;photo objects&quot;)]
+
+  E1 --&gt;|&quot;photo selection, consent,&lt;br/&gt;print request, payment&quot;| P0
+  P0 --&gt;|&quot;print, QR code, download link&quot;| E1
+  E2 --&gt;|&quot;pairing credentials,&lt;br/&gt;hardware telemetry&quot;| P0
+  P0 --&gt;|&quot;booth config, event,&lt;br/&gt;prices, templates&quot;| E2
+  E3 --&gt;|&quot;events, devices, prices,&lt;br/&gt;coupons, gateway keys&quot;| P0
+  P0 --&gt;|&quot;dashboard, revenue, gallery,&lt;br/&gt;audit, support threads&quot;| E3
+  E4 --&gt;|&quot;plans, gallery policy,&lt;br/&gt;org status changes&quot;| P0
+  P0 --&gt;|&quot;platform KPIs, audit,&lt;br/&gt;support queue, leads&quot;| E4
+  E5 --&gt;|&quot;plan enquiry, lead form&quot;| P0
+  P0 --&gt;|&quot;pricing, downloads page&quot;| E5
+
+  P0 --&gt;|&quot;create order,&lt;br/&gt;read payment status&quot;| E6
+  E6 --&gt;|&quot;signed webhook&quot;| P0
+  P0 --&gt;|&quot;create order,&lt;br/&gt;read QR&quot;| E7
+  E7 --&gt;|&quot;signed webhook&quot;| P0
+  P0 --&gt;|&quot;OTP, receipts&quot;| E8
+  P0 --&gt;|&quot;prompts, images&quot;| E9
+  E9 --&gt;|&quot;design assets&quot;| P0
+  P0 --&gt;|&quot;presigned upload&quot;| D1
+  D1 --&gt;|&quot;presigned download&quot;| E1</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-0-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-0-raw">flowchart LR
+  E1[&quot;Guest at the event&quot;]
+  E2[&quot;Booth operator&quot;]
+  E3[&quot;Organization admin / manager&quot;]
+  E4[&quot;Platform admin / owner&quot;]
+  E5[&quot;Prospect on the website&quot;]
+  P0((&quot;0&lt;br/&gt;HappyPix&lt;br/&gt;platform&quot;))
+  E6[&quot;Razorpay&quot;]
+  E7[&quot;Cashfree&quot;]
+  E8[&quot;SendGrid /&lt;br/&gt;Twilio / WhatsApp&quot;]
+  E9[&quot;Groq / Together /&lt;br/&gt;xAI / remove.bg&quot;]
+  D1[(&quot;AWS S3&lt;br/&gt;photo objects&quot;)]
+
+  E1 --&gt;|&quot;photo selection, consent,&lt;br/&gt;print request, payment&quot;| P0
+  P0 --&gt;|&quot;print, QR code, download link&quot;| E1
+  E2 --&gt;|&quot;pairing credentials,&lt;br/&gt;hardware telemetry&quot;| P0
+  P0 --&gt;|&quot;booth config, event,&lt;br/&gt;prices, templates&quot;| E2
+  E3 --&gt;|&quot;events, devices, prices,&lt;br/&gt;coupons, gateway keys&quot;| P0
+  P0 --&gt;|&quot;dashboard, revenue, gallery,&lt;br/&gt;audit, support threads&quot;| E3
+  E4 --&gt;|&quot;plans, gallery policy,&lt;br/&gt;org status changes&quot;| P0
+  P0 --&gt;|&quot;platform KPIs, audit,&lt;br/&gt;support queue, leads&quot;| E4
+  E5 --&gt;|&quot;plan enquiry, lead form&quot;| P0
+  P0 --&gt;|&quot;pricing, downloads page&quot;| E5
+
+  P0 --&gt;|&quot;create order,&lt;br/&gt;read payment status&quot;| E6
+  E6 --&gt;|&quot;signed webhook&quot;| P0
+  P0 --&gt;|&quot;create order,&lt;br/&gt;read QR&quot;| E7
+  E7 --&gt;|&quot;signed webhook&quot;| P0
+  P0 --&gt;|&quot;OTP, receipts&quot;| E8
+  P0 --&gt;|&quot;prompts, images&quot;| E9
+  E9 --&gt;|&quot;design assets&quot;| P0
+  P0 --&gt;|&quot;presigned upload&quot;| D1
+  D1 --&gt;|&quot;presigned download&quot;| E1</pre></article>
+<article class="card" id="d3-1"><h3><span class="id">D3-1</span>DFD level 1 — the nine processes of the platform</h3><div class=notes><p>This level is the map of the backend: every mounted router belongs to exactly one of these processes.</p><p>Process 9 is cross-cutting — it is drawn as a process because audit writes are an explicit step in every state change, not an implicit side effect.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  E1[&quot;Guest&quot;]
+  E2[&quot;Booth app&lt;br/&gt;(Electron / Android)&quot;]
+  E3[&quot;Org admin / manager&quot;]
+  E4[&quot;Platform admin / owner&quot;]
+  E5[&quot;Razorpay / Cashfree&quot;]
+  E6[&quot;Messaging and AI&lt;br/&gt;providers&quot;]
+
+  P1((&quot;1.0&lt;br/&gt;Booth session&lt;br/&gt;capture, compose, print&quot;))
+  P2((&quot;2.0&lt;br/&gt;Payment and&lt;br/&gt;settlement&quot;))
+  P3((&quot;3.0&lt;br/&gt;Digital delivery&lt;br/&gt;downloads and shares&quot;))
+  P4((&quot;4.0&lt;br/&gt;Gallery&lt;br/&gt;publishing&quot;))
+  P5((&quot;5.0&lt;br/&gt;Event and device&lt;br/&gt;management&quot;))
+  P6((&quot;6.0&lt;br/&gt;Tenant onboarding,&lt;br/&gt;plans and limits&quot;))
+  P7((&quot;7.0&lt;br/&gt;Templates and&lt;br/&gt;AI design&quot;))
+  P8((&quot;8.0&lt;br/&gt;Support&lt;br/&gt;handling&quot;))
+  P9((&quot;9.0&lt;br/&gt;Audit and&lt;br/&gt;reporting&quot;))
+
+  D1[(&quot;D1 devices&quot;)]
+  D2[(&quot;D2 events&quot;)]
+  D3[(&quot;D3 photos&quot;)]
+  D4[(&quot;D4 payments&quot;)]
+  D5[(&quot;D5 coupons&quot;)]
+  D6[(&quot;D6 organizations&quot;)]
+  D7[(&quot;D7 users&quot;)]
+  D8[(&quot;D8 subscription plans&lt;br/&gt;and subscriptions&quot;)]
+  D9[(&quot;D9 templates&quot;)]
+  D10[(&quot;D10 guest downloads,&lt;br/&gt;shares, tokens&quot;)]
+  D11[(&quot;D11 support tickets&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+  D13[(&quot;D13 settings and&lt;br/&gt;org defaults&quot;)]
+  D14[(&quot;D14 S3 objects&quot;)]
+
+  E2 --&gt;|&quot;pairing, heartbeat,&lt;br/&gt;session payload&quot;| P1
+  P1 --&gt;|&quot;snapshot, revision,&lt;br/&gt;quote, upload URLs&quot;| E2
+  E1 --&gt;|&quot;selected photos, consent&quot;| P1
+  P1 --&gt; D3
+  P1 --&gt; D14
+  P1 --&gt;|&quot;session complete&quot;| P2
+  P2 --&gt;|&quot;amount, order&quot;| E5
+  E5 --&gt;|&quot;paid / failed, webhook&quot;| P2
+  P2 --&gt; D4
+  P2 --&gt;|&quot;coupon usage&quot;| D5
+  P1 --&gt;|&quot;download request&quot;| P3
+  P3 --&gt; D10
+  P3 --&gt; D3
+  P3 --&gt;|&quot;link, QR, file&quot;| E1
+  P3 --&gt;|&quot;email, SMS, WhatsApp&quot;| E6
+  P4 --&gt; D3
+  P4 --&gt;|&quot;signed image URLs,&lt;br/&gt;session feed&quot;| E3
+  E3 --&gt;|&quot;event, device, price,&lt;br/&gt;coupon changes&quot;| P5
+  P5 --&gt; D1
+  P5 --&gt; D2
+  P5 --&gt; D5
+  P5 --&gt;|&quot;revision bump&quot;| P1
+  E3 --&gt;|&quot;plan purchase, defaults&quot;| P6
+  P6 --&gt; D6
+  P6 --&gt; D8
+  P6 --&gt; D13
+  P6 --&gt;|&quot;limits and status&quot;| P5
+  E4 --&gt;|&quot;plan catalog, gallery policy,&lt;br/&gt;suspend / ban / restore&quot;| P6
+  E3 --&gt;|&quot;design prompt, layout&quot;| P7
+  P7 --&gt; D9
+  P7 --&gt; E6
+  E3 --&gt;|&quot;ticket reply, escalation&quot;| P8
+  E1 --&gt;|&quot;issue report&quot;| P8
+  E4 --&gt;|&quot;accept, deny, resolve&quot;| P8
+  P8 --&gt; D11
+  P1 --&gt; P9
+  P2 --&gt; P9
+  P5 --&gt; P9
+  P6 --&gt; P9
+  P8 --&gt; P9
+  P9 --&gt; D12
+  P9 --&gt;|&quot;dashboards, revenue,&lt;br/&gt;audit pages&quot;| E3
+  P9 --&gt;|&quot;platform KPIs,&lt;br/&gt;audit trail&quot;| E4
+  D7 --&gt; P2</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-1-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-1-raw">flowchart TB
+  E1[&quot;Guest&quot;]
+  E2[&quot;Booth app&lt;br/&gt;(Electron / Android)&quot;]
+  E3[&quot;Org admin / manager&quot;]
+  E4[&quot;Platform admin / owner&quot;]
+  E5[&quot;Razorpay / Cashfree&quot;]
+  E6[&quot;Messaging and AI&lt;br/&gt;providers&quot;]
+
+  P1((&quot;1.0&lt;br/&gt;Booth session&lt;br/&gt;capture, compose, print&quot;))
+  P2((&quot;2.0&lt;br/&gt;Payment and&lt;br/&gt;settlement&quot;))
+  P3((&quot;3.0&lt;br/&gt;Digital delivery&lt;br/&gt;downloads and shares&quot;))
+  P4((&quot;4.0&lt;br/&gt;Gallery&lt;br/&gt;publishing&quot;))
+  P5((&quot;5.0&lt;br/&gt;Event and device&lt;br/&gt;management&quot;))
+  P6((&quot;6.0&lt;br/&gt;Tenant onboarding,&lt;br/&gt;plans and limits&quot;))
+  P7((&quot;7.0&lt;br/&gt;Templates and&lt;br/&gt;AI design&quot;))
+  P8((&quot;8.0&lt;br/&gt;Support&lt;br/&gt;handling&quot;))
+  P9((&quot;9.0&lt;br/&gt;Audit and&lt;br/&gt;reporting&quot;))
+
+  D1[(&quot;D1 devices&quot;)]
+  D2[(&quot;D2 events&quot;)]
+  D3[(&quot;D3 photos&quot;)]
+  D4[(&quot;D4 payments&quot;)]
+  D5[(&quot;D5 coupons&quot;)]
+  D6[(&quot;D6 organizations&quot;)]
+  D7[(&quot;D7 users&quot;)]
+  D8[(&quot;D8 subscription plans&lt;br/&gt;and subscriptions&quot;)]
+  D9[(&quot;D9 templates&quot;)]
+  D10[(&quot;D10 guest downloads,&lt;br/&gt;shares, tokens&quot;)]
+  D11[(&quot;D11 support tickets&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+  D13[(&quot;D13 settings and&lt;br/&gt;org defaults&quot;)]
+  D14[(&quot;D14 S3 objects&quot;)]
+
+  E2 --&gt;|&quot;pairing, heartbeat,&lt;br/&gt;session payload&quot;| P1
+  P1 --&gt;|&quot;snapshot, revision,&lt;br/&gt;quote, upload URLs&quot;| E2
+  E1 --&gt;|&quot;selected photos, consent&quot;| P1
+  P1 --&gt; D3
+  P1 --&gt; D14
+  P1 --&gt;|&quot;session complete&quot;| P2
+  P2 --&gt;|&quot;amount, order&quot;| E5
+  E5 --&gt;|&quot;paid / failed, webhook&quot;| P2
+  P2 --&gt; D4
+  P2 --&gt;|&quot;coupon usage&quot;| D5
+  P1 --&gt;|&quot;download request&quot;| P3
+  P3 --&gt; D10
+  P3 --&gt; D3
+  P3 --&gt;|&quot;link, QR, file&quot;| E1
+  P3 --&gt;|&quot;email, SMS, WhatsApp&quot;| E6
+  P4 --&gt; D3
+  P4 --&gt;|&quot;signed image URLs,&lt;br/&gt;session feed&quot;| E3
+  E3 --&gt;|&quot;event, device, price,&lt;br/&gt;coupon changes&quot;| P5
+  P5 --&gt; D1
+  P5 --&gt; D2
+  P5 --&gt; D5
+  P5 --&gt;|&quot;revision bump&quot;| P1
+  E3 --&gt;|&quot;plan purchase, defaults&quot;| P6
+  P6 --&gt; D6
+  P6 --&gt; D8
+  P6 --&gt; D13
+  P6 --&gt;|&quot;limits and status&quot;| P5
+  E4 --&gt;|&quot;plan catalog, gallery policy,&lt;br/&gt;suspend / ban / restore&quot;| P6
+  E3 --&gt;|&quot;design prompt, layout&quot;| P7
+  P7 --&gt; D9
+  P7 --&gt; E6
+  E3 --&gt;|&quot;ticket reply, escalation&quot;| P8
+  E1 --&gt;|&quot;issue report&quot;| P8
+  E4 --&gt;|&quot;accept, deny, resolve&quot;| P8
+  P8 --&gt; D11
+  P1 --&gt; P9
+  P2 --&gt; P9
+  P5 --&gt; P9
+  P6 --&gt; P9
+  P8 --&gt; P9
+  P9 --&gt; D12
+  P9 --&gt;|&quot;dashboards, revenue,&lt;br/&gt;audit pages&quot;| E3
+  P9 --&gt;|&quot;platform KPIs,&lt;br/&gt;audit trail&quot;| E4
+  D7 --&gt; P2</pre></article>
+<article class="card" id="d3-2"><h3><span class="id">D3-2</span>DFD level 2 — process 1.0 booth session</h3><div class=notes><p>The important detail is that the heavy media work happens on the booth, not the server: the API only issues presigned URLs and writes thin Photo rows.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+  E1[&quot;Booth app&quot;]
+  E2[&quot;Guest&quot;]
+  P11((&quot;1.1&lt;br/&gt;Pair device&quot;))
+  P12((&quot;1.2&lt;br/&gt;Serve config&lt;br/&gt;snapshot&quot;))
+  P13((&quot;1.3&lt;br/&gt;Heartbeat and&lt;br/&gt;revision check&quot;))
+  P14((&quot;1.4&lt;br/&gt;Issue presigned&lt;br/&gt;upload URLs&quot;))
+  P15((&quot;1.5&lt;br/&gt;Persist session&lt;br/&gt;records&quot;))
+  P16((&quot;1.6&lt;br/&gt;Capture and compose&lt;br/&gt;on device&quot;))
+  P17((&quot;1.7&lt;br/&gt;Record consent&quot;))
+  D1[(&quot;D1 devices&quot;)]
+  D2[(&quot;D2 events&quot;)]
+  D3[(&quot;D3 photos&quot;)]
+  D6[(&quot;D6 organizations&quot;)]
+  D13[(&quot;D13 settings&lt;br/&gt;and defaults&quot;)]
+  D14[(&quot;D14 S3 objects&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;email, password,&lt;br/&gt;deviceUuid&quot;| P11
+  P11 --&gt;|&quot;raw device token,&lt;br/&gt;snapshot&quot;| E1
+  P11 --&gt;|&quot;plan limit check&quot;| D6
+  P11 --&gt; D1
+  E1 --&gt;|&quot;device token,&lt;br/&gt;knownRevision&quot;| P12
+  P12 --&gt;|&quot;org branding, event,&lt;br/&gt;prices, templates&quot;| E1
+  P12 --&gt; D2
+  P12 --&gt; D13
+  E1 --&gt;|&quot;hardware patch,&lt;br/&gt;knownRevision&quot;| P13
+  P13 --&gt;|&quot;changed flag,&lt;br/&gt;snapshot or null&quot;| E1
+  P13 --&gt; D1
+  P13 --&gt;|&quot;hardware counters&quot;| D1
+  E1 --&gt;|&quot;sessionId,&lt;br/&gt;file list&quot;| P14
+  P14 --&gt;|&quot;30 presigned PUT URLs&quot;| E1
+  P14 --&gt; D14
+  E1 --&gt;|&quot;files upload&lt;br/&gt;directly to S3&quot;| D14
+  E2 --&gt;|&quot;frames and filters&quot;| P16
+  P16 --&gt;|&quot;composited strip&quot;| E1
+  E1 --&gt;|&quot;photo keys, composite,&lt;br/&gt;sessionId&quot;| P15
+  P15 --&gt; D3
+  P15 --&gt;|&quot;one guest download&quot;| P15
+  E2 --&gt;|&quot;publish consent&quot;| P17
+  P17 --&gt; D3
+  P15 --&gt; D12
+  P13 --&gt; D12</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-2-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-2-raw">flowchart LR
+  E1[&quot;Booth app&quot;]
+  E2[&quot;Guest&quot;]
+  P11((&quot;1.1&lt;br/&gt;Pair device&quot;))
+  P12((&quot;1.2&lt;br/&gt;Serve config&lt;br/&gt;snapshot&quot;))
+  P13((&quot;1.3&lt;br/&gt;Heartbeat and&lt;br/&gt;revision check&quot;))
+  P14((&quot;1.4&lt;br/&gt;Issue presigned&lt;br/&gt;upload URLs&quot;))
+  P15((&quot;1.5&lt;br/&gt;Persist session&lt;br/&gt;records&quot;))
+  P16((&quot;1.6&lt;br/&gt;Capture and compose&lt;br/&gt;on device&quot;))
+  P17((&quot;1.7&lt;br/&gt;Record consent&quot;))
+  D1[(&quot;D1 devices&quot;)]
+  D2[(&quot;D2 events&quot;)]
+  D3[(&quot;D3 photos&quot;)]
+  D6[(&quot;D6 organizations&quot;)]
+  D13[(&quot;D13 settings&lt;br/&gt;and defaults&quot;)]
+  D14[(&quot;D14 S3 objects&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;email, password,&lt;br/&gt;deviceUuid&quot;| P11
+  P11 --&gt;|&quot;raw device token,&lt;br/&gt;snapshot&quot;| E1
+  P11 --&gt;|&quot;plan limit check&quot;| D6
+  P11 --&gt; D1
+  E1 --&gt;|&quot;device token,&lt;br/&gt;knownRevision&quot;| P12
+  P12 --&gt;|&quot;org branding, event,&lt;br/&gt;prices, templates&quot;| E1
+  P12 --&gt; D2
+  P12 --&gt; D13
+  E1 --&gt;|&quot;hardware patch,&lt;br/&gt;knownRevision&quot;| P13
+  P13 --&gt;|&quot;changed flag,&lt;br/&gt;snapshot or null&quot;| E1
+  P13 --&gt; D1
+  P13 --&gt;|&quot;hardware counters&quot;| D1
+  E1 --&gt;|&quot;sessionId,&lt;br/&gt;file list&quot;| P14
+  P14 --&gt;|&quot;30 presigned PUT URLs&quot;| E1
+  P14 --&gt; D14
+  E1 --&gt;|&quot;files upload&lt;br/&gt;directly to S3&quot;| D14
+  E2 --&gt;|&quot;frames and filters&quot;| P16
+  P16 --&gt;|&quot;composited strip&quot;| E1
+  E1 --&gt;|&quot;photo keys, composite,&lt;br/&gt;sessionId&quot;| P15
+  P15 --&gt; D3
+  P15 --&gt;|&quot;one guest download&quot;| P15
+  E2 --&gt;|&quot;publish consent&quot;| P17
+  P17 --&gt; D3
+  P15 --&gt; D12
+  P13 --&gt; D12</pre></article>
+<article class="card" id="d3-3"><h3><span class="id">D3-3</span>DFD level 2 — process 2.0 payment and settlement</h3><div class=notes><p>The server is the price authority: the booth asks for a quote, and any amount that does not match the resolved price chain is rejected with PRICE_MISMATCH before an order exists.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  E1[&quot;Booth app&quot;]
+  E2[&quot;Razorpay / Cashfree&quot;]
+  E3[&quot;Org admin&quot;]
+  P21((&quot;2.1&lt;br/&gt;Quote and price&lt;br/&gt;resolution&quot;))
+  P22((&quot;2.2&lt;br/&gt;Coupon&lt;br/&gt;validation&quot;))
+  P23((&quot;2.3&lt;br/&gt;Create payment&lt;br/&gt;and order&quot;))
+  P24((&quot;2.4&lt;br/&gt;Generate UPI QR&lt;br/&gt;or payment link&quot;))
+  P25((&quot;2.5&lt;br/&gt;Poll or webhook&lt;br/&gt;status&quot;))
+  P26((&quot;2.6&lt;br/&gt;Confirm and&lt;br/&gt;record redemption&quot;))
+  P27((&quot;2.7&lt;br/&gt;Free or offline&lt;br/&gt;completion&quot;))
+  D4[(&quot;D4 payments&quot;)]
+  D5[(&quot;D5 coupons&quot;)]
+  D2[(&quot;D2 events&quot;)]
+  D13[(&quot;D13 defaults&lt;br/&gt;and settings&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;templateId, prints,&lt;br/&gt;couponCode&quot;| P21
+  P21 --&gt;|&quot;unitPrice, discount,&lt;br/&gt;finalAmount, settlement&quot;| E1
+  P21 --&gt; D2
+  P21 --&gt; D13
+  P21 --&gt;|&quot;gross amount&quot;| P22
+  P22 --&gt;|&quot;discount or reason&quot;| P21
+  P22 --&gt; D5
+  E1 --&gt;|&quot;complete quote&quot;| P23
+  P23 --&gt;|&quot;pending payment row&quot;| D4
+  P23 --&gt; P24
+  P24 --&gt;|&quot;create order&quot;| E2
+  E2 --&gt;|&quot;order id, QR image,&lt;br/&gt;UPI payload&quot;| P24
+  P24 --&gt;|&quot;qrPayload, qrImageUrl,&lt;br/&gt;gateway&quot;| E1
+  E1 --&gt;|&quot;poll paymentId&quot;| P25
+  P25 --&gt;|&quot;fetch order status&quot;| E2
+  E2 --&gt;|&quot;status&quot;| P25
+  P25 --&gt;|&quot;paid, pending or failed&quot;| E1
+  E2 --&gt;|&quot;signed webhook&quot;| P26
+  E1 --&gt;|&quot;device confirm + UTR&quot;| P26
+  P26 --&gt; D4
+  P26 --&gt;|&quot;usedCount + 1, once&quot;| D5
+  P26 --&gt; D12
+  E1 --&gt;|&quot;zero-amount quote,&lt;br/&gt;or UTR&quot;| P27
+  P27 --&gt; D4
+  P27 --&gt;|&quot;coupon usage&quot;| D5
+  E3 --&gt;|&quot;gateway keys,&lt;br/&gt;payout mode&quot;| P23
+  P23 --&gt; D13</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-3-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-3-raw">flowchart TB
+  E1[&quot;Booth app&quot;]
+  E2[&quot;Razorpay / Cashfree&quot;]
+  E3[&quot;Org admin&quot;]
+  P21((&quot;2.1&lt;br/&gt;Quote and price&lt;br/&gt;resolution&quot;))
+  P22((&quot;2.2&lt;br/&gt;Coupon&lt;br/&gt;validation&quot;))
+  P23((&quot;2.3&lt;br/&gt;Create payment&lt;br/&gt;and order&quot;))
+  P24((&quot;2.4&lt;br/&gt;Generate UPI QR&lt;br/&gt;or payment link&quot;))
+  P25((&quot;2.5&lt;br/&gt;Poll or webhook&lt;br/&gt;status&quot;))
+  P26((&quot;2.6&lt;br/&gt;Confirm and&lt;br/&gt;record redemption&quot;))
+  P27((&quot;2.7&lt;br/&gt;Free or offline&lt;br/&gt;completion&quot;))
+  D4[(&quot;D4 payments&quot;)]
+  D5[(&quot;D5 coupons&quot;)]
+  D2[(&quot;D2 events&quot;)]
+  D13[(&quot;D13 defaults&lt;br/&gt;and settings&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;templateId, prints,&lt;br/&gt;couponCode&quot;| P21
+  P21 --&gt;|&quot;unitPrice, discount,&lt;br/&gt;finalAmount, settlement&quot;| E1
+  P21 --&gt; D2
+  P21 --&gt; D13
+  P21 --&gt;|&quot;gross amount&quot;| P22
+  P22 --&gt;|&quot;discount or reason&quot;| P21
+  P22 --&gt; D5
+  E1 --&gt;|&quot;complete quote&quot;| P23
+  P23 --&gt;|&quot;pending payment row&quot;| D4
+  P23 --&gt; P24
+  P24 --&gt;|&quot;create order&quot;| E2
+  E2 --&gt;|&quot;order id, QR image,&lt;br/&gt;UPI payload&quot;| P24
+  P24 --&gt;|&quot;qrPayload, qrImageUrl,&lt;br/&gt;gateway&quot;| E1
+  E1 --&gt;|&quot;poll paymentId&quot;| P25
+  P25 --&gt;|&quot;fetch order status&quot;| E2
+  E2 --&gt;|&quot;status&quot;| P25
+  P25 --&gt;|&quot;paid, pending or failed&quot;| E1
+  E2 --&gt;|&quot;signed webhook&quot;| P26
+  E1 --&gt;|&quot;device confirm + UTR&quot;| P26
+  P26 --&gt; D4
+  P26 --&gt;|&quot;usedCount + 1, once&quot;| D5
+  P26 --&gt; D12
+  E1 --&gt;|&quot;zero-amount quote,&lt;br/&gt;or UTR&quot;| P27
+  P27 --&gt; D4
+  P27 --&gt;|&quot;coupon usage&quot;| D5
+  E3 --&gt;|&quot;gateway keys,&lt;br/&gt;payout mode&quot;| P23
+  P23 --&gt; D13</pre></article>
+<article class="card" id="d3-4"><h3><span class="id">D3-4</span>DFD level 2 — process 3.0 digital delivery</h3><div class=notes><p>Security detail: the guest never receives an S3 URL. They receive an unguessable 144-bit download id, and the API signs short-lived URLs only after checking expiry.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+  E1[&quot;Guest phone&quot;]
+  E2[&quot;Booth success screen&quot;]
+  E3[&quot;Email / SMS /&lt;br/&gt;WhatsApp&quot;]
+  P31((&quot;3.1&lt;br/&gt;Create guest&lt;br/&gt;download&quot;))
+  P32((&quot;3.2&lt;br/&gt;Resolve download&lt;br/&gt;page&quot;))
+  P33((&quot;3.3&lt;br/&gt;Sign and stream&lt;br/&gt;file&quot;))
+  P34((&quot;3.4&lt;br/&gt;Create share&lt;br/&gt;token&quot;))
+  P35((&quot;3.5&lt;br/&gt;Deliver over&lt;br/&gt;a channel&quot;))
+  D10[(&quot;D10 guest downloads,&lt;br/&gt;shares, tokens&quot;)]
+  D3[(&quot;D3 photos&quot;)]
+  D14[(&quot;D14 S3 objects&quot;)]
+  D15[(&quot;D15 delivery records&quot;)]
+
+  E2 --&gt;|&quot;session photos,&lt;br/&gt;composite&quot;| P31
+  P31 --&gt;|&quot;downloadId, expiresAt&quot;| E2
+  P31 --&gt; D10
+  E2 --&gt;|&quot;QR code of&lt;br/&gt;/download/:id&quot;| E1
+  E1 --&gt;|&quot;GET /downloads/:id&quot;| P32
+  P32 --&gt;|&quot;composite and frame&lt;br/&gt;signed URLs, TTL left&quot;| E1
+  P32 --&gt; D10
+  P32 --&gt; P33
+  E1 --&gt;|&quot;GET file kind&quot;| P33
+  P33 --&gt;|&quot;presigned GET&quot;| D14
+  P33 --&gt;|&quot;stream or redirect&quot;| E1
+  P33 --&gt; D10
+  E1 --&gt;|&quot;create share&quot;| P34
+  P34 --&gt;|&quot;token, shareUrl&quot;| E1
+  P34 --&gt; D10
+  E2 --&gt;|&quot;channel and&lt;br/&gt;destination&quot;| P35
+  P35 --&gt;|&quot;message&quot;| E3
+  P35 --&gt; D15
+  P35 --&gt; D10
+  E1 --&gt;|&quot;send to WhatsApp&quot;| P35
+  D3 --&gt; P31
+  D3 --&gt; P32</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-4-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-4-raw">flowchart LR
+  E1[&quot;Guest phone&quot;]
+  E2[&quot;Booth success screen&quot;]
+  E3[&quot;Email / SMS /&lt;br/&gt;WhatsApp&quot;]
+  P31((&quot;3.1&lt;br/&gt;Create guest&lt;br/&gt;download&quot;))
+  P32((&quot;3.2&lt;br/&gt;Resolve download&lt;br/&gt;page&quot;))
+  P33((&quot;3.3&lt;br/&gt;Sign and stream&lt;br/&gt;file&quot;))
+  P34((&quot;3.4&lt;br/&gt;Create share&lt;br/&gt;token&quot;))
+  P35((&quot;3.5&lt;br/&gt;Deliver over&lt;br/&gt;a channel&quot;))
+  D10[(&quot;D10 guest downloads,&lt;br/&gt;shares, tokens&quot;)]
+  D3[(&quot;D3 photos&quot;)]
+  D14[(&quot;D14 S3 objects&quot;)]
+  D15[(&quot;D15 delivery records&quot;)]
+
+  E2 --&gt;|&quot;session photos,&lt;br/&gt;composite&quot;| P31
+  P31 --&gt;|&quot;downloadId, expiresAt&quot;| E2
+  P31 --&gt; D10
+  E2 --&gt;|&quot;QR code of&lt;br/&gt;/download/:id&quot;| E1
+  E1 --&gt;|&quot;GET /downloads/:id&quot;| P32
+  P32 --&gt;|&quot;composite and frame&lt;br/&gt;signed URLs, TTL left&quot;| E1
+  P32 --&gt; D10
+  P32 --&gt; P33
+  E1 --&gt;|&quot;GET file kind&quot;| P33
+  P33 --&gt;|&quot;presigned GET&quot;| D14
+  P33 --&gt;|&quot;stream or redirect&quot;| E1
+  P33 --&gt; D10
+  E1 --&gt;|&quot;create share&quot;| P34
+  P34 --&gt;|&quot;token, shareUrl&quot;| E1
+  P34 --&gt; D10
+  E2 --&gt;|&quot;channel and&lt;br/&gt;destination&quot;| P35
+  P35 --&gt;|&quot;message&quot;| E3
+  P35 --&gt; D15
+  P35 --&gt; D10
+  E1 --&gt;|&quot;send to WhatsApp&quot;| P35
+  D3 --&gt; P31
+  D3 --&gt; P32</pre></article>
+<article class="card" id="d3-5"><h3><span class="id">D3-5</span>DFD level 2 — process 4.0 gallery publishing</h3><div class=notes><p>Publication is a three-way AND: platform gallery policy, guest consent (only if required), and the photo belonging to the organisation. Any one being false hides the photo.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  E1[&quot;Platform admin&quot;]
+  E2[&quot;Org admin&quot;]
+  E3[&quot;Guest&quot;]
+  P41((&quot;4.1&lt;br/&gt;Read gallery&lt;br/&gt;policy&quot;))
+  P42((&quot;4.2&lt;br/&gt;Capture guest&lt;br/&gt;consent&quot;))
+  P43((&quot;4.3&lt;br/&gt;Filter visible&lt;br/&gt;photos&quot;))
+  P44((&quot;4.4&lt;br/&gt;Collapse to one&lt;br/&gt;row per session&quot;))
+  P45((&quot;4.5&lt;br/&gt;Sign and serve&lt;br/&gt;image&quot;))
+  D13[(&quot;D13 global setting&lt;br/&gt;row&quot;)]
+  D3[(&quot;D3 photos&quot;)]
+  D14[(&quot;D14 S3 objects&quot;)]
+  D16[(&quot;D16 in-process&lt;br/&gt;15 s cache&quot;)]
+
+  E1 --&gt;|&quot;galleryEnabled,&lt;br/&gt;requireGuestConsent&quot;| P41
+  P41 --&gt; D13
+  P41 --&gt; D16
+  P41 --&gt;|&quot;policy&quot;| P43
+  E3 --&gt;|&quot;publish yes / no&quot;| P42
+  P42 --&gt; D3
+  P43 --&gt; D3
+  P43 --&gt;|&quot;visible photo set&quot;| P44
+  P44 --&gt;|&quot;one row per session,&lt;br/&gt;composite preferred&quot;| E2
+  E2 --&gt;|&quot;GET /api/org/gallery&quot;| P43
+  P44 --&gt;|&quot;signed URLs&quot;| P45
+  P45 --&gt; D14
+  P45 --&gt;|&quot;image bytes&quot;| E2
+  P44 --&gt;|&quot;galleryPhotoIds&quot;| E3</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-5-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-5-raw">flowchart TB
+  E1[&quot;Platform admin&quot;]
+  E2[&quot;Org admin&quot;]
+  E3[&quot;Guest&quot;]
+  P41((&quot;4.1&lt;br/&gt;Read gallery&lt;br/&gt;policy&quot;))
+  P42((&quot;4.2&lt;br/&gt;Capture guest&lt;br/&gt;consent&quot;))
+  P43((&quot;4.3&lt;br/&gt;Filter visible&lt;br/&gt;photos&quot;))
+  P44((&quot;4.4&lt;br/&gt;Collapse to one&lt;br/&gt;row per session&quot;))
+  P45((&quot;4.5&lt;br/&gt;Sign and serve&lt;br/&gt;image&quot;))
+  D13[(&quot;D13 global setting&lt;br/&gt;row&quot;)]
+  D3[(&quot;D3 photos&quot;)]
+  D14[(&quot;D14 S3 objects&quot;)]
+  D16[(&quot;D16 in-process&lt;br/&gt;15 s cache&quot;)]
+
+  E1 --&gt;|&quot;galleryEnabled,&lt;br/&gt;requireGuestConsent&quot;| P41
+  P41 --&gt; D13
+  P41 --&gt; D16
+  P41 --&gt;|&quot;policy&quot;| P43
+  E3 --&gt;|&quot;publish yes / no&quot;| P42
+  P42 --&gt; D3
+  P43 --&gt; D3
+  P43 --&gt;|&quot;visible photo set&quot;| P44
+  P44 --&gt;|&quot;one row per session,&lt;br/&gt;composite preferred&quot;| E2
+  E2 --&gt;|&quot;GET /api/org/gallery&quot;| P43
+  P44 --&gt;|&quot;signed URLs&quot;| P45
+  P45 --&gt; D14
+  P45 --&gt;|&quot;image bytes&quot;| E2
+  P44 --&gt;|&quot;galleryPhotoIds&quot;| E3</pre></article>
+<article class="card" id="d3-6"><h3><span class="id">D3-6</span>DFD level 2 — process 5.0 event and device management</h3><div class=notes><p>Every write here either consumes a plan limit or invalidates a booth snapshot. The revision bump is what makes a change reach the fleet without polling every booth.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  E1[&quot;Org admin /&lt;br/&gt;manager&quot;]
+  E2[&quot;Booth app&quot;]
+  P51((&quot;5.1&lt;br/&gt;Create or edit&lt;br/&gt;event&quot;))
+  P52((&quot;5.2&lt;br/&gt;Enforce plan&lt;br/&gt;limits&quot;))
+  P53((&quot;5.3&lt;br/&gt;Register&lt;br/&gt;device&quot;))
+  P54((&quot;5.4&lt;br/&gt;Assign or unassign&lt;br/&gt;event&quot;))
+  P55((&quot;5.5&lt;br/&gt;Pause, resume,&lt;br/&gt;delete&quot;))
+  P56((&quot;5.6&lt;br/&gt;Bump snapshot&lt;br/&gt;revision&quot;))
+  P57((&quot;5.7&lt;br/&gt;Manage&lt;br/&gt;coupons&quot;))
+  D2[(&quot;D2 events&quot;)]
+  D1[(&quot;D1 devices&quot;)]
+  D6[(&quot;D6 organizations&quot;)]
+  D8[(&quot;D8 subscription&lt;br/&gt;plans&quot;)]
+  D5[(&quot;D5 coupons&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;name, dates, prices,&lt;br/&gt;branding, templates&quot;| P51
+  P51 --&gt;|&quot;plan limit check&quot;| P52
+  P52 --&gt; D6
+  P52 --&gt; D8
+  P52 --&gt;|&quot;allowed or 409&quot;| P51
+  P51 --&gt; D2
+  P51 --&gt; P56
+  E1 --&gt;|&quot;deviceName,&lt;br/&gt;eventId&quot;| P53
+  P53 --&gt;|&quot;limit check&quot;| P52
+  P53 --&gt;|&quot;device + token hash&quot;| D1
+  E1 --&gt;|&quot;deviceId, eventId&quot;| P54
+  P54 --&gt;|&quot;assignedEventId&quot;| D1
+  P54 --&gt; P56
+  E1 --&gt;|&quot;pause / resume / delete&quot;| P55
+  P55 --&gt;|&quot;paused flag or&lt;br/&gt;row removed&quot;| D2
+  P55 --&gt;|&quot;detach devices,&lt;br/&gt;pull coupon refs&quot;| D1
+  P55 --&gt; P56
+  P56 --&gt;|&quot;changed revision&quot;| E2
+  E2 --&gt;|&quot;GET /revision&quot;| P56
+  E1 --&gt;|&quot;code, type, value,&lt;br/&gt;quantity, events&quot;| P57
+  P57 --&gt; D5
+  P51 --&gt; D12
+  P53 --&gt; D12
+  P54 --&gt; D12
+  P55 --&gt; D12</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-6-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-6-raw">flowchart TB
+  E1[&quot;Org admin /&lt;br/&gt;manager&quot;]
+  E2[&quot;Booth app&quot;]
+  P51((&quot;5.1&lt;br/&gt;Create or edit&lt;br/&gt;event&quot;))
+  P52((&quot;5.2&lt;br/&gt;Enforce plan&lt;br/&gt;limits&quot;))
+  P53((&quot;5.3&lt;br/&gt;Register&lt;br/&gt;device&quot;))
+  P54((&quot;5.4&lt;br/&gt;Assign or unassign&lt;br/&gt;event&quot;))
+  P55((&quot;5.5&lt;br/&gt;Pause, resume,&lt;br/&gt;delete&quot;))
+  P56((&quot;5.6&lt;br/&gt;Bump snapshot&lt;br/&gt;revision&quot;))
+  P57((&quot;5.7&lt;br/&gt;Manage&lt;br/&gt;coupons&quot;))
+  D2[(&quot;D2 events&quot;)]
+  D1[(&quot;D1 devices&quot;)]
+  D6[(&quot;D6 organizations&quot;)]
+  D8[(&quot;D8 subscription&lt;br/&gt;plans&quot;)]
+  D5[(&quot;D5 coupons&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;name, dates, prices,&lt;br/&gt;branding, templates&quot;| P51
+  P51 --&gt;|&quot;plan limit check&quot;| P52
+  P52 --&gt; D6
+  P52 --&gt; D8
+  P52 --&gt;|&quot;allowed or 409&quot;| P51
+  P51 --&gt; D2
+  P51 --&gt; P56
+  E1 --&gt;|&quot;deviceName,&lt;br/&gt;eventId&quot;| P53
+  P53 --&gt;|&quot;limit check&quot;| P52
+  P53 --&gt;|&quot;device + token hash&quot;| D1
+  E1 --&gt;|&quot;deviceId, eventId&quot;| P54
+  P54 --&gt;|&quot;assignedEventId&quot;| D1
+  P54 --&gt; P56
+  E1 --&gt;|&quot;pause / resume / delete&quot;| P55
+  P55 --&gt;|&quot;paused flag or&lt;br/&gt;row removed&quot;| D2
+  P55 --&gt;|&quot;detach devices,&lt;br/&gt;pull coupon refs&quot;| D1
+  P55 --&gt; P56
+  P56 --&gt;|&quot;changed revision&quot;| E2
+  E2 --&gt;|&quot;GET /revision&quot;| P56
+  E1 --&gt;|&quot;code, type, value,&lt;br/&gt;quantity, events&quot;| P57
+  P57 --&gt; D5
+  P51 --&gt; D12
+  P53 --&gt; D12
+  P54 --&gt; D12
+  P55 --&gt; D12</pre></article>
+<article class="card" id="d3-7"><h3><span class="id">D3-7</span>DFD level 2 — process 6.0 tenant onboarding, plans and limits</h3><div class=notes><p>Limits live in exactly one place (services/planService.js). A plan edit in the platform console propagates allowedDevices and allowedEvents to every organisation on that plan key.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  E1[&quot;Prospect&quot;]
+  E2[&quot;Org admin&quot;]
+  E3[&quot;Platform owner&quot;]
+  E4[&quot;Razorpay&quot;]
+  P61((&quot;6.1&lt;br/&gt;Capture lead&quot;))
+  P62((&quot;6.2&lt;br/&gt;Serve plan&lt;br/&gt;catalog&quot;))
+  P63((&quot;6.3&lt;br/&gt;Purchase plan,&lt;br/&gt;issue invoice&quot;))
+  P64((&quot;6.4&lt;br/&gt;Resolve plan&lt;br/&gt;and limits&quot;))
+  P65((&quot;6.5&lt;br/&gt;Expiry sweep&lt;br/&gt;hourly&quot;))
+  P66((&quot;6.6&lt;br/&gt;Suspend, ban,&lt;br/&gt;restore&quot;))
+  D6[(&quot;D6 organizations&quot;)]
+  D8[(&quot;D8 plans and&lt;br/&gt;subscriptions&quot;)]
+  D7[(&quot;D7 users&quot;)]
+  D17[(&quot;D17 website leads&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;name, email,&lt;br/&gt;phone, message&quot;| P61
+  P61 --&gt; D17
+  E2 --&gt;|&quot;GET plans&quot;| P62
+  E3 --&gt;|&quot;price, duration,&lt;br/&gt;discount campaign&quot;| P62
+  P62 --&gt;|&quot;four billing&lt;br/&gt;durations&quot;| E1
+  P62 --&gt; D8
+  E2 --&gt;|&quot;plan choice&quot;| P63
+  P63 --&gt;|&quot;create order&quot;| E4
+  E4 --&gt;|&quot;signature, payment id&quot;| P63
+  P63 --&gt;|&quot;invoice, dates&quot;| D8
+  P63 --&gt;|&quot;plan, expiry&quot;| D6
+  P64 --&gt; D6
+  P64 --&gt; D8
+  P64 --&gt;|&quot;deviceLimit,&lt;br/&gt;eventLimit, status&quot;| E2
+  P65 --&gt;|&quot;trial ended or&lt;br/&gt;plan expired&quot;| D6
+  E3 --&gt;|&quot;reason&quot;| P66
+  P66 --&gt;|&quot;status + sessionVersion&quot;| D6
+  P66 --&gt;|&quot;forge all sessions&lt;br/&gt;invalid on ban&quot;| D7
+  P66 --&gt; D12
+  P61 --&gt; D12</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-7-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-7-raw">flowchart TB
+  E1[&quot;Prospect&quot;]
+  E2[&quot;Org admin&quot;]
+  E3[&quot;Platform owner&quot;]
+  E4[&quot;Razorpay&quot;]
+  P61((&quot;6.1&lt;br/&gt;Capture lead&quot;))
+  P62((&quot;6.2&lt;br/&gt;Serve plan&lt;br/&gt;catalog&quot;))
+  P63((&quot;6.3&lt;br/&gt;Purchase plan,&lt;br/&gt;issue invoice&quot;))
+  P64((&quot;6.4&lt;br/&gt;Resolve plan&lt;br/&gt;and limits&quot;))
+  P65((&quot;6.5&lt;br/&gt;Expiry sweep&lt;br/&gt;hourly&quot;))
+  P66((&quot;6.6&lt;br/&gt;Suspend, ban,&lt;br/&gt;restore&quot;))
+  D6[(&quot;D6 organizations&quot;)]
+  D8[(&quot;D8 plans and&lt;br/&gt;subscriptions&quot;)]
+  D7[(&quot;D7 users&quot;)]
+  D17[(&quot;D17 website leads&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;name, email,&lt;br/&gt;phone, message&quot;| P61
+  P61 --&gt; D17
+  E2 --&gt;|&quot;GET plans&quot;| P62
+  E3 --&gt;|&quot;price, duration,&lt;br/&gt;discount campaign&quot;| P62
+  P62 --&gt;|&quot;four billing&lt;br/&gt;durations&quot;| E1
+  P62 --&gt; D8
+  E2 --&gt;|&quot;plan choice&quot;| P63
+  P63 --&gt;|&quot;create order&quot;| E4
+  E4 --&gt;|&quot;signature, payment id&quot;| P63
+  P63 --&gt;|&quot;invoice, dates&quot;| D8
+  P63 --&gt;|&quot;plan, expiry&quot;| D6
+  P64 --&gt; D6
+  P64 --&gt; D8
+  P64 --&gt;|&quot;deviceLimit,&lt;br/&gt;eventLimit, status&quot;| E2
+  P65 --&gt;|&quot;trial ended or&lt;br/&gt;plan expired&quot;| D6
+  E3 --&gt;|&quot;reason&quot;| P66
+  P66 --&gt;|&quot;status + sessionVersion&quot;| D6
+  P66 --&gt;|&quot;forge all sessions&lt;br/&gt;invalid on ban&quot;| D7
+  P66 --&gt; D12
+  P61 --&gt; D12</pre></article>
+<article class="card" id="d3-8"><h3><span class="id">D3-8</span>DFD level 2 — process 7.0 templates and AI design</h3><div class=notes><p>AI generation is metered: 5 credits per template generation, 1 credit per background removal. Credits are decremented only after a successful provider response.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+  E1[&quot;Org admin&quot;]
+  E2[&quot;Platform admin&quot;]
+  E3[&quot;Groq&quot;]
+  E4[&quot;Together / xAI&quot;]
+  E5[&quot;remove.bg&quot;]
+  P71((&quot;7.1&lt;br/&gt;List layouts&lt;br/&gt;and templates&quot;))
+  P72((&quot;7.2&lt;br/&gt;Parse prompt&lt;br/&gt;and build design&quot;))
+  P73((&quot;7.3&lt;br/&gt;Debit AI&lt;br/&gt;credits&quot;))
+  P74((&quot;7.4&lt;br/&gt;Save template&lt;br/&gt;and price&quot;))
+  P75((&quot;7.5&lt;br/&gt;Remove image&lt;br/&gt;background&quot;))
+  P76((&quot;7.6&lt;br/&gt;Publish global&lt;br/&gt;template&quot;))
+  D9[(&quot;D9 templates,&lt;br/&gt;layouts, org AI templates&quot;)]
+  D6[(&quot;D6 organizations&lt;br/&gt;aiCredits&quot;)]
+  D13[(&quot;D13 template&lt;br/&gt;prices&quot;)]
+  D14[(&quot;D14 S3 assets&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;GET layouts&quot;| P71
+  P71 --&gt;|&quot;layout grid and slots&quot;| E1
+  P71 --&gt; D9
+  E1 --&gt;|&quot;prompt, layout,&lt;br/&gt;current design&quot;| P72
+  P72 --&gt;|&quot;intent and slots&quot;| E3
+  E3 --&gt;|&quot;structured design plan&quot;| P72
+  P72 --&gt;|&quot;asset prompts&quot;| E4
+  E4 --&gt;|&quot;generated artwork&quot;| P72
+  P72 --&gt;|&quot;design, assets,&lt;br/&gt;credits used&quot;| E1
+  P72 --&gt; P73
+  P73 --&gt;|&quot;balance &gt;= 5&quot;| D6
+  P73 --&gt;|&quot;decrement&quot;| D6
+  E1 --&gt;|&quot;design, name, price&quot;| P74
+  P74 --&gt; D9
+  P74 --&gt;|&quot;template price map&quot;| D13
+  P74 --&gt; D14
+  P74 --&gt; D12
+  E1 --&gt;|&quot;image, tolerance&quot;| P75
+  P75 --&gt; E5
+  E5 --&gt;|&quot;cutout&quot;| P75
+  P75 --&gt;|&quot;1 credit&quot;| P73
+  E2 --&gt;|&quot;name, layoutId,&lt;br/&gt;design&quot;| P76
+  P76 --&gt; D9
+  P76 --&gt; D12</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-8-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-8-raw">flowchart LR
+  E1[&quot;Org admin&quot;]
+  E2[&quot;Platform admin&quot;]
+  E3[&quot;Groq&quot;]
+  E4[&quot;Together / xAI&quot;]
+  E5[&quot;remove.bg&quot;]
+  P71((&quot;7.1&lt;br/&gt;List layouts&lt;br/&gt;and templates&quot;))
+  P72((&quot;7.2&lt;br/&gt;Parse prompt&lt;br/&gt;and build design&quot;))
+  P73((&quot;7.3&lt;br/&gt;Debit AI&lt;br/&gt;credits&quot;))
+  P74((&quot;7.4&lt;br/&gt;Save template&lt;br/&gt;and price&quot;))
+  P75((&quot;7.5&lt;br/&gt;Remove image&lt;br/&gt;background&quot;))
+  P76((&quot;7.6&lt;br/&gt;Publish global&lt;br/&gt;template&quot;))
+  D9[(&quot;D9 templates,&lt;br/&gt;layouts, org AI templates&quot;)]
+  D6[(&quot;D6 organizations&lt;br/&gt;aiCredits&quot;)]
+  D13[(&quot;D13 template&lt;br/&gt;prices&quot;)]
+  D14[(&quot;D14 S3 assets&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;GET layouts&quot;| P71
+  P71 --&gt;|&quot;layout grid and slots&quot;| E1
+  P71 --&gt; D9
+  E1 --&gt;|&quot;prompt, layout,&lt;br/&gt;current design&quot;| P72
+  P72 --&gt;|&quot;intent and slots&quot;| E3
+  E3 --&gt;|&quot;structured design plan&quot;| P72
+  P72 --&gt;|&quot;asset prompts&quot;| E4
+  E4 --&gt;|&quot;generated artwork&quot;| P72
+  P72 --&gt;|&quot;design, assets,&lt;br/&gt;credits used&quot;| E1
+  P72 --&gt; P73
+  P73 --&gt;|&quot;balance &gt;= 5&quot;| D6
+  P73 --&gt;|&quot;decrement&quot;| D6
+  E1 --&gt;|&quot;design, name, price&quot;| P74
+  P74 --&gt; D9
+  P74 --&gt;|&quot;template price map&quot;| D13
+  P74 --&gt; D14
+  P74 --&gt; D12
+  E1 --&gt;|&quot;image, tolerance&quot;| P75
+  P75 --&gt; E5
+  E5 --&gt;|&quot;cutout&quot;| P75
+  P75 --&gt;|&quot;1 credit&quot;| P73
+  E2 --&gt;|&quot;name, layoutId,&lt;br/&gt;design&quot;| P76
+  P76 --&gt; D9
+  P76 --&gt; D12</pre></article>
+<article class="card" id="d3-9"><h3><span class="id">D3-9</span>DFD level 2 — process 8.0 support handling</h3><div class=notes><p>Two lanes: guest tickets are handled by the organisation; org tickets are handled by HappyPix. A denied platform request can be re-applied, which resets the ticket number and clears the decision.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  E1[&quot;Guest&quot;]
+  E2[&quot;Org admin&quot;]
+  E3[&quot;Support manager /&lt;br/&gt;platform admin&quot;]
+  P81((&quot;8.1&lt;br/&gt;Create guest&lt;br/&gt;ticket&quot;))
+  P82((&quot;8.2&lt;br/&gt;Triage and reply&lt;br/&gt;as org&quot;))
+  P83((&quot;8.3&lt;br/&gt;Raise platform&lt;br/&gt;request&quot;))
+  P84((&quot;8.4&lt;br/&gt;Accept or deny&lt;br/&gt;request&quot;))
+  P85((&quot;8.5&lt;br/&gt;Reply and&lt;br/&gt;resolve&quot;))
+  P86((&quot;8.6&lt;br/&gt;Re-apply&lt;br/&gt;denied request&quot;))
+  D11[(&quot;D11 support tickets&lt;br/&gt;and platform requests&quot;)]
+  D18[(&quot;D18 held photo&lt;br/&gt;references&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;subject, message,&lt;br/&gt;sessionId&quot;| P81
+  P81 --&gt;|&quot;ticket id&quot;| E1
+  P81 --&gt; D11
+  P81 --&gt;|&quot;holdPhotos = true&quot;| D18
+  E2 --&gt;|&quot;GET queue&quot;| P82
+  P82 --&gt;|&quot;reply, resolve,&lt;br/&gt;reopen&quot;| D11
+  P82 --&gt; D12
+  E2 --&gt;|&quot;subject, category,&lt;br/&gt;priority, images&quot;| P83
+  P83 --&gt;|&quot;ticket no. new&quot;| D11
+  P83 --&gt; D12
+  E3 --&gt;|&quot;accept or&lt;br/&gt;deny + reason&quot;| P84
+  P84 --&gt;|&quot;status open or&lt;br/&gt;denied, ticketNo&quot;| D11
+  P84 --&gt;|&quot;thread message&quot;| E2
+  P84 --&gt; D12
+  E3 --&gt;|&quot;reply, resolve&quot;| P85
+  E2 --&gt;|&quot;reply&quot;| P85
+  P85 --&gt;|&quot;messages,&lt;br/&gt;resolution&quot;| D11
+  P85 --&gt; D12
+  E2 --&gt;|&quot;explain what&lt;br/&gt;changed&quot;| P86
+  P86 --&gt;|&quot;status new,&lt;br/&gt;ticketNo null,&lt;br/&gt;reapplyCount + 1&quot;| D11</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-9-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-9-raw">flowchart TB
+  E1[&quot;Guest&quot;]
+  E2[&quot;Org admin&quot;]
+  E3[&quot;Support manager /&lt;br/&gt;platform admin&quot;]
+  P81((&quot;8.1&lt;br/&gt;Create guest&lt;br/&gt;ticket&quot;))
+  P82((&quot;8.2&lt;br/&gt;Triage and reply&lt;br/&gt;as org&quot;))
+  P83((&quot;8.3&lt;br/&gt;Raise platform&lt;br/&gt;request&quot;))
+  P84((&quot;8.4&lt;br/&gt;Accept or deny&lt;br/&gt;request&quot;))
+  P85((&quot;8.5&lt;br/&gt;Reply and&lt;br/&gt;resolve&quot;))
+  P86((&quot;8.6&lt;br/&gt;Re-apply&lt;br/&gt;denied request&quot;))
+  D11[(&quot;D11 support tickets&lt;br/&gt;and platform requests&quot;)]
+  D18[(&quot;D18 held photo&lt;br/&gt;references&quot;)]
+  D12[(&quot;D12 audit log&quot;)]
+
+  E1 --&gt;|&quot;subject, message,&lt;br/&gt;sessionId&quot;| P81
+  P81 --&gt;|&quot;ticket id&quot;| E1
+  P81 --&gt; D11
+  P81 --&gt;|&quot;holdPhotos = true&quot;| D18
+  E2 --&gt;|&quot;GET queue&quot;| P82
+  P82 --&gt;|&quot;reply, resolve,&lt;br/&gt;reopen&quot;| D11
+  P82 --&gt; D12
+  E2 --&gt;|&quot;subject, category,&lt;br/&gt;priority, images&quot;| P83
+  P83 --&gt;|&quot;ticket no. new&quot;| D11
+  P83 --&gt; D12
+  E3 --&gt;|&quot;accept or&lt;br/&gt;deny + reason&quot;| P84
+  P84 --&gt;|&quot;status open or&lt;br/&gt;denied, ticketNo&quot;| D11
+  P84 --&gt;|&quot;thread message&quot;| E2
+  P84 --&gt; D12
+  E3 --&gt;|&quot;reply, resolve&quot;| P85
+  E2 --&gt;|&quot;reply&quot;| P85
+  P85 --&gt;|&quot;messages,&lt;br/&gt;resolution&quot;| D11
+  P85 --&gt; D12
+  E2 --&gt;|&quot;explain what&lt;br/&gt;changed&quot;| P86
+  P86 --&gt;|&quot;status new,&lt;br/&gt;ticketNo null,&lt;br/&gt;reapplyCount + 1&quot;| D11</pre></article>
+</section>
+<section class="family">
+<h2>4 · HLD / LLD</h2>
+<p class="blurb">Layered architecture, deployment, request pipeline, sequences, state machine.</p>
+<article class="card" id="d4-1"><h3><span class="id">D4-1</span>HLD — the system as four layers plus one control plane</h3><div class=notes><p>The rule that keeps this maintainable: no presentation code contains business rules, and no route contains pricing, permission or limit logic — those three always come from a shared module.</p><p>The control plane (right column) is not a separate deployment; it is the same API and database, filtered by role.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  subgraph L1[&quot;1 · Presentation layer&quot;]
+    W[&quot;Website SPA&lt;br/&gt;8 routes · public&quot;]
+    C[&quot;CRM SPA&lt;br/&gt;org + platform workspaces&quot;]
+    B1[&quot;Electron booth&lt;br/&gt;React UI in Chromium&quot;]
+    B2[&quot;Android booth&lt;br/&gt;React Native&quot;]
+  end
+
+  subgraph L2[&quot;2 · Interface layer (API surface)&quot;]
+    R1[&quot;/api/auth · /api/org&lt;br/&gt;/api/platform&quot;]
+    R2[&quot;/api/booth · /api/devices&lt;br/&gt;/api/events · /api/settings&quot;]
+    R3[&quot;/api/payments · /api/share&lt;br/&gt;/api/downloads · /api/coupons&quot;]
+    R4[&quot;/api/upload · /api/proxy/logo&lt;br/&gt;/api/leads · /api/support&quot;]
+  end
+
+  subgraph L3[&quot;3 · Domain layer (services, no HTTP)&quot;]
+    S1[&quot;planService&lt;br/&gt;limits and status&quot;]
+    S2[&quot;boothSnapshotService&lt;br/&gt;config + revision&quot;]
+    S3[&quot;couponService&lt;br/&gt;discount rules&quot;]
+    S4[&quot;gallerySettingsService&lt;br/&gt;policy + visibility&quot;]
+    S5[&quot;guestDownloadService&lt;br/&gt;24 h links&quot;]
+    S6[&quot;photoUrlService&lt;br/&gt;S3 signing&quot;]
+    S7[&quot;DeliveryService&lt;br/&gt;email, SMS, WhatsApp&quot;]
+    S8[&quot;TemplateGenerationService&lt;br/&gt;AI design&quot;]
+    S9[&quot;eventService&lt;br/&gt;status and views&quot;]
+  end
+
+  subgraph L4[&quot;4 · Data layer&quot;]
+    M[(&quot;MongoDB Atlas&lt;br/&gt;23 Mongoose models&quot;)]
+    O[(&quot;AWS S3&lt;br/&gt;private bucket&quot;)]
+    K[(&quot;In-process caches&lt;br/&gt;gallery 15 s, printer 30 s&quot;)]
+  end
+
+  subgraph CP[&quot;Cross-cutting control plane&quot;]
+    P1[&quot;permissions.js&lt;br/&gt;fixed role matrix&quot;]
+    P2[&quot;middleware/auth.js&lt;br/&gt;authenticate, requirePerm&quot;]
+    P3[&quot;middleware/deviceAuth.js&lt;br/&gt;token hash, booth states&quot;]
+    P4[&quot;auditLogger.js&lt;br/&gt;append-only trail&quot;]
+    P5[&quot;CronService&lt;br/&gt;expiry and cleanup&quot;]
+  end
+
+  X[&quot;External providers&lt;br/&gt;Razorpay · Cashfree · SendGrid · Twilio · Groq · image APIs&quot;]
+
+  W --&gt; R4
+  C --&gt; R1
+  B1 --&gt; R2
+  B2 --&gt; R2
+  C --&gt; R3
+  R1 --&gt; S1
+  R1 --&gt; S9
+  R2 --&gt; S2
+  R2 --&gt; S3
+  R2 --&gt; S4
+  R3 --&gt; S5
+  R3 --&gt; S6
+  R3 --&gt; S7
+  R1 --&gt; S8
+  S1 --&gt; M
+  S2 --&gt; M
+  S3 --&gt; M
+  S4 --&gt; M
+  S5 --&gt; M
+  S6 --&gt; O
+  S7 --&gt; X
+  S8 --&gt; X
+  S9 --&gt; M
+  S2 --&gt; K
+  S4 --&gt; K
+  P2 --&gt; R1
+  P3 --&gt; R2
+  P1 --&gt; P2
+  P4 --&gt; M
+  P5 --&gt; M</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d4-1-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-1-raw">flowchart TB
+  subgraph L1[&quot;1 · Presentation layer&quot;]
+    W[&quot;Website SPA&lt;br/&gt;8 routes · public&quot;]
+    C[&quot;CRM SPA&lt;br/&gt;org + platform workspaces&quot;]
+    B1[&quot;Electron booth&lt;br/&gt;React UI in Chromium&quot;]
+    B2[&quot;Android booth&lt;br/&gt;React Native&quot;]
+  end
+
+  subgraph L2[&quot;2 · Interface layer (API surface)&quot;]
+    R1[&quot;/api/auth · /api/org&lt;br/&gt;/api/platform&quot;]
+    R2[&quot;/api/booth · /api/devices&lt;br/&gt;/api/events · /api/settings&quot;]
+    R3[&quot;/api/payments · /api/share&lt;br/&gt;/api/downloads · /api/coupons&quot;]
+    R4[&quot;/api/upload · /api/proxy/logo&lt;br/&gt;/api/leads · /api/support&quot;]
+  end
+
+  subgraph L3[&quot;3 · Domain layer (services, no HTTP)&quot;]
+    S1[&quot;planService&lt;br/&gt;limits and status&quot;]
+    S2[&quot;boothSnapshotService&lt;br/&gt;config + revision&quot;]
+    S3[&quot;couponService&lt;br/&gt;discount rules&quot;]
+    S4[&quot;gallerySettingsService&lt;br/&gt;policy + visibility&quot;]
+    S5[&quot;guestDownloadService&lt;br/&gt;24 h links&quot;]
+    S6[&quot;photoUrlService&lt;br/&gt;S3 signing&quot;]
+    S7[&quot;DeliveryService&lt;br/&gt;email, SMS, WhatsApp&quot;]
+    S8[&quot;TemplateGenerationService&lt;br/&gt;AI design&quot;]
+    S9[&quot;eventService&lt;br/&gt;status and views&quot;]
+  end
+
+  subgraph L4[&quot;4 · Data layer&quot;]
+    M[(&quot;MongoDB Atlas&lt;br/&gt;23 Mongoose models&quot;)]
+    O[(&quot;AWS S3&lt;br/&gt;private bucket&quot;)]
+    K[(&quot;In-process caches&lt;br/&gt;gallery 15 s, printer 30 s&quot;)]
+  end
+
+  subgraph CP[&quot;Cross-cutting control plane&quot;]
+    P1[&quot;permissions.js&lt;br/&gt;fixed role matrix&quot;]
+    P2[&quot;middleware/auth.js&lt;br/&gt;authenticate, requirePerm&quot;]
+    P3[&quot;middleware/deviceAuth.js&lt;br/&gt;token hash, booth states&quot;]
+    P4[&quot;auditLogger.js&lt;br/&gt;append-only trail&quot;]
+    P5[&quot;CronService&lt;br/&gt;expiry and cleanup&quot;]
+  end
+
+  X[&quot;External providers&lt;br/&gt;Razorpay · Cashfree · SendGrid · Twilio · Groq · image APIs&quot;]
+
+  W --&gt; R4
+  C --&gt; R1
+  B1 --&gt; R2
+  B2 --&gt; R2
+  C --&gt; R3
+  R1 --&gt; S1
+  R1 --&gt; S9
+  R2 --&gt; S2
+  R2 --&gt; S3
+  R2 --&gt; S4
+  R3 --&gt; S5
+  R3 --&gt; S6
+  R3 --&gt; S7
+  R1 --&gt; S8
+  S1 --&gt; M
+  S2 --&gt; M
+  S3 --&gt; M
+  S4 --&gt; M
+  S5 --&gt; M
+  S6 --&gt; O
+  S7 --&gt; X
+  S8 --&gt; X
+  S9 --&gt; M
+  S2 --&gt; K
+  S4 --&gt; K
+  P2 --&gt; R1
+  P3 --&gt; R2
+  P1 --&gt; P2
+  P4 --&gt; M
+  P5 --&gt; M</pre></article>
+<article class="card" id="d4-2"><h3><span class="id">D4-2</span>HLD — deployment topology, regions and failure domains</h3><div class=notes><p>Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an S3 outage only breaks images and uploads, and a gateway outage blocks checkout but not capture and printing.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  subgraph USER[&quot;Customer and guest networks&quot;]
+    U1[&quot;Booth PC&lt;br/&gt;Electron + printer&quot;]
+    U2[&quot;Android tablet&lt;br/&gt;booth&quot;]
+    U3[&quot;Org admin browser&quot;]
+    U4[&quot;Guest phone&quot;]
+  end
+
+  subgraph DNS[&quot;DNS + TLS&quot;]
+    N1[&quot;happypix.in&lt;br/&gt;www.happypix.in&quot;]
+    N2[&quot;crm.happypix.in&quot;]
+    N3[&quot;api.happypix.in&quot;]
+  end
+
+  subgraph VERCEL[&quot;Vercel · functions pinned to bom1 (Mumbai)&quot;]
+    V1[&quot;website project&lt;br/&gt;static SPA&quot;]
+    V2[&quot;crm project&lt;br/&gt;static SPA&quot;]
+    V3[&quot;backend project&lt;br/&gt;Express app, default export&lt;br/&gt;serverless-safe Mongo connect&quot;]
+    V4[&quot;website-backend project&lt;br/&gt;plans, checkout, downloads, leads&quot;]
+  end
+
+  subgraph AWS[&quot;AWS · ap-south-1&quot;]
+    A1[(&quot;S3 bucket — private&lt;br/&gt;photos/, happypix/org/logos/&quot;)]
+    A2[&quot;S3 lifecycle rules&lt;br/&gt;NOT CONFIGURED YET&quot;]
+  end
+
+  subgraph ATLAS[&quot;MongoDB Atlas · ap-south-1&quot;]
+    M1[(&quot;Primary&quot;)]
+    M2[(&quot;Secondary 1&quot;)]
+    M3[(&quot;Secondary 2&quot;)]
+    M4[&quot;Automated backups&lt;br/&gt;restore-tested monthly&quot;]
+  end
+
+  subgraph THIRD[&quot;Third parties&quot;]
+    T1[&quot;Razorpay&quot;]
+    T2[&quot;Cashfree&quot;]
+    T3[&quot;SendGrid&quot;]
+    T4[&quot;Twilio / WhatsApp&quot;]
+    T5[&quot;Groq / Together / xAI&quot;]
+  end
+
+  U1 --&gt;|&quot;HTTPS&quot;| N3
+  U2 --&gt;|&quot;HTTPS&quot;| N3
+  U3 --&gt;|&quot;HTTPS&quot;| N2
+  U4 --&gt;|&quot;HTTPS&quot;| N1
+  N1 --&gt; V1
+  N2 --&gt; V2
+  N3 --&gt; V3
+  V1 --&gt; V4
+  V3 --&gt; M1
+  V4 --&gt; M1
+  M1 --&gt; M2
+  M1 --&gt; M3
+  M1 --&gt; M4
+  V3 --&gt; A1
+  V4 --&gt; A1
+  A1 --&gt; A2
+  V3 --&gt; T1
+  V3 --&gt; T2
+  V3 --&gt; T3
+  V3 --&gt; T4
+  V3 --&gt; T5
+  T1 --&gt;|&quot;webhook&quot;| V3
+  T2 --&gt;|&quot;webhook&quot;| V3
+  V1 --&gt;|&quot;presigned GET&lt;br/&gt;direct from browser&quot;| A1</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d4-2-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-2-raw">flowchart TB
+  subgraph USER[&quot;Customer and guest networks&quot;]
+    U1[&quot;Booth PC&lt;br/&gt;Electron + printer&quot;]
+    U2[&quot;Android tablet&lt;br/&gt;booth&quot;]
+    U3[&quot;Org admin browser&quot;]
+    U4[&quot;Guest phone&quot;]
+  end
+
+  subgraph DNS[&quot;DNS + TLS&quot;]
+    N1[&quot;happypix.in&lt;br/&gt;www.happypix.in&quot;]
+    N2[&quot;crm.happypix.in&quot;]
+    N3[&quot;api.happypix.in&quot;]
+  end
+
+  subgraph VERCEL[&quot;Vercel · functions pinned to bom1 (Mumbai)&quot;]
+    V1[&quot;website project&lt;br/&gt;static SPA&quot;]
+    V2[&quot;crm project&lt;br/&gt;static SPA&quot;]
+    V3[&quot;backend project&lt;br/&gt;Express app, default export&lt;br/&gt;serverless-safe Mongo connect&quot;]
+    V4[&quot;website-backend project&lt;br/&gt;plans, checkout, downloads, leads&quot;]
+  end
+
+  subgraph AWS[&quot;AWS · ap-south-1&quot;]
+    A1[(&quot;S3 bucket — private&lt;br/&gt;photos/, happypix/org/logos/&quot;)]
+    A2[&quot;S3 lifecycle rules&lt;br/&gt;NOT CONFIGURED YET&quot;]
+  end
+
+  subgraph ATLAS[&quot;MongoDB Atlas · ap-south-1&quot;]
+    M1[(&quot;Primary&quot;)]
+    M2[(&quot;Secondary 1&quot;)]
+    M3[(&quot;Secondary 2&quot;)]
+    M4[&quot;Automated backups&lt;br/&gt;restore-tested monthly&quot;]
+  end
+
+  subgraph THIRD[&quot;Third parties&quot;]
+    T1[&quot;Razorpay&quot;]
+    T2[&quot;Cashfree&quot;]
+    T3[&quot;SendGrid&quot;]
+    T4[&quot;Twilio / WhatsApp&quot;]
+    T5[&quot;Groq / Together / xAI&quot;]
+  end
+
+  U1 --&gt;|&quot;HTTPS&quot;| N3
+  U2 --&gt;|&quot;HTTPS&quot;| N3
+  U3 --&gt;|&quot;HTTPS&quot;| N2
+  U4 --&gt;|&quot;HTTPS&quot;| N1
+  N1 --&gt; V1
+  N2 --&gt; V2
+  N3 --&gt; V3
+  V1 --&gt; V4
+  V3 --&gt; M1
+  V4 --&gt; M1
+  M1 --&gt; M2
+  M1 --&gt; M3
+  M1 --&gt; M4
+  V3 --&gt; A1
+  V4 --&gt; A1
+  A1 --&gt; A2
+  V3 --&gt; T1
+  V3 --&gt; T2
+  V3 --&gt; T3
+  V3 --&gt; T4
+  V3 --&gt; T5
+  T1 --&gt;|&quot;webhook&quot;| V3
+  T2 --&gt;|&quot;webhook&quot;| V3
+  V1 --&gt;|&quot;presigned GET&lt;br/&gt;direct from browser&quot;| A1</pre></article>
+<article class="card" id="d4-3"><h3><span class="id">D4-3</span>LLD — the exact request pipeline and middleware order</h3><div class=notes><p>Order is load-bearing. The origin check runs before any body parsing, and the Mongo gate runs after static assets so /uploads keeps working during a database incident.</p><p>Rate limiters are per-scope: global 1200/15 min, then per-route limiters on leads, pairing, OTP, coupons, gallery delivery, AI and downloads.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  A0[&quot;Incoming request&quot;] --&gt; A1[&quot;Security headers&lt;br/&gt;nosniff, DENY frame, HSTS in prod&quot;]
+  A1 --&gt; A2[&quot;globalLimiter&lt;br/&gt;1200 requests / 15 min / IP&quot;]
+  A2 --&gt; A3[&quot;cors origin function&lt;br/&gt;5 static + env + dev + vercel pattern&quot;]
+  A3 --&gt; A4{&quot;Origin allowed?&quot;}
+  A4 --&gt;|&quot;no&quot;| A5[&quot;403 CORS_FORBIDDEN&quot;]
+  A4 --&gt;|&quot;yes or no Origin header&quot;| A6[&quot;express.json 50 mb&lt;br/&gt;captures req.rawBody&quot;]
+  A6 --&gt; A7[&quot;cookieParser&lt;br/&gt;hp_admin_token&quot;]
+  A7 --&gt; A8[&quot;express.static /uploads&lt;br/&gt;local asset fallback&quot;]
+  A8 --&gt; A9[&quot;Request logger&quot;]
+  A9 --&gt; A10[&quot;GET / health string&quot;]
+  A10 --&gt; A11[&quot;connectDB gate&lt;br/&gt;awaits cached Atlas connection&quot;]
+  A11 --&gt;|&quot;fail&quot;| A12[&quot;503 Database unavailable&quot;]
+  A11 --&gt; A13{&quot;Route mount&quot;}
+  A13 --&gt; A14[&quot;/api/auth → crm/auth.js&lt;br/&gt;+ authLimiter, OTP limiters&quot;]
+  A13 --&gt; A15[&quot;/api/org → crm/org.js&lt;br/&gt;router.use authenticate + authorize&quot;]
+  A13 --&gt; A16[&quot;/api/platform → crm/platform.js&lt;br/&gt;router.use authenticate + requirePerm&quot;]
+  A13 --&gt; A17[&quot;/api/booth → boothRoutes.js&lt;br/&gt;soft or strict device auth&quot;]
+  A13 --&gt; A18[&quot;/api/payments → paymentRoutes.js&quot;]
+  A14 --&gt; B1[&quot;authenticate&lt;br/&gt;cookie, bearer or query token&quot;]
+  B1 --&gt; B2[&quot;jwt.verify HS256&lt;br/&gt;12 h TTL&quot;]
+  B2 --&gt; B3[&quot;Load user, strip password&lt;br/&gt;compare sessionVersion&quot;]
+  B3 --&gt; B4{&quot;sessionVersion equal?&quot;}
+  B4 --&gt;|&quot;no&quot;| B5[&quot;401 SESSION_REVOKED&quot;]
+  B4 --&gt;|&quot;yes&quot;| B6{&quot;user.status active?&quot;}
+  B6 --&gt;|&quot;no&quot;| B7[&quot;403 ACCOUNT_DEACTIVATED&quot;]
+  B6 --&gt;|&quot;yes&quot;| B8[&quot;normalise role&lt;br/&gt;attach permissions&quot;]
+  B8 --&gt; B9{&quot;organizationId?&quot;}
+  B9 --&gt;|&quot;yes&quot;| B10[&quot;Load org&lt;br/&gt;banned → 403 + bumpSessionVersion&quot;]
+  B10 --&gt; B11[&quot;suspended → req.orgReadOnly = true&quot;]
+  B9 --&gt;|&quot;no&quot;| B12[&quot;platform scope&quot;]
+  B11 --&gt; C1[&quot;requirePerm&lt;br/&gt;roleHasPermission&quot;]
+  B12 --&gt; C1
+  C1 --&gt;|&quot;deny&quot;| C2[&quot;403 FORBIDDEN_PERMISSION&quot;]
+  C1 --&gt;|&quot;allow&quot;| C3{&quot;write route?&quot;}
+  C3 --&gt;|&quot;yes&quot;| C4[&quot;requireWritableOrg&lt;br/&gt;403 ORG_SUSPENDED&quot;]
+  C3 --&gt;|&quot;no&quot;| C5[&quot;Handler&quot;]
+  C4 --&gt; C5
+  C5 --&gt; D1[&quot;Domain service&quot;]
+  D1 --&gt; D2[&quot;Mongoose model&quot;]
+  D2 --&gt; D3[&quot;JSON response&quot;]
+  C5 --&gt;|&quot;throws&quot;| D4[&quot;asyncRoute → HttpError&quot;]
+  D4 --&gt; D5[&quot;Global error handler&lt;br/&gt;5xx message masked in prod&quot;]
+  A17 --&gt; E1[&quot;resolveDevice&lt;br/&gt;token hash, uuid match&quot;]
+  E1 --&gt; E2{&quot;device state&quot;}
+  E2 --&gt;|&quot;unpaired&quot;| E3[&quot;401 UNPAIRED&quot;]
+  E2 --&gt;|&quot;deleted&quot;| E4[&quot;410 DEVICE_DELETED&quot;]
+  E2 --&gt;|&quot;blocked&quot;| E5[&quot;403 DEVICE_BLOCKED&quot;]
+  E2 --&gt;|&quot;org suspended&quot;| E6[&quot;403 SUSPENDED&quot;]
+  E2 --&gt;|&quot;org banned&quot;| E7[&quot;403 BANNED&quot;]
+  E2 --&gt;|&quot;active&quot;| E8[&quot;boothStateFor + requireOperationalBooth&quot;]
+  E8 --&gt; E9{&quot;plan expired?&quot;}
+  E9 --&gt;|&quot;yes&quot;| E10[&quot;402 PLAN_EXPIRED&quot;]
+  E9 --&gt;|&quot;no&quot;| C5</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d4-3-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-3-raw">flowchart TB
+  A0[&quot;Incoming request&quot;] --&gt; A1[&quot;Security headers&lt;br/&gt;nosniff, DENY frame, HSTS in prod&quot;]
+  A1 --&gt; A2[&quot;globalLimiter&lt;br/&gt;1200 requests / 15 min / IP&quot;]
+  A2 --&gt; A3[&quot;cors origin function&lt;br/&gt;5 static + env + dev + vercel pattern&quot;]
+  A3 --&gt; A4{&quot;Origin allowed?&quot;}
+  A4 --&gt;|&quot;no&quot;| A5[&quot;403 CORS_FORBIDDEN&quot;]
+  A4 --&gt;|&quot;yes or no Origin header&quot;| A6[&quot;express.json 50 mb&lt;br/&gt;captures req.rawBody&quot;]
+  A6 --&gt; A7[&quot;cookieParser&lt;br/&gt;hp_admin_token&quot;]
+  A7 --&gt; A8[&quot;express.static /uploads&lt;br/&gt;local asset fallback&quot;]
+  A8 --&gt; A9[&quot;Request logger&quot;]
+  A9 --&gt; A10[&quot;GET / health string&quot;]
+  A10 --&gt; A11[&quot;connectDB gate&lt;br/&gt;awaits cached Atlas connection&quot;]
+  A11 --&gt;|&quot;fail&quot;| A12[&quot;503 Database unavailable&quot;]
+  A11 --&gt; A13{&quot;Route mount&quot;}
+  A13 --&gt; A14[&quot;/api/auth → crm/auth.js&lt;br/&gt;+ authLimiter, OTP limiters&quot;]
+  A13 --&gt; A15[&quot;/api/org → crm/org.js&lt;br/&gt;router.use authenticate + authorize&quot;]
+  A13 --&gt; A16[&quot;/api/platform → crm/platform.js&lt;br/&gt;router.use authenticate + requirePerm&quot;]
+  A13 --&gt; A17[&quot;/api/booth → boothRoutes.js&lt;br/&gt;soft or strict device auth&quot;]
+  A13 --&gt; A18[&quot;/api/payments → paymentRoutes.js&quot;]
+  A14 --&gt; B1[&quot;authenticate&lt;br/&gt;cookie, bearer or query token&quot;]
+  B1 --&gt; B2[&quot;jwt.verify HS256&lt;br/&gt;12 h TTL&quot;]
+  B2 --&gt; B3[&quot;Load user, strip password&lt;br/&gt;compare sessionVersion&quot;]
+  B3 --&gt; B4{&quot;sessionVersion equal?&quot;}
+  B4 --&gt;|&quot;no&quot;| B5[&quot;401 SESSION_REVOKED&quot;]
+  B4 --&gt;|&quot;yes&quot;| B6{&quot;user.status active?&quot;}
+  B6 --&gt;|&quot;no&quot;| B7[&quot;403 ACCOUNT_DEACTIVATED&quot;]
+  B6 --&gt;|&quot;yes&quot;| B8[&quot;normalise role&lt;br/&gt;attach permissions&quot;]
+  B8 --&gt; B9{&quot;organizationId?&quot;}
+  B9 --&gt;|&quot;yes&quot;| B10[&quot;Load org&lt;br/&gt;banned → 403 + bumpSessionVersion&quot;]
+  B10 --&gt; B11[&quot;suspended → req.orgReadOnly = true&quot;]
+  B9 --&gt;|&quot;no&quot;| B12[&quot;platform scope&quot;]
+  B11 --&gt; C1[&quot;requirePerm&lt;br/&gt;roleHasPermission&quot;]
+  B12 --&gt; C1
+  C1 --&gt;|&quot;deny&quot;| C2[&quot;403 FORBIDDEN_PERMISSION&quot;]
+  C1 --&gt;|&quot;allow&quot;| C3{&quot;write route?&quot;}
+  C3 --&gt;|&quot;yes&quot;| C4[&quot;requireWritableOrg&lt;br/&gt;403 ORG_SUSPENDED&quot;]
+  C3 --&gt;|&quot;no&quot;| C5[&quot;Handler&quot;]
+  C4 --&gt; C5
+  C5 --&gt; D1[&quot;Domain service&quot;]
+  D1 --&gt; D2[&quot;Mongoose model&quot;]
+  D2 --&gt; D3[&quot;JSON response&quot;]
+  C5 --&gt;|&quot;throws&quot;| D4[&quot;asyncRoute → HttpError&quot;]
+  D4 --&gt; D5[&quot;Global error handler&lt;br/&gt;5xx message masked in prod&quot;]
+  A17 --&gt; E1[&quot;resolveDevice&lt;br/&gt;token hash, uuid match&quot;]
+  E1 --&gt; E2{&quot;device state&quot;}
+  E2 --&gt;|&quot;unpaired&quot;| E3[&quot;401 UNPAIRED&quot;]
+  E2 --&gt;|&quot;deleted&quot;| E4[&quot;410 DEVICE_DELETED&quot;]
+  E2 --&gt;|&quot;blocked&quot;| E5[&quot;403 DEVICE_BLOCKED&quot;]
+  E2 --&gt;|&quot;org suspended&quot;| E6[&quot;403 SUSPENDED&quot;]
+  E2 --&gt;|&quot;org banned&quot;| E7[&quot;403 BANNED&quot;]
+  E2 --&gt;|&quot;active&quot;| E8[&quot;boothStateFor + requireOperationalBooth&quot;]
+  E8 --&gt; E9{&quot;plan expired?&quot;}
+  E9 --&gt;|&quot;yes&quot;| E10[&quot;402 PLAN_EXPIRED&quot;]
+  E9 --&gt;|&quot;no&quot;| C5</pre></article>
+<article class="card" id="d4-4"><h3><span class="id">D4-4</span>LLD — backend module dependency graph</h3><div class=notes><p>Arrows point from caller to callee. Nothing in services/ or utils/ imports a route, which is why the same logic can be reached from a booth route, a CRM route and a cron job.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+  subgraph ROUTES[&quot;routes/&quot;]
+    RA[&quot;crm/auth.js&quot;]
+    RO[&quot;crm/org.js&quot;]
+    RP[&quot;crm/platform.js&quot;]
+    RB[&quot;boothRoutes.js&quot;]
+    RE[&quot;eventRoutes.js&quot;]
+    RY[&quot;paymentRoutes.js&quot;]
+    RD[&quot;downloadRoutes.js&quot;]
+    RS[&quot;photoShareRoutes.js&quot;]
+    RC[&quot;couponRoutes.js&quot;]
+    RG[&quot;settingRoutes.js&quot;]
+    RU[&quot;supportRoutes.js&quot;]
+    RV[&quot;deviceRoutes.js&quot;]
+  end
+
+  subgraph MW[&quot;middleware/&quot;]
+    MA[&quot;auth.js&quot;]
+    MD[&quot;deviceAuth.js&quot;]
+  end
+
+  subgraph SVC[&quot;services/&quot;]
+    SP[&quot;planService&quot;]
+    SB[&quot;boothSnapshotService&quot;]
+    SC[&quot;couponService&quot;]
+    SG[&quot;gallerySettingsService&quot;]
+    SD[&quot;guestDownloadService&quot;]
+    SU[&quot;photoUrlService&quot;]
+    SE[&quot;eventService&quot;]
+    SL[&quot;DeliveryService&quot;]
+    ST[&quot;TemplateGenerationService&quot;]
+    SX[&quot;backgroundRemovalService&quot;]
+    SZ[&quot;CronService&quot;]
+    SAI[&quot;ai/ providers&quot;]
+  end
+
+  subgraph UTIL[&quot;utils/&quot;]
+    UA[&quot;auditLogger&quot;]
+    UC[&quot;crypto&quot;]
+    UH[&quot;httpError&quot;]
+    US[&quot;s3&quot;]
+    UP[&quot;printHelper&quot;]
+  end
+
+  subgraph MODELS[&quot;models/ — 23&quot;]
+    M1[&quot;User, Organization,&lt;br/&gt;OrganizationDefaults, Setting&quot;]
+    M2[&quot;Event, Device, Template,&lt;br/&gt;TemplateLayout, OrgAiTemplate&quot;]
+    M3[&quot;Payment, Coupon, Subscription,&lt;br/&gt;SubscriptionPlan, Withdrawal&quot;]
+    M4[&quot;Photo, PhotoShare, DigitalToken,&lt;br/&gt;GuestDownload, DeliveryRecord&quot;]
+    M5[&quot;SupportTicket, Ticket,&lt;br/&gt;PlatformSupportRequest, WebsiteLead&quot;]
+    M6[&quot;AuditLog, RoleConfig&quot;]
+  end
+
+  CFG[&quot;config/&lt;br/&gt;permissions.js · layouts.js&quot;]
+
+  RA --&gt; MA
+  RA --&gt; SP
+  RA --&gt; UA
+  RO --&gt; MA
+  RO --&gt; SP
+  RO --&gt; SE
+  RO --&gt; SC
+  RO --&gt; SG
+  RO --&gt; SU
+  RO --&gt; ST
+  RO --&gt; SX
+  RO --&gt; UA
+  RP --&gt; MA
+  RP --&gt; SP
+  RP --&gt; SG
+  RP --&gt; UA
+  RB --&gt; MD
+  RB --&gt; SB
+  RB --&gt; SC
+  RB --&gt; SD
+  RB --&gt; SP
+  RB --&gt; SE
+  RB --&gt; SG
+  RB --&gt; US
+  RB --&gt; UA
+  RE --&gt; MD
+  RE --&gt; SE
+  RE --&gt; SB
+  RY --&gt; MD
+  RY --&gt; SC
+  RY --&gt; UP
+  RY --&gt; UC
+  RD --&gt; SU
+  RS --&gt; SL
+  RS --&gt; MD
+  RV --&gt; MD
+  RV --&gt; SP
+  RV --&gt; SB
+  RC --&gt; MD
+  RC --&gt; SC
+  RG --&gt; SG
+  RG --&gt; SB
+  RU --&gt; MD
+  MA --&gt; CFG
+  MA --&gt; UC
+  MA --&gt; M1
+  MD --&gt; UC
+  MD --&gt; SB
+  MD --&gt; M1
+  SP --&gt; M3
+  SB --&gt; SG
+  SB --&gt; SU
+  SB --&gt; M1
+  SD --&gt; M4
+  SU --&gt; US
+  SL --&gt; M4
+  ST --&gt; SAI
+  SZ --&gt; M1
+  UA --&gt; M6
+  RO --&gt; M2
+  RO --&gt; M4
+  RB --&gt; M4
+  RA --&gt; M3</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d4-4-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-4-raw">flowchart LR
+  subgraph ROUTES[&quot;routes/&quot;]
+    RA[&quot;crm/auth.js&quot;]
+    RO[&quot;crm/org.js&quot;]
+    RP[&quot;crm/platform.js&quot;]
+    RB[&quot;boothRoutes.js&quot;]
+    RE[&quot;eventRoutes.js&quot;]
+    RY[&quot;paymentRoutes.js&quot;]
+    RD[&quot;downloadRoutes.js&quot;]
+    RS[&quot;photoShareRoutes.js&quot;]
+    RC[&quot;couponRoutes.js&quot;]
+    RG[&quot;settingRoutes.js&quot;]
+    RU[&quot;supportRoutes.js&quot;]
+    RV[&quot;deviceRoutes.js&quot;]
+  end
+
+  subgraph MW[&quot;middleware/&quot;]
+    MA[&quot;auth.js&quot;]
+    MD[&quot;deviceAuth.js&quot;]
+  end
+
+  subgraph SVC[&quot;services/&quot;]
+    SP[&quot;planService&quot;]
+    SB[&quot;boothSnapshotService&quot;]
+    SC[&quot;couponService&quot;]
+    SG[&quot;gallerySettingsService&quot;]
+    SD[&quot;guestDownloadService&quot;]
+    SU[&quot;photoUrlService&quot;]
+    SE[&quot;eventService&quot;]
+    SL[&quot;DeliveryService&quot;]
+    ST[&quot;TemplateGenerationService&quot;]
+    SX[&quot;backgroundRemovalService&quot;]
+    SZ[&quot;CronService&quot;]
+    SAI[&quot;ai/ providers&quot;]
+  end
+
+  subgraph UTIL[&quot;utils/&quot;]
+    UA[&quot;auditLogger&quot;]
+    UC[&quot;crypto&quot;]
+    UH[&quot;httpError&quot;]
+    US[&quot;s3&quot;]
+    UP[&quot;printHelper&quot;]
+  end
+
+  subgraph MODELS[&quot;models/ — 23&quot;]
+    M1[&quot;User, Organization,&lt;br/&gt;OrganizationDefaults, Setting&quot;]
+    M2[&quot;Event, Device, Template,&lt;br/&gt;TemplateLayout, OrgAiTemplate&quot;]
+    M3[&quot;Payment, Coupon, Subscription,&lt;br/&gt;SubscriptionPlan, Withdrawal&quot;]
+    M4[&quot;Photo, PhotoShare, DigitalToken,&lt;br/&gt;GuestDownload, DeliveryRecord&quot;]
+    M5[&quot;SupportTicket, Ticket,&lt;br/&gt;PlatformSupportRequest, WebsiteLead&quot;]
+    M6[&quot;AuditLog, RoleConfig&quot;]
+  end
+
+  CFG[&quot;config/&lt;br/&gt;permissions.js · layouts.js&quot;]
+
+  RA --&gt; MA
+  RA --&gt; SP
+  RA --&gt; UA
+  RO --&gt; MA
+  RO --&gt; SP
+  RO --&gt; SE
+  RO --&gt; SC
+  RO --&gt; SG
+  RO --&gt; SU
+  RO --&gt; ST
+  RO --&gt; SX
+  RO --&gt; UA
+  RP --&gt; MA
+  RP --&gt; SP
+  RP --&gt; SG
+  RP --&gt; UA
+  RB --&gt; MD
+  RB --&gt; SB
+  RB --&gt; SC
+  RB --&gt; SD
+  RB --&gt; SP
+  RB --&gt; SE
+  RB --&gt; SG
+  RB --&gt; US
+  RB --&gt; UA
+  RE --&gt; MD
+  RE --&gt; SE
+  RE --&gt; SB
+  RY --&gt; MD
+  RY --&gt; SC
+  RY --&gt; UP
+  RY --&gt; UC
+  RD --&gt; SU
+  RS --&gt; SL
+  RS --&gt; MD
+  RV --&gt; MD
+  RV --&gt; SP
+  RV --&gt; SB
+  RC --&gt; MD
+  RC --&gt; SC
+  RG --&gt; SG
+  RG --&gt; SB
+  RU --&gt; MD
+  MA --&gt; CFG
+  MA --&gt; UC
+  MA --&gt; M1
+  MD --&gt; UC
+  MD --&gt; SB
+  MD --&gt; M1
+  SP --&gt; M3
+  SB --&gt; SG
+  SB --&gt; SU
+  SB --&gt; M1
+  SD --&gt; M4
+  SU --&gt; US
+  SL --&gt; M4
+  ST --&gt; SAI
+  SZ --&gt; M1
+  UA --&gt; M6
+  RO --&gt; M2
+  RO --&gt; M4
+  RB --&gt; M4
+  RA --&gt; M3</pre></article>
+<article class="card" id="d4-5"><h3><span class="id">D4-5</span>LLD sequence — device pairing, snapshot and revision sync</h3><div class=notes><p>The device token is returned exactly once and stored only as a hash. Every later call proves identity with it, and the booth only refetches configuration when the revision string changes.</p></div><div class="canvas"><div class="mermaid">sequenceDiagram
+  autonumber
+  participant OP as Operator
+  participant BO as Booth app
+  participant API as Main API
+  participant DB as MongoDB
+  participant S3 as S3
+
+  OP-&gt;&gt;BO: enter org email, password, device name
+  BO-&gt;&gt;API: POST /api/booth/login
+  API-&gt;&gt;DB: User.findOne role in ORG_ADMIN, ORG_MANAGER
+  API-&gt;&gt;API: bcrypt.compare password
+  API-&gt;&gt;DB: Organization.findById
+  API-&gt;&gt;API: boothStateFor — banned or suspended
+  API-&gt;&gt;DB: Device.findOne deviceUuid + organizationId
+  alt new installation
+    API-&gt;&gt;DB: countDocuments devices, assertDeviceLimit
+    API-&gt;&gt;DB: Device.create with SHA-256 token hash
+  else re-pair
+    API-&gt;&gt;DB: rotate deviceTokenHash, save
+  end
+  API-&gt;&gt;DB: load event, defaults, settings, gallery policy
+  API-&gt;&gt;API: buildBoothSnapshot + computeRevision
+  API--&gt;&gt;BO: installation token, snapshot, state ACTIVE
+  BO-&gt;&gt;BO: persist token in OS keystore and snapshot in IndexedDB
+  loop every 10 s while idle
+    BO-&gt;&gt;API: GET /api/booth/revision
+    API-&gt;&gt;DB: read device, event, defaults
+    API--&gt;&gt;BO: revision, serverTime
+    alt revision changed
+      BO-&gt;&gt;API: GET /api/booth/bootstrap
+      API-&gt;&gt;DB: full snapshot read
+      API--&gt;&gt;BO: snapshot with new revision
+      BO-&gt;&gt;BO: replace cached config, reload templates
+    end
+  end
+  loop every 30 s during a session
+    BO-&gt;&gt;API: POST /api/booth/heartbeat with hardwarePatch and knownRevision
+    API-&gt;&gt;API: mergeHardware — accept only changed fields
+    API-&gt;&gt;DB: update lastSeenAt, ip, telemetry, connections
+    API--&gt;&gt;BO: changed, snapshot or null, canOperate
+  end
+  Note over BO,API: network failure is a client state, never a server response
+  BO-&gt;&gt;BO: keep operating from cache, queue uploads locally</div></div><div class="cardbar"><span class="pill">sequenceDiagram</span><button type="button" data-raw="d4-5-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-5-raw">sequenceDiagram
+  autonumber
+  participant OP as Operator
+  participant BO as Booth app
+  participant API as Main API
+  participant DB as MongoDB
+  participant S3 as S3
+
+  OP-&gt;&gt;BO: enter org email, password, device name
+  BO-&gt;&gt;API: POST /api/booth/login
+  API-&gt;&gt;DB: User.findOne role in ORG_ADMIN, ORG_MANAGER
+  API-&gt;&gt;API: bcrypt.compare password
+  API-&gt;&gt;DB: Organization.findById
+  API-&gt;&gt;API: boothStateFor — banned or suspended
+  API-&gt;&gt;DB: Device.findOne deviceUuid + organizationId
+  alt new installation
+    API-&gt;&gt;DB: countDocuments devices, assertDeviceLimit
+    API-&gt;&gt;DB: Device.create with SHA-256 token hash
+  else re-pair
+    API-&gt;&gt;DB: rotate deviceTokenHash, save
+  end
+  API-&gt;&gt;DB: load event, defaults, settings, gallery policy
+  API-&gt;&gt;API: buildBoothSnapshot + computeRevision
+  API--&gt;&gt;BO: installation token, snapshot, state ACTIVE
+  BO-&gt;&gt;BO: persist token in OS keystore and snapshot in IndexedDB
+  loop every 10 s while idle
+    BO-&gt;&gt;API: GET /api/booth/revision
+    API-&gt;&gt;DB: read device, event, defaults
+    API--&gt;&gt;BO: revision, serverTime
+    alt revision changed
+      BO-&gt;&gt;API: GET /api/booth/bootstrap
+      API-&gt;&gt;DB: full snapshot read
+      API--&gt;&gt;BO: snapshot with new revision
+      BO-&gt;&gt;BO: replace cached config, reload templates
+    end
+  end
+  loop every 30 s during a session
+    BO-&gt;&gt;API: POST /api/booth/heartbeat with hardwarePatch and knownRevision
+    API-&gt;&gt;API: mergeHardware — accept only changed fields
+    API-&gt;&gt;DB: update lastSeenAt, ip, telemetry, connections
+    API--&gt;&gt;BO: changed, snapshot or null, canOperate
+  end
+  Note over BO,API: network failure is a client state, never a server response
+  BO-&gt;&gt;BO: keep operating from cache, queue uploads locally</pre></article>
+<article class="card" id="d4-6"><h3><span class="id">D4-6</span>LLD sequence — checkout, payment, print and download</h3><div class=notes><p>Two paths reach the same end state: gateway-paid (poll or webhook) and free/offline (quote with finalAmount 0, or a 12-digit UTR). Both create exactly one paid Payment row and one guest download.</p></div><div class="canvas"><div class="mermaid">sequenceDiagram
+  autonumber
+  participant G as Guest
+  participant BO as Booth app
+  participant API as Main API
+  participant GW as Razorpay / Cashfree
+  participant DB as MongoDB
+  participant S3 as S3
+
+  G-&gt;&gt;BO: choose template and print count
+  BO-&gt;&gt;API: POST /api/booth/checkout/quote
+  API-&gt;&gt;DB: event, templates, org defaults
+  API-&gt;&gt;API: resolveTemplateUnitPrice event to org to platform
+  API-&gt;&gt;DB: Coupon.findOne, applyCoupon
+  API--&gt;&gt;BO: unitPrice, gross, discount, finalAmount, settlement
+  alt finalAmount is 0
+    BO-&gt;&gt;API: POST /api/booth/checkout/free-complete
+    API-&gt;&gt;DB: Payment.create status paid, settlement wallet
+    API-&gt;&gt;DB: recordCouponRedemption once
+    API--&gt;&gt;BO: paymentId
+  else paid
+    BO-&gt;&gt;API: POST /api/booth/payments with full quote
+    API-&gt;&gt;DB: Payment.create status pending
+    API-&gt;&gt;API: resolveGatewayConfig event to settings to defaults
+    API-&gt;&gt;GW: orders.create or PGCreateOrder
+    GW--&gt;&gt;API: order id
+    API-&gt;&gt;GW: qrCode.create or PGOrderFetchQRCode
+    GW--&gt;&gt;API: QR image URL or UPI payload
+    API--&gt;&gt;BO: paymentId, qrPayload, qrImageUrl, gateway
+    BO-&gt;&gt;G: render QR, start 5 min countdown
+    loop every 3 s
+      BO-&gt;&gt;API: GET /api/booth/payments/:id
+      API-&gt;&gt;GW: fetch order or QR status
+      GW--&gt;&gt;API: status
+      API--&gt;&gt;BO: paid, pending or failed
+    end
+    GW--&gt;&gt;API: signed webhook payment.captured
+    API-&gt;&gt;DB: Payment.updateOne status paid, paidAt
+    API-&gt;&gt;DB: Coupon usedCount + 1
+  end
+  BO-&gt;&gt;API: POST /api/booth/sessions/upload-urls
+  API--&gt;&gt;BO: presigned PUT URLs, 900 s
+  BO-&gt;&gt;S3: PUT frames and composite directly
+  BO-&gt;&gt;API: POST /api/booth/sessions/complete
+  API-&gt;&gt;DB: Photo.create per file, compositeUrl on all rows
+  API-&gt;&gt;DB: GuestDownload.create 24 h TTL
+  API--&gt;&gt;BO: shareUrl, downloadId, galleryPhotoIds
+  BO-&gt;&gt;G: print strip, show QR of the download page
+  G-&gt;&gt;API: GET /api/downloads/:id
+  API-&gt;&gt;S3: presign composite and frames
+  API--&gt;&gt;G: signed URLs, expiresAt</div></div><div class="cardbar"><span class="pill">sequenceDiagram</span><button type="button" data-raw="d4-6-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-6-raw">sequenceDiagram
+  autonumber
+  participant G as Guest
+  participant BO as Booth app
+  participant API as Main API
+  participant GW as Razorpay / Cashfree
+  participant DB as MongoDB
+  participant S3 as S3
+
+  G-&gt;&gt;BO: choose template and print count
+  BO-&gt;&gt;API: POST /api/booth/checkout/quote
+  API-&gt;&gt;DB: event, templates, org defaults
+  API-&gt;&gt;API: resolveTemplateUnitPrice event to org to platform
+  API-&gt;&gt;DB: Coupon.findOne, applyCoupon
+  API--&gt;&gt;BO: unitPrice, gross, discount, finalAmount, settlement
+  alt finalAmount is 0
+    BO-&gt;&gt;API: POST /api/booth/checkout/free-complete
+    API-&gt;&gt;DB: Payment.create status paid, settlement wallet
+    API-&gt;&gt;DB: recordCouponRedemption once
+    API--&gt;&gt;BO: paymentId
+  else paid
+    BO-&gt;&gt;API: POST /api/booth/payments with full quote
+    API-&gt;&gt;DB: Payment.create status pending
+    API-&gt;&gt;API: resolveGatewayConfig event to settings to defaults
+    API-&gt;&gt;GW: orders.create or PGCreateOrder
+    GW--&gt;&gt;API: order id
+    API-&gt;&gt;GW: qrCode.create or PGOrderFetchQRCode
+    GW--&gt;&gt;API: QR image URL or UPI payload
+    API--&gt;&gt;BO: paymentId, qrPayload, qrImageUrl, gateway
+    BO-&gt;&gt;G: render QR, start 5 min countdown
+    loop every 3 s
+      BO-&gt;&gt;API: GET /api/booth/payments/:id
+      API-&gt;&gt;GW: fetch order or QR status
+      GW--&gt;&gt;API: status
+      API--&gt;&gt;BO: paid, pending or failed
+    end
+    GW--&gt;&gt;API: signed webhook payment.captured
+    API-&gt;&gt;DB: Payment.updateOne status paid, paidAt
+    API-&gt;&gt;DB: Coupon usedCount + 1
+  end
+  BO-&gt;&gt;API: POST /api/booth/sessions/upload-urls
+  API--&gt;&gt;BO: presigned PUT URLs, 900 s
+  BO-&gt;&gt;S3: PUT frames and composite directly
+  BO-&gt;&gt;API: POST /api/booth/sessions/complete
+  API-&gt;&gt;DB: Photo.create per file, compositeUrl on all rows
+  API-&gt;&gt;DB: GuestDownload.create 24 h TTL
+  API--&gt;&gt;BO: shareUrl, downloadId, galleryPhotoIds
+  BO-&gt;&gt;G: print strip, show QR of the download page
+  G-&gt;&gt;API: GET /api/downloads/:id
+  API-&gt;&gt;S3: presign composite and frames
+  API--&gt;&gt;G: signed URLs, expiresAt</pre></article>
+<article class="card" id="d4-7"><h3><span class="id">D4-7</span>LLD sequence — sign-in, session revocation and organisation lifecycle</h3><div class=notes><p>The sessionVersion integer is the whole revocation mechanism: bumping it on the user or across the organisation invalidates every previously issued token without a session store.</p></div><div class="canvas"><div class="mermaid">sequenceDiagram
+  autonumber
+  participant U as User browser
+  participant CRM as CRM SPA
+  participant API as Main API
+  participant DB as MongoDB
+  participant PA as Platform admin
+
+  U-&gt;&gt;CRM: email and password
+  CRM-&gt;&gt;API: POST /api/auth/login
+  API-&gt;&gt;DB: User.findOne email
+  API-&gt;&gt;API: bcrypt compare, status active
+  API-&gt;&gt;DB: Organization.findById when org user
+  alt organization banned
+    API-&gt;&gt;DB: audit login blocked
+    API--&gt;&gt;CRM: 403 ORG_BANNED
+  else allowed
+    API-&gt;&gt;DB: lastLoginAt = now
+    API-&gt;&gt;API: issueToken id, role, org, ver
+    API--&gt;&gt;CRM: token plus Set-Cookie hp_admin_token HttpOnly
+    API--&gt;&gt;CRM: permissions, organization, readOnly flag
+  end
+  CRM-&gt;&gt;API: GET /api/auth/me on every reload
+  API-&gt;&gt;DB: reload user and compare sessionVersion
+  alt mismatch
+    API--&gt;&gt;CRM: 401 SESSION_REVOKED
+  else match
+    API--&gt;&gt;CRM: session payload with permissions
+  end
+  PA-&gt;&gt;API: POST /api/platform/organizations/:id/ban
+  API-&gt;&gt;DB: Organization.status = banned
+  API-&gt;&gt;DB: User.updateMany sessionVersion + 1
+  API-&gt;&gt;DB: Organization.sessionVersion + 1
+  API--&gt;&gt;PA: ok
+  Note over U,API: next request from any user of that org returns 401 SESSION_REVOKED, then 403 ORG_BANNED on retry
+  PA-&gt;&gt;API: POST /api/platform/organizations/:id/suspend
+  API-&gt;&gt;DB: status suspended, reason, suspendedAt
+  Note over U,API: users can still sign in read-only, booths are locked and answer 403 SUSPENDED
+  U-&gt;&gt;API: POST /api/auth/password
+  API-&gt;&gt;DB: password hash, sessionVersion + 1
+  API--&gt;&gt;U: new token, other sessions invalidated
+  U-&gt;&gt;API: POST /api/auth/logout
+  API-&gt;&gt;DB: sessionVersion + 1
+  API--&gt;&gt;U: clear cookie</div></div><div class="cardbar"><span class="pill">sequenceDiagram</span><button type="button" data-raw="d4-7-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-7-raw">sequenceDiagram
+  autonumber
+  participant U as User browser
+  participant CRM as CRM SPA
+  participant API as Main API
+  participant DB as MongoDB
+  participant PA as Platform admin
+
+  U-&gt;&gt;CRM: email and password
+  CRM-&gt;&gt;API: POST /api/auth/login
+  API-&gt;&gt;DB: User.findOne email
+  API-&gt;&gt;API: bcrypt compare, status active
+  API-&gt;&gt;DB: Organization.findById when org user
+  alt organization banned
+    API-&gt;&gt;DB: audit login blocked
+    API--&gt;&gt;CRM: 403 ORG_BANNED
+  else allowed
+    API-&gt;&gt;DB: lastLoginAt = now
+    API-&gt;&gt;API: issueToken id, role, org, ver
+    API--&gt;&gt;CRM: token plus Set-Cookie hp_admin_token HttpOnly
+    API--&gt;&gt;CRM: permissions, organization, readOnly flag
+  end
+  CRM-&gt;&gt;API: GET /api/auth/me on every reload
+  API-&gt;&gt;DB: reload user and compare sessionVersion
+  alt mismatch
+    API--&gt;&gt;CRM: 401 SESSION_REVOKED
+  else match
+    API--&gt;&gt;CRM: session payload with permissions
+  end
+  PA-&gt;&gt;API: POST /api/platform/organizations/:id/ban
+  API-&gt;&gt;DB: Organization.status = banned
+  API-&gt;&gt;DB: User.updateMany sessionVersion + 1
+  API-&gt;&gt;DB: Organization.sessionVersion + 1
+  API--&gt;&gt;PA: ok
+  Note over U,API: next request from any user of that org returns 401 SESSION_REVOKED, then 403 ORG_BANNED on retry
+  PA-&gt;&gt;API: POST /api/platform/organizations/:id/suspend
+  API-&gt;&gt;DB: status suspended, reason, suspendedAt
+  Note over U,API: users can still sign in read-only, booths are locked and answer 403 SUSPENDED
+  U-&gt;&gt;API: POST /api/auth/password
+  API-&gt;&gt;DB: password hash, sessionVersion + 1
+  API--&gt;&gt;U: new token, other sessions invalidated
+  U-&gt;&gt;API: POST /api/auth/logout
+  API-&gt;&gt;DB: sessionVersion + 1
+  API--&gt;&gt;U: clear cookie</pre></article>
+<article class="card" id="d4-8"><h3><span class="id">D4-8</span>LLD — booth state machine and front-end structure</h3><div class=notes><p>The booth machine is the contract the UI must follow: no screen can run unless a device token, a snapshot and an active event exist. Offline is a first-class state, not an error path.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  S0((&quot;Boot&quot;)) --&gt; S1[&quot;Load token from&lt;br/&gt;keystore&quot;]
+  S1 --&gt; S2{&quot;token present?&quot;}
+  S2 --&gt;|&quot;no&quot;| S3[&quot;Pairing screen&lt;br/&gt;email + password&lt;br/&gt;+ device name&quot;]
+  S3 --&gt;|&quot;POST /api/booth/login&quot;| S4[&quot;Persist token&lt;br/&gt;and snapshot&quot;]
+  S2 --&gt;|&quot;yes&quot;| S5[&quot;GET /api/booth/bootstrap&quot;]
+  S5 --&gt;|&quot;active&quot;| S6{&quot;event assigned&lt;br/&gt;and live?&quot;}
+  S5 --&gt;|&quot;suspended, banned,&lt;br/&gt;deleted, blocked&quot;| S7[&quot;Locked screen&lt;br/&gt;shows exact reason&lt;br/&gt;and code&quot;]
+  S4 --&gt; S6
+  S6 --&gt;|&quot;no&quot;| S8[&quot;Waiting screen&lt;br/&gt;revision polling&quot;]
+  S8 --&gt;|&quot;revision changed&quot;| S5
+  S6 --&gt;|&quot;yes&quot;| S9[&quot;Attract screen&lt;br/&gt;org + event branding&quot;]
+  S9 --&gt;|&quot;guest touches&quot;| S10[&quot;Entry screen&lt;br/&gt;org name, logo, event,&lt;br/&gt;template logos, event type&quot;]
+  S10 --&gt;|&quot;Start Session&quot;| S11[&quot;Capture&lt;br/&gt;N shots per layout&quot;]
+  S11 --&gt; S12[&quot;Photo selection&lt;br/&gt;filter and retake&quot;]
+  S12 --&gt; S13[&quot;Customize&lt;br/&gt;stickers, text, layout&quot;]
+  S13 --&gt; S14[&quot;Checkout&lt;br/&gt;quote, QR, countdown&quot;]
+  S14 --&gt;|&quot;paid or free&quot;| S15[&quot;Upload&lt;br/&gt;presigned PUT to S3&quot;]
+  S15 --&gt;|&quot;session complete&quot;| S16[&quot;Print&lt;br/&gt;copies per payment&quot;]
+  S16 --&gt; S17[&quot;Success&lt;br/&gt;download QR,&lt;br/&gt;raise-issue action&quot;]
+  S17 --&gt;|&quot;issue raised&quot;| S18[&quot;POST /api/booth/support&lt;br/&gt;ticket created&quot;]
+  S17 --&gt;|&quot;timeout&quot;| S9
+  S18 --&gt; S9
+  S14 --&gt;|&quot;gateway failure&quot;| S19[&quot;Payment error&lt;br/&gt;retry or pay-at-desk&quot;]
+  S19 --&gt; S14
+  S15 --&gt;|&quot;network down&quot;| S20[&quot;Offline queue&lt;br/&gt;retry with backoff&quot;]
+  S20 --&gt; S15</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d4-8-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-8-raw">flowchart TB
+  S0((&quot;Boot&quot;)) --&gt; S1[&quot;Load token from&lt;br/&gt;keystore&quot;]
+  S1 --&gt; S2{&quot;token present?&quot;}
+  S2 --&gt;|&quot;no&quot;| S3[&quot;Pairing screen&lt;br/&gt;email + password&lt;br/&gt;+ device name&quot;]
+  S3 --&gt;|&quot;POST /api/booth/login&quot;| S4[&quot;Persist token&lt;br/&gt;and snapshot&quot;]
+  S2 --&gt;|&quot;yes&quot;| S5[&quot;GET /api/booth/bootstrap&quot;]
+  S5 --&gt;|&quot;active&quot;| S6{&quot;event assigned&lt;br/&gt;and live?&quot;}
+  S5 --&gt;|&quot;suspended, banned,&lt;br/&gt;deleted, blocked&quot;| S7[&quot;Locked screen&lt;br/&gt;shows exact reason&lt;br/&gt;and code&quot;]
+  S4 --&gt; S6
+  S6 --&gt;|&quot;no&quot;| S8[&quot;Waiting screen&lt;br/&gt;revision polling&quot;]
+  S8 --&gt;|&quot;revision changed&quot;| S5
+  S6 --&gt;|&quot;yes&quot;| S9[&quot;Attract screen&lt;br/&gt;org + event branding&quot;]
+  S9 --&gt;|&quot;guest touches&quot;| S10[&quot;Entry screen&lt;br/&gt;org name, logo, event,&lt;br/&gt;template logos, event type&quot;]
+  S10 --&gt;|&quot;Start Session&quot;| S11[&quot;Capture&lt;br/&gt;N shots per layout&quot;]
+  S11 --&gt; S12[&quot;Photo selection&lt;br/&gt;filter and retake&quot;]
+  S12 --&gt; S13[&quot;Customize&lt;br/&gt;stickers, text, layout&quot;]
+  S13 --&gt; S14[&quot;Checkout&lt;br/&gt;quote, QR, countdown&quot;]
+  S14 --&gt;|&quot;paid or free&quot;| S15[&quot;Upload&lt;br/&gt;presigned PUT to S3&quot;]
+  S15 --&gt;|&quot;session complete&quot;| S16[&quot;Print&lt;br/&gt;copies per payment&quot;]
+  S16 --&gt; S17[&quot;Success&lt;br/&gt;download QR,&lt;br/&gt;raise-issue action&quot;]
+  S17 --&gt;|&quot;issue raised&quot;| S18[&quot;POST /api/booth/support&lt;br/&gt;ticket created&quot;]
+  S17 --&gt;|&quot;timeout&quot;| S9
+  S18 --&gt; S9
+  S14 --&gt;|&quot;gateway failure&quot;| S19[&quot;Payment error&lt;br/&gt;retry or pay-at-desk&quot;]
+  S19 --&gt; S14
+  S15 --&gt;|&quot;network down&quot;| S20[&quot;Offline queue&lt;br/&gt;retry with backoff&quot;]
+  S20 --&gt; S15</pre></article>
+<article class="card" id="d4-9"><h3><span class="id">D4-9</span>LLD — front-end application structure and route guards</h3><div class=notes><p>Guards are declarative and derive from the same permission keys the API enforces, so a hidden button and a rejected request always agree.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+  subgraph WS[&quot;Website — happypix.in&quot;]
+    W1[&quot;/ Home&quot;]
+    W2[&quot;/booth /software&lt;br/&gt;/hardware&quot;]
+    W3[&quot;/pricing&quot;]
+    W4[&quot;/business /contact&quot;]
+    W5[&quot;/download/:id&lt;br/&gt;guest page&quot;]
+  end
+
+  subgraph CR[&quot;CRM — crm.happypix.in&quot;]
+    L[&quot;/login&quot;]
+    OG{&quot;role guard&lt;br/&gt;permission keys&quot;}
+    O1[&quot;Dashboard&quot;]
+    O2[&quot;Events and devices&quot;]
+    O3[&quot;Revenue and wallet&quot;]
+    O4[&quot;Coupons&quot;]
+    O5[&quot;Gallery&quot;]
+    O6[&quot;Templates and AI&quot;]
+    O7[&quot;Defaults&lt;br/&gt;gateway, UPI, prices&quot;]
+    O8[&quot;Team&quot;]
+    O9[&quot;Support tickets&quot;]
+    O10[&quot;Platform support&quot;]
+    O11[&quot;Audit&quot;]
+    P1[&quot;Organizations&quot;]
+    P2[&quot;Subscription plans&quot;]
+    P3[&quot;Gallery policy&quot;]
+    P4[&quot;Platform team&quot;]
+    P5[&quot;Support queue&quot;]
+    P6[&quot;Global templates&quot;]
+    P7[&quot;Template layouts&quot;]
+    P8[&quot;Website leads&quot;]
+    P9[&quot;Platform audit&quot;]
+  end
+
+  W1 --&gt; W2
+  W1 --&gt; W3
+  W1 --&gt; W4
+  W5 --&gt;|&quot;GET /api/website/downloads/:id&quot;| API[&quot;website-backend&quot;]
+  L --&gt; OG
+  OG --&gt;|&quot;ORG_ADMIN or ORG_MANAGER&quot;| O1
+  OG --&gt; O2
+  OG --&gt; O6
+  OG --&gt; O9
+  OG --&gt;|&quot;ORG_ADMIN only&quot;| O3
+  O3 --&gt; O4
+  O3 --&gt; O8
+  O3 --&gt; O11
+  OG --&gt; O5
+  OG --&gt; O7
+  OG --&gt; O10
+  OG --&gt;|&quot;OWNER, PLATFORM_ADMIN,&lt;br/&gt;SUPPORT_MANAGER&quot;| P1
+  P1 --&gt; P2
+  P1 --&gt; P3
+  P1 --&gt; P5
+  P1 --&gt; P6
+  P1 --&gt; P7
+  P1 --&gt;|&quot;OWNER only&quot;| P4
+  P1 --&gt;|&quot;OWNER only&quot;| P8
+  P1 --&gt; P9
+  O1 --&gt; API2[&quot;Main API&lt;br/&gt;/api/org/*&quot;]
+  P1 --&gt; API3[&quot;Main API&lt;br/&gt;/api/platform/*&quot;]</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d4-9-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-9-raw">flowchart LR
+  subgraph WS[&quot;Website — happypix.in&quot;]
+    W1[&quot;/ Home&quot;]
+    W2[&quot;/booth /software&lt;br/&gt;/hardware&quot;]
+    W3[&quot;/pricing&quot;]
+    W4[&quot;/business /contact&quot;]
+    W5[&quot;/download/:id&lt;br/&gt;guest page&quot;]
+  end
+
+  subgraph CR[&quot;CRM — crm.happypix.in&quot;]
+    L[&quot;/login&quot;]
+    OG{&quot;role guard&lt;br/&gt;permission keys&quot;}
+    O1[&quot;Dashboard&quot;]
+    O2[&quot;Events and devices&quot;]
+    O3[&quot;Revenue and wallet&quot;]
+    O4[&quot;Coupons&quot;]
+    O5[&quot;Gallery&quot;]
+    O6[&quot;Templates and AI&quot;]
+    O7[&quot;Defaults&lt;br/&gt;gateway, UPI, prices&quot;]
+    O8[&quot;Team&quot;]
+    O9[&quot;Support tickets&quot;]
+    O10[&quot;Platform support&quot;]
+    O11[&quot;Audit&quot;]
+    P1[&quot;Organizations&quot;]
+    P2[&quot;Subscription plans&quot;]
+    P3[&quot;Gallery policy&quot;]
+    P4[&quot;Platform team&quot;]
+    P5[&quot;Support queue&quot;]
+    P6[&quot;Global templates&quot;]
+    P7[&quot;Template layouts&quot;]
+    P8[&quot;Website leads&quot;]
+    P9[&quot;Platform audit&quot;]
+  end
+
+  W1 --&gt; W2
+  W1 --&gt; W3
+  W1 --&gt; W4
+  W5 --&gt;|&quot;GET /api/website/downloads/:id&quot;| API[&quot;website-backend&quot;]
+  L --&gt; OG
+  OG --&gt;|&quot;ORG_ADMIN or ORG_MANAGER&quot;| O1
+  OG --&gt; O2
+  OG --&gt; O6
+  OG --&gt; O9
+  OG --&gt;|&quot;ORG_ADMIN only&quot;| O3
+  O3 --&gt; O4
+  O3 --&gt; O8
+  O3 --&gt; O11
+  OG --&gt; O5
+  OG --&gt; O7
+  OG --&gt; O10
+  OG --&gt;|&quot;OWNER, PLATFORM_ADMIN,&lt;br/&gt;SUPPORT_MANAGER&quot;| P1
+  P1 --&gt; P2
+  P1 --&gt; P3
+  P1 --&gt; P5
+  P1 --&gt; P6
+  P1 --&gt; P7
+  P1 --&gt;|&quot;OWNER only&quot;| P4
+  P1 --&gt;|&quot;OWNER only&quot;| P8
+  P1 --&gt; P9
+  O1 --&gt; API2[&quot;Main API&lt;br/&gt;/api/org/*&quot;]
+  P1 --&gt; API3[&quot;Main API&lt;br/&gt;/api/platform/*&quot;]</pre></article>
+</section>
+<section class="family">
+<h2>5 · Future architecture</h2>
+<p class="blurb">The target state at full load and the measurable triggers to get there.</p>
+<article class="card" id="d5-1"><h3><span class="id">D5-1</span>Target architecture at full load — what the system must become</h3><div class=notes><p>This is a destination, not a plan for next quarter. It exists so that today&#x27;s shortcuts are chosen with a known exit: every box here can absorb the same API contract the booths already speak.</p><p>Three structural changes define the jump: the request path becomes stateless containers behind a gateway, post-session work leaves the request path entirely, and photos are served through a CDN instead of the API.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+  subgraph EDGE[&quot;Edge layer&quot;]
+    G1[&quot;Anycast DNS +&lt;br/&gt;TLS termination&quot;]
+    G2[&quot;WAF + bot rules&lt;br/&gt;+ per-tenant quotas&quot;]
+    G3[&quot;CDN for static apps&lt;br/&gt;and signed media&quot;]
+  end
+
+  subgraph CLIENT[&quot;Clients (unchanged contracts)&quot;]
+    C1[&quot;Electron booth&lt;br/&gt;offline-first,&lt;br/&gt;signed config manifests&quot;]
+    C2[&quot;Android booth&quot;]
+    C3[&quot;CRM console&quot;]
+    C4[&quot;Website&quot;]
+    C5[&quot;Guest phone&quot;]
+  end
+
+  subgraph GATE[&quot;API tier — stateless containers, autoscaled&quot;]
+    A1[&quot;api-in · public reads&lt;br/&gt;snapshot, revision, quote&quot;]
+    A2[&quot;api-money · payments&lt;br/&gt;webhooks, settlement&quot;]
+    A3[&quot;api-org · CRM reads and writes&quot;]
+    A4[&quot;api-platform · admin&quot;]
+    A5[&quot;Session cache&lt;br/&gt;Redis&quot;]
+  end
+
+  subgraph BUS[&quot;Asynchronous backbone&quot;]
+    B1[&quot;Event bus&lt;br/&gt;SQS or Kafka&quot;]
+    B2[&quot;Media workers&lt;br/&gt;variants, EXIF strip,&lt;br/&gt;composite verification&quot;]
+    B3[&quot;Notification workers&lt;br/&gt;email, SMS, WhatsApp&quot;]
+    B4[&quot;AI workers&lt;br/&gt;queued generation,&lt;br/&gt;credit ledger&quot;]
+    B5[&quot;Webhook workers&lt;br/&gt;gateway retries,&lt;br/&gt;idempotency keys&quot;]
+    B6[&quot;Report workers&lt;br/&gt;nightly aggregates&quot;]
+  end
+
+  subgraph DATA[&quot;Data tier&quot;]
+    D1[(&quot;MongoDB sharded&lt;br/&gt;by organizationId / region&quot;)]
+    D2[(&quot;Read replicas&lt;br/&gt;per region&quot;)]
+    D3[(&quot;Sessions index&lt;br/&gt;one row per booth session&quot;)]
+    D4[(&quot;S3 with lifecycle&lt;br/&gt;hot, IA, Glacier, delete&quot;)]
+    D5[(&quot;Redis&lt;br/&gt;plans, policy, snapshots&quot;)]
+    D6[(&quot;Warehouse&lt;br/&gt;ClickHouse or BigQuery&quot;)]
+    D7[(&quot;Data lake&lt;br/&gt;S3 + Athena&quot;)]
+  end
+
+  subgraph OPS[&quot;Operations plane&quot;]
+    O1[&quot;OpenTelemetry traces&lt;br/&gt;per request and job&quot;]
+    O2[&quot;Metrics + SLOs&lt;br/&gt;p95, error budget&quot;]
+    O3[&quot;Centralised logs&lt;br/&gt;30 day hot retention&quot;]
+    O4[&quot;Feature flags&lt;br/&gt;per org rollout&quot;]
+    O5[&quot;Secrets manager&lt;br/&gt;KMS envelope encryption&quot;]
+    O6[&quot;Cost attribution&lt;br/&gt;per org: storage, AI, egress&quot;]
+    O7[&quot;Backup and DR&lt;br/&gt;RPO 15 min, RTO 1 h&quot;]
+  end
+
+  subgraph EXT[&quot;Providers&quot;]
+    X1[&quot;Razorpay / Cashfree&lt;br/&gt;route by success rate&quot;]
+    X2[&quot;SendGrid, Twilio,&lt;br/&gt;WhatsApp BSP&quot;]
+    X3[&quot;LLM and image APIs&lt;br/&gt;multi-vendor fallback&quot;]
+  end
+
+  C1 --&gt; G1
+  C2 --&gt; G1
+  C3 --&gt; G1
+  C4 --&gt; G1
+  C5 --&gt; G1
+  G1 --&gt; G2
+  G2 --&gt; A1
+  G2 --&gt; A2
+  G2 --&gt; A3
+  G2 --&gt; A4
+  G3 --&gt; C5
+  G3 --&gt; C3
+  A1 --&gt; A5
+  A2 --&gt; A5
+  A3 --&gt; A5
+  A1 --&gt; D1
+  A2 --&gt; D1
+  A3 --&gt; D1
+  A4 --&gt; D1
+  D1 --&gt; D2
+  D1 --&gt; D3
+  A1 --&gt; G3
+  A2 --&gt; B1
+  A3 --&gt; B1
+  B1 --&gt; B2
+  B1 --&gt; B3
+  B1 --&gt; B4
+  B1 --&gt; B5
+  B1 --&gt; B6
+  B2 --&gt; D4
+  B2 --&gt; D3
+  B3 --&gt; X2
+  B4 --&gt; X3
+  B5 --&gt; X1
+  B6 --&gt; D6
+  D4 --&gt; D7
+  D3 --&gt; D6
+  A1 --&gt; O1
+  A2 --&gt; O1
+  B2 --&gt; O1
+  O1 --&gt; O2
+  O1 --&gt; O3
+  A1 --&gt; O4
+  A2 --&gt; O5
+  D4 --&gt; O6
+  D1 --&gt; O7
+  X1 --&gt;|&quot;webhook&quot;| A2
+  B5 --&gt;|&quot;retry with&lt;br/&gt;idempotency&quot;| X1</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d5-1-raw">Show source</button><span class="src">docs/diagrams/src/05-future.mmd</span></div><pre class="raw" id="d5-1-raw">flowchart TB
+  subgraph EDGE[&quot;Edge layer&quot;]
+    G1[&quot;Anycast DNS +&lt;br/&gt;TLS termination&quot;]
+    G2[&quot;WAF + bot rules&lt;br/&gt;+ per-tenant quotas&quot;]
+    G3[&quot;CDN for static apps&lt;br/&gt;and signed media&quot;]
+  end
+
+  subgraph CLIENT[&quot;Clients (unchanged contracts)&quot;]
+    C1[&quot;Electron booth&lt;br/&gt;offline-first,&lt;br/&gt;signed config manifests&quot;]
+    C2[&quot;Android booth&quot;]
+    C3[&quot;CRM console&quot;]
+    C4[&quot;Website&quot;]
+    C5[&quot;Guest phone&quot;]
+  end
+
+  subgraph GATE[&quot;API tier — stateless containers, autoscaled&quot;]
+    A1[&quot;api-in · public reads&lt;br/&gt;snapshot, revision, quote&quot;]
+    A2[&quot;api-money · payments&lt;br/&gt;webhooks, settlement&quot;]
+    A3[&quot;api-org · CRM reads and writes&quot;]
+    A4[&quot;api-platform · admin&quot;]
+    A5[&quot;Session cache&lt;br/&gt;Redis&quot;]
+  end
+
+  subgraph BUS[&quot;Asynchronous backbone&quot;]
+    B1[&quot;Event bus&lt;br/&gt;SQS or Kafka&quot;]
+    B2[&quot;Media workers&lt;br/&gt;variants, EXIF strip,&lt;br/&gt;composite verification&quot;]
+    B3[&quot;Notification workers&lt;br/&gt;email, SMS, WhatsApp&quot;]
+    B4[&quot;AI workers&lt;br/&gt;queued generation,&lt;br/&gt;credit ledger&quot;]
+    B5[&quot;Webhook workers&lt;br/&gt;gateway retries,&lt;br/&gt;idempotency keys&quot;]
+    B6[&quot;Report workers&lt;br/&gt;nightly aggregates&quot;]
+  end
+
+  subgraph DATA[&quot;Data tier&quot;]
+    D1[(&quot;MongoDB sharded&lt;br/&gt;by organizationId / region&quot;)]
+    D2[(&quot;Read replicas&lt;br/&gt;per region&quot;)]
+    D3[(&quot;Sessions index&lt;br/&gt;one row per booth session&quot;)]
+    D4[(&quot;S3 with lifecycle&lt;br/&gt;hot, IA, Glacier, delete&quot;)]
+    D5[(&quot;Redis&lt;br/&gt;plans, policy, snapshots&quot;)]
+    D6[(&quot;Warehouse&lt;br/&gt;ClickHouse or BigQuery&quot;)]
+    D7[(&quot;Data lake&lt;br/&gt;S3 + Athena&quot;)]
+  end
+
+  subgraph OPS[&quot;Operations plane&quot;]
+    O1[&quot;OpenTelemetry traces&lt;br/&gt;per request and job&quot;]
+    O2[&quot;Metrics + SLOs&lt;br/&gt;p95, error budget&quot;]
+    O3[&quot;Centralised logs&lt;br/&gt;30 day hot retention&quot;]
+    O4[&quot;Feature flags&lt;br/&gt;per org rollout&quot;]
+    O5[&quot;Secrets manager&lt;br/&gt;KMS envelope encryption&quot;]
+    O6[&quot;Cost attribution&lt;br/&gt;per org: storage, AI, egress&quot;]
+    O7[&quot;Backup and DR&lt;br/&gt;RPO 15 min, RTO 1 h&quot;]
+  end
+
+  subgraph EXT[&quot;Providers&quot;]
+    X1[&quot;Razorpay / Cashfree&lt;br/&gt;route by success rate&quot;]
+    X2[&quot;SendGrid, Twilio,&lt;br/&gt;WhatsApp BSP&quot;]
+    X3[&quot;LLM and image APIs&lt;br/&gt;multi-vendor fallback&quot;]
+  end
+
+  C1 --&gt; G1
+  C2 --&gt; G1
+  C3 --&gt; G1
+  C4 --&gt; G1
+  C5 --&gt; G1
+  G1 --&gt; G2
+  G2 --&gt; A1
+  G2 --&gt; A2
+  G2 --&gt; A3
+  G2 --&gt; A4
+  G3 --&gt; C5
+  G3 --&gt; C3
+  A1 --&gt; A5
+  A2 --&gt; A5
+  A3 --&gt; A5
+  A1 --&gt; D1
+  A2 --&gt; D1
+  A3 --&gt; D1
+  A4 --&gt; D1
+  D1 --&gt; D2
+  D1 --&gt; D3
+  A1 --&gt; G3
+  A2 --&gt; B1
+  A3 --&gt; B1
+  B1 --&gt; B2
+  B1 --&gt; B3
+  B1 --&gt; B4
+  B1 --&gt; B5
+  B1 --&gt; B6
+  B2 --&gt; D4
+  B2 --&gt; D3
+  B3 --&gt; X2
+  B4 --&gt; X3
+  B5 --&gt; X1
+  B6 --&gt; D6
+  D4 --&gt; D7
+  D3 --&gt; D6
+  A1 --&gt; O1
+  A2 --&gt; O1
+  B2 --&gt; O1
+  O1 --&gt; O2
+  O1 --&gt; O3
+  A1 --&gt; O4
+  A2 --&gt; O5
+  D4 --&gt; O6
+  D1 --&gt; O7
+  X1 --&gt;|&quot;webhook&quot;| A2
+  B5 --&gt;|&quot;retry with&lt;br/&gt;idempotency&quot;| X1</pre></article>
+<article class="card" id="d5-2"><h3><span class="id">D5-2</span>Migration roadmap — when each change becomes necessary</h3><div class=notes><p>Each stage is entered by a measurable trigger, not by a date. If the trigger has not fired, the change is premature and adds cost without removing risk.</p><p>Stage 4 is a different company shape (multi-region, dedicated platform team); the honest answer for a single founder is to stop at stage 3 and sell depth instead of volume.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+  subgraph NOW[&quot;Today — single region, single API&quot;]
+    N1[&quot;Vercel serverless&lt;br/&gt;3 SPA projects&quot;]
+    N2[&quot;MongoDB Atlas&lt;br/&gt;single replica set&quot;]
+    N3[&quot;S3 private bucket&lt;br/&gt;no lifecycle&quot;]
+    N4[&quot;In-process caches&lt;br/&gt;and hourly cron&quot;]
+    N5[&quot;Manual deploys,&lt;br/&gt;no staging&quot;]
+  end
+
+  subgraph S1[&quot;Stage 1 — 10,000 orgs&quot;]
+    A1[&quot;Add S3 lifecycle&lt;br/&gt;and image variants&quot;]
+    A2[&quot;Mongo M40 + alerts&lt;br/&gt;+ restore drills&quot;]
+    A3[&quot;Error tracking and&lt;br/&gt;structured logs&quot;]
+    A4[&quot;CI: typecheck, lint,&lt;br/&gt;backend test suite&quot;]
+    A5[&quot;Staging environment&lt;br/&gt;with separate bucket&quot;]
+  end
+
+  subgraph S2[&quot;Stage 2 — 100,000 orgs&quot;]
+    B1[&quot;Redis for plans,&lt;br/&gt;policy, snapshots&quot;]
+    B2[&quot;Sessions index&lt;br/&gt;one row per session&quot;]
+    B3[&quot;Queue for media,&lt;br/&gt;notifications, AI&quot;]
+    B4[&quot;CDN in front of S3&quot;]
+    B5[&quot;Heartbeat coalescing&lt;br/&gt;60 s per device&quot;]
+    B6[&quot;Per-org cost&lt;br/&gt;attribution&quot;]
+  end
+
+  subgraph S3[&quot;Stage 3 — 1,000,000 orgs&quot;]
+    C1[&quot;Containers instead&lt;br/&gt;of serverless&quot;]
+    C2[&quot;Shard by tenant&lt;br/&gt;region&quot;]
+    C3[&quot;Read replicas and&lt;br/&gt;read-preference routing&quot;]
+    C4[&quot;Warehouse for&lt;br/&gt;revenue and usage&quot;]
+    C5[&quot;Multi-gateway routing&lt;br/&gt;by success rate&quot;]
+    C6[&quot;SLOs and error&lt;br/&gt;budgets per service&quot;]
+  end
+
+  subgraph S4[&quot;Stage 4 — 10,000,000 orgs&quot;]
+    D1[&quot;Multi-region active&lt;br/&gt;active with data residency&quot;]
+    D2[&quot;Event-sourced&lt;br/&gt;payment ledger&quot;]
+    D3[&quot;Dedicated media&lt;br/&gt;pipeline with GPU pool&quot;]
+    D4[&quot;Self-serve onboarding&lt;br/&gt;and billing automation&quot;]
+    D5[&quot;Security certifications&lt;br/&gt;SOC 2, ISO 27001&quot;]
+  end
+
+  T1{&quot;Trigger:&lt;br/&gt;p95 &gt; 800 ms&lt;br/&gt;or DB CPU &gt; 60 %&quot;}
+  T2{&quot;Trigger:&lt;br/&gt;storage &gt; 5 TB&lt;br/&gt;or egress &gt; 20 TB/mo&quot;}
+  T3{&quot;Trigger:&lt;br/&gt;booths &gt; 2,000&lt;br/&gt;or 429s appear&quot;}
+  T4{&quot;Trigger:&lt;br/&gt;regions &gt; 2&lt;br/&gt;or p95 cross-region &gt; 300 ms&quot;}
+
+  NOW --&gt; T1
+  T1 --&gt;|&quot;yes&quot;| S1
+  S1 --&gt; T2
+  T2 --&gt;|&quot;yes&quot;| S2
+  S2 --&gt; T3
+  T3 --&gt;|&quot;yes&quot;| S3
+  S3 --&gt; T4
+  T4 --&gt;|&quot;yes&quot;| S4</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d5-2-raw">Show source</button><span class="src">docs/diagrams/src/05-future.mmd</span></div><pre class="raw" id="d5-2-raw">flowchart LR
+  subgraph NOW[&quot;Today — single region, single API&quot;]
+    N1[&quot;Vercel serverless&lt;br/&gt;3 SPA projects&quot;]
+    N2[&quot;MongoDB Atlas&lt;br/&gt;single replica set&quot;]
+    N3[&quot;S3 private bucket&lt;br/&gt;no lifecycle&quot;]
+    N4[&quot;In-process caches&lt;br/&gt;and hourly cron&quot;]
+    N5[&quot;Manual deploys,&lt;br/&gt;no staging&quot;]
+  end
+
+  subgraph S1[&quot;Stage 1 — 10,000 orgs&quot;]
+    A1[&quot;Add S3 lifecycle&lt;br/&gt;and image variants&quot;]
+    A2[&quot;Mongo M40 + alerts&lt;br/&gt;+ restore drills&quot;]
+    A3[&quot;Error tracking and&lt;br/&gt;structured logs&quot;]
+    A4[&quot;CI: typecheck, lint,&lt;br/&gt;backend test suite&quot;]
+    A5[&quot;Staging environment&lt;br/&gt;with separate bucket&quot;]
+  end
+
+  subgraph S2[&quot;Stage 2 — 100,000 orgs&quot;]
+    B1[&quot;Redis for plans,&lt;br/&gt;policy, snapshots&quot;]
+    B2[&quot;Sessions index&lt;br/&gt;one row per session&quot;]
+    B3[&quot;Queue for media,&lt;br/&gt;notifications, AI&quot;]
+    B4[&quot;CDN in front of S3&quot;]
+    B5[&quot;Heartbeat coalescing&lt;br/&gt;60 s per device&quot;]
+    B6[&quot;Per-org cost&lt;br/&gt;attribution&quot;]
+  end
+
+  subgraph S3[&quot;Stage 3 — 1,000,000 orgs&quot;]
+    C1[&quot;Containers instead&lt;br/&gt;of serverless&quot;]
+    C2[&quot;Shard by tenant&lt;br/&gt;region&quot;]
+    C3[&quot;Read replicas and&lt;br/&gt;read-preference routing&quot;]
+    C4[&quot;Warehouse for&lt;br/&gt;revenue and usage&quot;]
+    C5[&quot;Multi-gateway routing&lt;br/&gt;by success rate&quot;]
+    C6[&quot;SLOs and error&lt;br/&gt;budgets per service&quot;]
+  end
+
+  subgraph S4[&quot;Stage 4 — 10,000,000 orgs&quot;]
+    D1[&quot;Multi-region active&lt;br/&gt;active with data residency&quot;]
+    D2[&quot;Event-sourced&lt;br/&gt;payment ledger&quot;]
+    D3[&quot;Dedicated media&lt;br/&gt;pipeline with GPU pool&quot;]
+    D4[&quot;Self-serve onboarding&lt;br/&gt;and billing automation&quot;]
+    D5[&quot;Security certifications&lt;br/&gt;SOC 2, ISO 27001&quot;]
+  end
+
+  T1{&quot;Trigger:&lt;br/&gt;p95 &gt; 800 ms&lt;br/&gt;or DB CPU &gt; 60 %&quot;}
+  T2{&quot;Trigger:&lt;br/&gt;storage &gt; 5 TB&lt;br/&gt;or egress &gt; 20 TB/mo&quot;}
+  T3{&quot;Trigger:&lt;br/&gt;booths &gt; 2,000&lt;br/&gt;or 429s appear&quot;}
+  T4{&quot;Trigger:&lt;br/&gt;regions &gt; 2&lt;br/&gt;or p95 cross-region &gt; 300 ms&quot;}
+
+  NOW --&gt; T1
+  T1 --&gt;|&quot;yes&quot;| S1
+  S1 --&gt; T2
+  T2 --&gt;|&quot;yes&quot;| S2
+  S2 --&gt; T3
+  T3 --&gt;|&quot;yes&quot;| S3
+  S3 --&gt; T4
+  T4 --&gt;|&quot;yes&quot;| S4</pre></article>
+</section>
+
+    <footer>
+      Generated by <code>docs/scripts/build_diagrams.py</code> · notation guide and per-diagram notes live in
+      <code>docs/DIAGRAMS.md</code> · last build 2026-10-25.
+    </footer>
+  </main>
+</div>
+
+<script type="module">
+  const CDN = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+  // ── theme ──────────────────────────────────────────────────────────
+  const root = document.documentElement;
+  const savedTheme = localStorage.getItem('hp-diagram-theme');
+  if (savedTheme) root.dataset.theme = savedTheme;
+  document.getElementById('theme').addEventListener('click', () => {
+    root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('hp-diagram-theme', root.dataset.theme);
+    location.reload();
+  });
+
+  // ── wide mode ──────────────────────────────────────────────────────
+  document.getElementById('expand').addEventListener('click', () => {
+    const main = document.querySelector('main');
+    const wide = main.style.maxWidth === 'none';
+    main.style.maxWidth = wide ? '1500px' : 'none';
+    document.querySelectorAll('.canvas svg').forEach((svg) => { svg.style.maxWidth = wide ? '100%' : 'none'; });
+  });
+
+  // ── filter ─────────────────────────────────────────────────────────
+  const search = document.getElementById('search');
+  const links = [...document.querySelectorAll('#nav a')];
+  const cards = [...document.querySelectorAll('article.card')];
+  const families = [...document.querySelectorAll('section.family')];
+  function filter(term) {
+    const q = term.trim().toLowerCase();
+    links.forEach((a) => a.classList.toggle('hide', q && !a.textContent.toLowerCase().includes(q)));
+    cards.forEach((c) => c.toggleAttribute('hidden', !!q && !c.textContent.toLowerCase().includes(q)));
+    families.forEach((f) => f.toggleAttribute('hidden', !f.querySelector('article.card:not([hidden])')));
+  }
+  search.addEventListener('input', (e) => filter(e.target.value));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); }
+    if (e.key === 'Escape') { search.value = ''; filter(''); search.blur(); }
+  });
+
+  // ── show source ────────────────────────────────────────────────────
+  document.querySelectorAll('[data-raw]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const pre = document.getElementById(btn.dataset.raw);
+      pre.classList.toggle('show');
+      btn.textContent = pre.classList.contains('show') ? 'Hide source' : 'Show source';
+    });
+  });
+
+  // ── render ─────────────────────────────────────────────────────────
+  try {
+    const { default: mermaid } = await import(CDN);
+    const dark = root.dataset.theme !== 'light';
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      fontFamily: 'ui-sans-serif, -apple-system, Segoe UI, Inter, Roboto, sans-serif',
+      themeVariables: dark
+        ? { background: '#12101a', primaryColor: '#221e2e', primaryTextColor: '#ece9f2',
+            primaryBorderColor: '#4a4159', lineColor: '#8a8199', secondaryColor: '#1a1724',
+            tertiaryColor: '#1a1724', mainBkg: '#221e2e', nodeBorder: '#4a4159',
+            clusterBkg: '#1a1724', clusterBorder: '#332d42', titleColor: '#d9b44a',
+            edgeLabelBackground: '#12101a', textColor: '#ece9f2' }
+        : { background: '#fbfaf6', primaryColor: '#ffffff', primaryTextColor: '#1b1822',
+            primaryBorderColor: '#ded8ca', lineColor: '#6a6474', secondaryColor: '#f1eee7',
+            tertiaryColor: '#f1eee7', mainBkg: '#ffffff', nodeBorder: '#ded8ca',
+            clusterBkg: '#f1eee7', clusterBorder: '#ded8ca', titleColor: '#9a7b18',
+            edgeLabelBackground: '#fbfaf6', textColor: '#1b1822' },
+      flowchart: { htmlLabels: true, curve: 'basis', padding: 12, nodeSpacing: 42, rankSpacing: 52 },
+      er: { minEntityWidth: 110, minEntityHeight: 40, entityPadding: 14, useMaxWidth: true },
+      sequence: { useMaxWidth: true, wrap: true, width: 190 },
+    });
+    await mermaid.run({ querySelector: 'div.mermaid' });
+    document.getElementById('fallback').hidden = true;
+  } catch (err) {
+    console.error('Mermaid failed to load:', err);
+    document.getElementById('fallback').hidden = false;
+    document.querySelectorAll('div.mermaid').forEach((d) => {
+      d.classList.remove('mermaid');
+      d.innerHTML = '<pre style="white-space:pre;overflow:auto;font-size:12px;color:#a29bb4">'
+        + d.textContent.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])) + '</pre>';
+    });
+  }
+</script>
+</body>
+</html>

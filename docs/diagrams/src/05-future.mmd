@@ -1,0 +1,169 @@
+%%@ d5-1 :: Target architecture at full load — what the system must become
+%%@ note: This is a destination, not a plan for next quarter. It exists so that today's shortcuts are chosen with a known exit: every box here can absorb the same API contract the booths already speak.
+%%@ note: Three structural changes define the jump: the request path becomes stateless containers behind a gateway, post-session work leaves the request path entirely, and photos are served through a CDN instead of the API.
+flowchart TB
+  subgraph EDGE["Edge layer"]
+    G1["Anycast DNS +<br/>TLS termination"]
+    G2["WAF + bot rules<br/>+ per-tenant quotas"]
+    G3["CDN for static apps<br/>and signed media"]
+  end
+
+  subgraph CLIENT["Clients (unchanged contracts)"]
+    C1["Electron booth<br/>offline-first,<br/>signed config manifests"]
+    C2["Android booth"]
+    C3["CRM console"]
+    C4["Website"]
+    C5["Guest phone"]
+  end
+
+  subgraph GATE["API tier — stateless containers, autoscaled"]
+    A1["api-in · public reads<br/>snapshot, revision, quote"]
+    A2["api-money · payments<br/>webhooks, settlement"]
+    A3["api-org · CRM reads and writes"]
+    A4["api-platform · admin"]
+    A5["Session cache<br/>Redis"]
+  end
+
+  subgraph BUS["Asynchronous backbone"]
+    B1["Event bus<br/>SQS or Kafka"]
+    B2["Media workers<br/>variants, EXIF strip,<br/>composite verification"]
+    B3["Notification workers<br/>email, SMS, WhatsApp"]
+    B4["AI workers<br/>queued generation,<br/>credit ledger"]
+    B5["Webhook workers<br/>gateway retries,<br/>idempotency keys"]
+    B6["Report workers<br/>nightly aggregates"]
+  end
+
+  subgraph DATA["Data tier"]
+    D1[("MongoDB sharded<br/>by organizationId / region")]
+    D2[("Read replicas<br/>per region")]
+    D3[("Sessions index<br/>one row per booth session")]
+    D4[("S3 with lifecycle<br/>hot, IA, Glacier, delete")]
+    D5[("Redis<br/>plans, policy, snapshots")]
+    D6[("Warehouse<br/>ClickHouse or BigQuery")]
+    D7[("Data lake<br/>S3 + Athena")]
+  end
+
+  subgraph OPS["Operations plane"]
+    O1["OpenTelemetry traces<br/>per request and job"]
+    O2["Metrics + SLOs<br/>p95, error budget"]
+    O3["Centralised logs<br/>30 day hot retention"]
+    O4["Feature flags<br/>per org rollout"]
+    O5["Secrets manager<br/>KMS envelope encryption"]
+    O6["Cost attribution<br/>per org: storage, AI, egress"]
+    O7["Backup and DR<br/>RPO 15 min, RTO 1 h"]
+  end
+
+  subgraph EXT["Providers"]
+    X1["Razorpay / Cashfree<br/>route by success rate"]
+    X2["SendGrid, Twilio,<br/>WhatsApp BSP"]
+    X3["LLM and image APIs<br/>multi-vendor fallback"]
+  end
+
+  C1 --> G1
+  C2 --> G1
+  C3 --> G1
+  C4 --> G1
+  C5 --> G1
+  G1 --> G2
+  G2 --> A1
+  G2 --> A2
+  G2 --> A3
+  G2 --> A4
+  G3 --> C5
+  G3 --> C3
+  A1 --> A5
+  A2 --> A5
+  A3 --> A5
+  A1 --> D1
+  A2 --> D1
+  A3 --> D1
+  A4 --> D1
+  D1 --> D2
+  D1 --> D3
+  A1 --> G3
+  A2 --> B1
+  A3 --> B1
+  B1 --> B2
+  B1 --> B3
+  B1 --> B4
+  B1 --> B5
+  B1 --> B6
+  B2 --> D4
+  B2 --> D3
+  B3 --> X2
+  B4 --> X3
+  B5 --> X1
+  B6 --> D6
+  D4 --> D7
+  D3 --> D6
+  A1 --> O1
+  A2 --> O1
+  B2 --> O1
+  O1 --> O2
+  O1 --> O3
+  A1 --> O4
+  A2 --> O5
+  D4 --> O6
+  D1 --> O7
+  X1 -->|"webhook"| A2
+  B5 -->|"retry with<br/>idempotency"| X1
+
+%%@ d5-2 :: Migration roadmap — when each change becomes necessary
+%%@ note: Each stage is entered by a measurable trigger, not by a date. If the trigger has not fired, the change is premature and adds cost without removing risk.
+%%@ note: Stage 4 is a different company shape (multi-region, dedicated platform team); the honest answer for a single founder is to stop at stage 3 and sell depth instead of volume.
+flowchart LR
+  subgraph NOW["Today — single region, single API"]
+    N1["Vercel serverless<br/>3 SPA projects"]
+    N2["MongoDB Atlas<br/>single replica set"]
+    N3["S3 private bucket<br/>no lifecycle"]
+    N4["In-process caches<br/>and hourly cron"]
+    N5["Manual deploys,<br/>no staging"]
+  end
+
+  subgraph S1["Stage 1 — 10,000 orgs"]
+    A1["Add S3 lifecycle<br/>and image variants"]
+    A2["Mongo M40 + alerts<br/>+ restore drills"]
+    A3["Error tracking and<br/>structured logs"]
+    A4["CI: typecheck, lint,<br/>backend test suite"]
+    A5["Staging environment<br/>with separate bucket"]
+  end
+
+  subgraph S2["Stage 2 — 100,000 orgs"]
+    B1["Redis for plans,<br/>policy, snapshots"]
+    B2["Sessions index<br/>one row per session"]
+    B3["Queue for media,<br/>notifications, AI"]
+    B4["CDN in front of S3"]
+    B5["Heartbeat coalescing<br/>60 s per device"]
+    B6["Per-org cost<br/>attribution"]
+  end
+
+  subgraph S3["Stage 3 — 1,000,000 orgs"]
+    C1["Containers instead<br/>of serverless"]
+    C2["Shard by tenant<br/>region"]
+    C3["Read replicas and<br/>read-preference routing"]
+    C4["Warehouse for<br/>revenue and usage"]
+    C5["Multi-gateway routing<br/>by success rate"]
+    C6["SLOs and error<br/>budgets per service"]
+  end
+
+  subgraph S4["Stage 4 — 10,000,000 orgs"]
+    D1["Multi-region active<br/>active with data residency"]
+    D2["Event-sourced<br/>payment ledger"]
+    D3["Dedicated media<br/>pipeline with GPU pool"]
+    D4["Self-serve onboarding<br/>and billing automation"]
+    D5["Security certifications<br/>SOC 2, ISO 27001"]
+  end
+
+  T1{"Trigger:<br/>p95 > 800 ms<br/>or DB CPU > 60 %"}
+  T2{"Trigger:<br/>storage > 5 TB<br/>or egress > 20 TB/mo"}
+  T3{"Trigger:<br/>booths > 2,000<br/>or 429s appear"}
+  T4{"Trigger:<br/>regions > 2<br/>or p95 cross-region > 300 ms"}
+
+  NOW --> T1
+  T1 -->|"yes"| S1
+  S1 --> T2
+  T2 -->|"yes"| S2
+  S2 --> T3
+  T3 -->|"yes"| S3
+  S3 --> T4
+  T4 -->|"yes"| S4

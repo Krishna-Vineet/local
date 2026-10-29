@@ -112,7 +112,7 @@ function formatFriendlyPrintError(rawError?: string | null): string {
  * (filter, text, logo, stickers) is present in the bitmap by construction
  * rather than by a second implementation agreeing with the first.
  */
-async function renderSessionComposite(session: BoothSession): Promise<string | undefined> {
+export async function renderSessionComposite(session: BoothSession): Promise<string | undefined> {
   if (!session.template) return undefined;
   if (!renderAdapterReady) {
     renderEngine.setAdapter(new SkiaRenderAdapter());
@@ -126,7 +126,12 @@ async function renderSessionComposite(session: BoothSession): Promise<string | u
 
   const output = await renderEngine.compose({
     template: printTemplate,
-    photos: (session.selectedPhotos || []) as any,
+    // The preview also accepts a dataUrl-only photo; normalize it here so the
+    // final composite cannot silently omit a photo that the guest saw on screen.
+    photos: (session.selectedPhotos || []).map((photo) => ({
+      ...photo,
+      uri: photo.uri || photo.dataUrl || '',
+    })) as any,
     spec,
   });
   return output.bitmap;
@@ -788,10 +793,10 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       : `/download/${encodeURIComponent(currentSession.id)}`;
     let shareUrl: string | null = null;
     const eventId = snapshotRef.current?.event?.id || undefined;
-    const requireConsent = snapshotRef.current?.settings?.requireGuestConsent === true;
-    const effectiveConsent = requireConsent
-      ? (currentSession.customization?.guestConsent ?? true)
-      : true;
+    // Respect the guest's Yes/No choice for every gallery upload. The
+    // `requireGuestConsent` setting controls whether the booth must ask; it must
+    // never turn an explicit No into consent.
+    const effectiveConsent = currentSession.customization?.guestConsent ?? true;
 
     try {
       shareUrl = await uploadBoothSession(inst, currentSession, compositeUrl, eventId, effectiveConsent);
@@ -867,10 +872,7 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       : `/download/${encodeURIComponent(currentSession.id)}`;
     try {
       const eventId = snapshotRef.current?.event?.id || undefined;
-      const requireConsent = snapshotRef.current?.settings?.requireGuestConsent === true;
-      const effectiveConsent = requireConsent
-        ? (currentSession.customization?.guestConsent ?? true)
-        : true;
+      const effectiveConsent = currentSession.customization?.guestConsent ?? true;
       const compositeUrl = await renderSessionComposite(currentSession).catch(() => undefined);
       const shareUrl = await uploadBoothSession(inst, currentSession, compositeUrl, eventId, effectiveConsent);
       setOutcome((prev) => prev && { ...prev, shareUrl: shareUrl || prev.shareUrl || guaranteedShareUrl });

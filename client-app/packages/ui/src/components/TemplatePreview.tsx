@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { Image, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import type { BoothTemplate, CapturedPhoto, Customization } from '@happypix/types';
 import { TemplateCanvas } from './TemplateCanvas';
 
@@ -21,6 +21,8 @@ export interface TemplatePreviewProps {
   template: BoothTemplate;
   photos?: CapturedPhoto[];
   customization?: Customization;
+  /** Optional bitmap rendered by the exact printer composite pipeline. */
+  printBitmapUri?: string | null;
   style?: StyleProp<ViewStyle>;
   /** hard cap per axis; the canvas still shrinks to fit the measured box */
   maxWidth?: number;
@@ -38,6 +40,7 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({
   template,
   photos,
   customization,
+  printBitmapUri,
   style,
   maxWidth,
   maxHeight,
@@ -71,16 +74,25 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({
     >
       {width > 1 && height > 1 ? (
         <View style={[styles.frame, { width, height }, radius ? { borderRadius: radius } : null]}>
-          <TemplateCanvas
-            template={template}
-            photos={photos}
-            customization={customization}
-            interactiveSlot={interactiveSlot}
-            activeSlotIndex={activeSlotIndex}
-            renderStickers={renderStickers}
-            containerWidth={width}
-            style={{ width, height, borderRadius: radius ?? 0 }}
-          />
+          {printBitmapUri ? (
+            <Image
+              source={{ uri: printBitmapUri }}
+              style={[StyleSheet.absoluteFill, { width, height, borderRadius: radius ?? 0 }]}
+              resizeMode="stretch"
+              accessibilityLabel="Preview of the exact print output"
+            />
+          ) : (
+            <TemplateCanvas
+              template={template}
+              photos={photos}
+              customization={customization}
+              interactiveSlot={interactiveSlot}
+              activeSlotIndex={activeSlotIndex}
+              renderStickers={renderStickers}
+              containerWidth={width}
+              style={{ width, height, borderRadius: radius ?? 0 }}
+            />
+          )}
           {overlay ? (
             // box-none: the layer may hold draggable stickers, but must not
             // swallow taps meant for the slots underneath.

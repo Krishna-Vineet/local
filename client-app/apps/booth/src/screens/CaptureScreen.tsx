@@ -79,7 +79,7 @@ const CanonLiveView: React.FC<{ isFocused: boolean; onReady: () => void }> = ({ 
 
 export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useAppTheme();
-  const { session, updateSession, setIdleTimerEnabled } = useBooth();
+  const { session, updateSession, setIdleTimerEnabled, secondsLeft, resetIdleTimer } = useBooth();
   const template = session.template;
 
   const { width, height } = useWindowDimensions();
@@ -108,10 +108,12 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const totalShots = Math.max(3, Math.min(10, slots * 2));
 
   useEffect(() => {
-    // Explicitly disable idle timer on camera screen
+    // Keep the safety countdown visible in the header, but do not expire an
+    // unattended camera sequence while the booth is automatically capturing.
+    resetIdleTimer();
     setIdleTimerEnabled(false);
     return () => setIdleTimerEnabled(false);
-  }, []);
+  }, [resetIdleTimer, setIdleTimerEnabled]);
 
   useEffect(() => {
     if (!hasPermission) {
@@ -204,18 +206,11 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const total = Math.max(1, totalShots);
   // `countdown-flash` font: clamp(90px, 16vw, 230px)
   const countdownSize = Math.max(90, Math.min(230, width * 0.16));
-  // Electron lays the reel out as a 2-column grid that scrolls, and as one
-  // horizontal strip under the viewfinder in portrait. Building explicit rows
-  // (instead of `flexWrap`) is what lets each row share the column height, so a
-  // 4-shot session fills the reel instead of leaving a dead rectangle below it.
-  const reelRows: number[][] = [];
-  if (isLandscape) {
-    for (let i = 0; i < totalShots; i += 2) {
-      reelRows.push([i, i + 1].filter((n) => n < totalShots));
-    }
-  } else {
-    reelRows.push(Array.from({ length: totalShots }, (_, i) => i));
-  }
+  // Fit every square into a single vertical film column without making the
+  // camera screen itself scroll. Reserve room for the app header, HUD, rebates,
+  // reel label and padding; long sessions simply get smaller frames.
+  const reelCellSize = Math.max(scale(30), Math.min(scale(170), (height - verticalScale(300)) / totalShots));
+  const reelRows: number[][] = Array.from({ length: totalShots }, (_, i) => [i]);
 
   /** `.film-cell:before/:after` — a strip of sprocket holes. */
   const Sprocket = ({ at }: { at: 'top' | 'bottom' }) => (
@@ -227,7 +222,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   );
 
   return (
-    <AppShell night step="camera" bleed stretch testID="camera-screen">
+    <AppShell night step="camera" secondsLeft={secondsLeft} bleed stretch testID="camera-screen">
       <View style={[styles.container, { paddingHorizontal: Math.max(14, Math.min(32, width * 0.022)) }]}>
         {/* `.camera-hud` — hardware state left, capture progress right */}
         <View style={styles.hud}>
@@ -254,10 +249,10 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
         </View>
 
         {/* `.camera-workspace` — film reel column (landscape) / strip (portrait) + viewfinder */}
-        <View style={[styles.workspace, !isLandscape && styles.workspaceStacked]}>
-          <View style={[styles.filmReel, !isLandscape && styles.filmReelStacked]}>
+        <View style={styles.workspace}>
+          <View style={styles.filmReel}>
             <Text style={styles.filmLabel}>YOUR SHOTS</Text>
-            <View style={[styles.filmTrack, !isLandscape && styles.filmTrackStacked]}>
+            <View style={styles.filmTrack}>
               {reelRows.map((row, rowIndex) => (
                 <View key={rowIndex} style={styles.filmRow}>
                   {row.map((i) => {
@@ -266,7 +261,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
                     return (
                       <View
                         key={i}
-                        style={[styles.filmCell, isCurrent && styles.filmCellCurrent]}
+                        style={[styles.filmCell, { width: reelCellSize, height: reelCellSize }, isCurrent && styles.filmCellCurrent]}
                       >
                         <Sprocket at="top" />
                         {photo ? (
@@ -422,11 +417,10 @@ const styles = StyleSheet.create(withKioskFonts({
     flexDirection: 'row',
     gap: Math.max(15, Math.min(30, scale(24))),
   },
-  workspaceStacked: { flexDirection: 'column' },
 
   /* `.film-reel` */
   filmReel: {
-    width: Math.max(145, Math.min(scale(190), 200)),
+    width: Math.max(128, Math.min(scale(190), 200)),
     paddingVertical: verticalScale(19),
     paddingHorizontal: scale(12),
     borderRadius: 8,
@@ -435,7 +429,6 @@ const styles = StyleSheet.create(withKioskFonts({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
   },
-  filmReelStacked: { width: '100%', height: verticalScale(118), paddingVertical: verticalScale(10) },
   filmLabel: {
     marginBottom: verticalScale(11),
     textAlign: 'center',
@@ -444,13 +437,11 @@ const styles = StyleSheet.create(withKioskFonts({
     letterSpacing: 1.3,
     color: '#c98443',
   },
-  filmTrack: { flex: 1, flexDirection: 'column', gap: scale(9) },
-  filmTrackStacked: { flexDirection: 'column' },
-  filmRow: { flex: 1, flexDirection: 'row', gap: scale(9), minHeight: 0 },
+  filmTrack: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'space-around' },
+  filmRow: { width: '100%', flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 0 },
   filmCell: {
-    // One frame; the row it sits in owns the height so the reel always fills.
-    flex: 1,
-    minHeight: verticalScale(72),
+    // Electron's thumbnails are square; keep each shot in its own column.
+    aspectRatio: 1,
     borderRadius: 2,
     overflow: 'hidden',
     alignItems: 'center',

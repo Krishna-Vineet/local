@@ -29,6 +29,7 @@ export function LoginScreen({
 }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [locationLabel, setLocationLabel] = useState('Main reception')
   const [coordinates, setCoordinates] = useState<GeolocationCoordinates | undefined>()
   const [locating, setLocating] = useState(Boolean(navigator.geolocation))
@@ -69,7 +70,7 @@ export function LoginScreen({
           <h2>Connect this booth</h2>
           <p>Use an active organization account. A fresh installation UUID will be paired securely.</p>
           <label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required/></label>
-          <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={6} required/></label>
+          <label>Password<div className="password-field"><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={6} required/><button type="button" className="password-visibility" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}>{showPassword ? 'Hide' : 'Show'}</button></div></label>
           <label>Booth location<input value={locationLabel} onChange={(event) => setLocationLabel(event.target.value)} placeholder="Main reception, Hall A…" required/></label>
           {!error && <div className="location-note"><Icon name={coordinates ? 'check' : 'info'} size={16}/>{coordinates ? 'Device location captured for this pairing' : locating ? 'Requesting device location…' : 'Precise location unavailable — the label will be used'}</div>}
           {error && <div className="form-error"><Icon name="info" size={18}/>{error}</div>}

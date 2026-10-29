@@ -156,27 +156,24 @@ async function loadSkiaImage(uri: string): Promise<SkImage | null> {
 }
 
 /**
- * Placeholder tint shown only while the Skia bitmap is still loading.
- *
- * It used to be a 65 % dark scrim for "B&W", which made a colour photo look
- * merely dimmed — the exact complaint that the filter "isn't B&W". The real
- * conversion is the colour matrix below; keep this hint light and neutral so a
- * loading frame never looks like the finished effect.
+ * Visible fallback tint while a Skia bitmap is still loading or cannot be
+ * decoded. It provides immediate feedback that the selected look changed; once
+ * decoded, the real shared matrix replaces this overlay (including true B&W).
  */
 const getFilterFallbackOverlay = (filter?: FilterId | null): ViewStyle | null => {
   switch (filter) {
     case 'bw':
-      return { backgroundColor: 'rgba(250, 250, 252, 0.08)' };
+      return { backgroundColor: 'rgba(250, 250, 252, 0.24)' };
     case 'warm':
-      return { backgroundColor: 'rgba(245, 158, 11, 0.10)' };
+      return { backgroundColor: 'rgba(245, 128, 24, 0.30)' };
     case 'cool':
-      return { backgroundColor: 'rgba(14, 165, 233, 0.10)' };
+      return { backgroundColor: 'rgba(14, 145, 233, 0.28)' };
     case 'vintage':
-      return { backgroundColor: 'rgba(180, 115, 50, 0.12)' };
+      return { backgroundColor: 'rgba(155, 88, 34, 0.30)' };
     case 'soft':
-      return { backgroundColor: 'rgba(255, 255, 255, 0.10)' };
+      return { backgroundColor: 'rgba(255, 255, 255, 0.28)' };
     case 'party':
-      return { backgroundColor: 'rgba(236, 72, 153, 0.10)' };
+      return { backgroundColor: 'rgba(236, 32, 140, 0.32)' };
     default:
       return null;
   }
@@ -243,7 +240,7 @@ export const FilteredImage: React.FC<FilteredImageProps> = ({ uri, filter, style
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, fallbackOverlay]} />
       ) : null}
       {skImage && size.width > 0 && size.height > 0 ? (
-        <Canvas style={StyleSheet.absoluteFill}>
+        <Canvas key={`${uri}:${filter ?? 'original'}`} style={StyleSheet.absoluteFill}>
           <Group layer={<Paint><SkiaColorMatrix matrix={matrix} /></Paint>}>
             <SkiaImage image={skImage} x={0} y={0} width={size.width} height={size.height} fit="cover" />
           </Group>

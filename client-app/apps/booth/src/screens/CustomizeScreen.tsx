@@ -32,7 +32,7 @@ import {
   verticalScale,
 } from '../../../../packages/ui/src/index';
 import { AppShell } from '../components/AppShell';
-import { useBooth } from '../context/BoothProvider';
+import { renderSessionComposite, useBooth } from '../context/BoothProvider';
 import { InactivityToast } from '../components/InactivityToast';
 import { goBackOr } from '../utils/navigation';
 import SoundManager from '../utils/SoundManager';
@@ -180,13 +180,14 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
 
   const orgName = snapshot?.settings?.organizationName || snapshot?.organization?.name || 'HappyPix';
   const galleryEnabled = snapshot?.settings?.galleryEnabled !== false;
-  const requireGuestConsent = snapshot?.settings?.requireGuestConsent === true;
-  const showConsent = galleryEnabled && requireGuestConsent;
+  // Gallery consent is an explicit guest choice, not only a required-consent mode.
+  const showConsent = galleryEnabled;
 
   const [tab, setTab] = useState<TabId>('filters');
   const [printing, setPrinting] = useState(false);
+  const [printPreviewUri, setPrintPreviewUri] = useState<string | null>(null);
   const [consent, setConsentState] = useState(
-    requireGuestConsent && customization.guestConsent !== undefined ? customization.guestConsent : true
+    customization.guestConsent !== undefined ? customization.guestConsent : true
   );
 
   useEffect(() => {
@@ -202,6 +203,33 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secondsLeft, printing, isFocused]);
+
+  // Render the preview through the exact same 300-DPI print compositor used by
+  // `finishAndPrint`. The draggable stickers stay as a live RN overlay, while
+  // all pixels underneath (template art, photo crop/filter, text and logo) come
+  // from the print bitmap itself. This prevents two platform renderers drifting.
+  useEffect(() => {
+    if (!template) return;
+    setPrintPreviewUri(null);
+    let current = true;
+    const timer = setTimeout(() => {
+      const previewSession = {
+        ...session,
+        customization: { ...customization, stickers: [] },
+      };
+      renderSessionComposite(previewSession)
+        .then((uri) => {
+          if (current && uri) setPrintPreviewUri(uri);
+        })
+        .catch((error) => {
+          console.warn('[CustomizeScreen] print-parity preview failed:', error);
+        });
+    }, 220);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [template, session, customization]);
 
   useEffect(() => {
     if (!template) navigation.replace('Templates');
@@ -283,7 +311,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
       // The final customisation goes in with the same call that renders the
       // print — a plain `updateSession` first would still be in flight.
       await finishAndPrint({
-        customization: { ...customization, guestConsent: requireGuestConsent ? consent : true },
+        customization: { ...customization, guestConsent: consent },
       });
       navigation.navigate('OrderSuccess');
     } catch {
@@ -327,6 +355,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
               template={template}
               photos={photos}
               customization={customization}
+              printBitmapUri={printPreviewUri}
               renderStickers={false}
               maxHeight={verticalScale(430)}
               maxWidth={scale(460)}

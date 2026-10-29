@@ -98,6 +98,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const dims = getScreenDimensions();
   // Electron: 74px header, 62px with `@media (max-height:720px)`.
   const headerHeight = Math.min(74, Math.max(58, Math.round(dims.height * 0.11)));
+  const urgent = secondsLeft !== undefined && secondsLeft <= 10;
   /*
    * The header starts at y = 0, always.
    *

@@ -99,6 +99,9 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
   const frameHeight = Math.max(84, Math.min(maxFrameHeight, widthLimitedFrame));
   const frameWidth = Math.round(frameHeight * PHOTO_ASPECT);
   const stripHeight = Math.round(frameHeight + stripPad * 2);
+  // Keep the film surround bounded to its rails + image strip. The parent layout
+  // remains flex: 1 so the page keeps its full height and the strip can center.
+  const galleryHeight = Math.round(railH * 2 + stripHeight);
 
   useEffect(() => {
     setIdleTimerEnabled(true);
@@ -199,7 +202,7 @@ export const PhotoSelectionScreen: React.FC<Props> = ({ navigation }) => {
       <View style={[styles.layout, isLandscape ? styles.layoutRow : styles.layoutCol]}>
         {/* ── the negative strip ─────────────────────────────────────────── */}
         <View
-          style={[styles.gallery, isLandscape ? null : styles.galleryStacked]}
+          style={[styles.gallery, { height: galleryHeight }, isLandscape ? null : styles.galleryStacked]}
           onLayout={(event) => {
             const w = event.nativeEvent.layout.width;
             if (w > 0 && Math.abs(w - galleryWidth) > 0.5) setGalleryWidth(w);

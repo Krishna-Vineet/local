@@ -32,8 +32,6 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Start'>;
 
-const ART_TINTS = ['#f7c9dd', '#dcd0f6', '#fde3c9'];
-
 export const StartScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useAppTheme();
   const p = theme.palette;
@@ -67,158 +65,179 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const lift = float.interpolate({ inputRange: [0, 1], outputRange: [0, -8] });
-  const tiltA = float.interpolate({ inputRange: [0, 1], outputRange: ['-11deg', '-8deg'] });
-  const tiltB = float.interpolate({ inputRange: [0, 1], outputRange: ['9deg', '12deg'] });
+  // Electron `.start-art .photo-*` rotations, kept static like the CSS.
+  const tiltA = '-7deg';
+  const tiltB = '7deg';
+  const nudge = float.interpolate({ inputRange: [0, 1], outputRange: [0, 8] });
 
   return (
     <AppShell step="start" bleed testID="start-screen">
       <Pressable
-        style={styles.touch}
+        style={[styles.touch, isLandscape ? styles.touchRow : styles.touchCol]}
         onPress={handleStart}
         onPressIn={() => setPressed(true)}
         onPressOut={() => setPressed(false)}
         accessibilityRole="button"
         accessibilityLabel={`Start a photo session for ${event?.name || 'this event'}`}
       >
-        <View style={[styles.body, isLandscape ? styles.bodyRow : styles.bodyCol]}>
-          {/* fan of prints */}
-          <Animated.View style={[styles.art, { transform: [{ translateY: lift }] }]} pointerEvents="none">
-            <Animated.View
-              style={[
-                styles.frame,
-                styles.frameLeft,
-                { backgroundColor: ART_TINTS[0], transform: [{ rotate: tiltA }] },
-              ]}
-            >
-              <View style={[styles.frameInner, { backgroundColor: '#fff' }]} />
-            </Animated.View>
-            <Animated.View
-              style={[
-                styles.frame,
-                styles.frameRight,
-                { backgroundColor: ART_TINTS[1], transform: [{ rotate: tiltB }] },
-              ]}
-            >
-              <View style={[styles.frameInner, { backgroundColor: '#fff' }]} />
-            </Animated.View>
-            <View style={[styles.frame, styles.frameCenter, { backgroundColor: ART_TINTS[2] }]}>
-              <View style={[styles.frameInner, { backgroundColor: '#fff' }]} />
-              <View style={[styles.seal, { backgroundColor: p.pink, shadowColor: p.pink }]}>
-                <Icon name="heart" size={scale(34)} color="#ffffff" strokeWidth={2} />
-              </View>
+        {/* Electron `.start-art`: three rotated gradient prints, heart seal on
+            top of the middle one. Widths are the CSS `min(39vw, 570px)`. */}
+        <Animated.View
+          style={[styles.art, isLandscape ? null : styles.artPortrait, { transform: [{ translateY: lift }] }]}
+          pointerEvents="none"
+        >
+          <Animated.View
+            style={[styles.photo, styles.photoOne, { transform: [{ rotate: tiltA }] }]}
+          />
+          <Animated.View
+            style={[styles.photo, styles.photoTwo, { transform: [{ rotate: tiltB }] }]}
+          />
+          <View style={[styles.photo, styles.photoThree, { transform: [{ rotate: '-1deg' }] }]}>
+            <View style={[styles.seal, { backgroundColor: p.pink, shadowColor: p.pink }]}>
+              <Icon name="heart" size={scale(38)} color="#ffffff" strokeWidth={2} />
             </View>
-          </Animated.View>
-
-          {/* event copy */}
-          <View style={[styles.copy, isLandscape ? styles.copyLeft : styles.copyCenter]}>
-            <Text style={[styles.eyebrow, { color: p.pinkDeep }]}>WELCOME TO</Text>
-            <Text
-              style={[styles.eventName, { color: p.ink }, isLandscape ? styles.textLeft : null]}
-              numberOfLines={2}
-            >
-              {event?.name || 'The HappyPix Experience'}
-            </Text>
-            <View style={styles.metaRow}>
-              <Text style={[styles.meta, { color: p.muted }]} numberOfLines={1}>
-                {orgName}
-              </Text>
-              <View style={[styles.metaDot, { backgroundColor: p.faint }]} />
-              <Text style={[styles.meta, { color: p.muted }]} numberOfLines={1}>
-                {event?.location || 'On-site studio'}
-              </Text>
-            </View>
-            {event?.branding?.tagline ? (
-              <Text style={[styles.quote, { color: p.violet }]}>“{event.branding.tagline}”</Text>
-            ) : null}
           </View>
+        </Animated.View>
+
+        {/* Electron `.start-event` */}
+        <View style={[styles.copy, isLandscape ? styles.copyLeft : styles.copyCenter]}>
+          <Text style={[styles.eyebrow, { color: p.pinkDeep }]}>WELCOME TO</Text>
+          <Text
+            style={[styles.eventName, { color: p.ink }, isLandscape ? styles.textLeft : styles.textCenter]}
+            numberOfLines={2}
+          >
+            {event?.name || 'The HappyPix Experience'}
+          </Text>
+          <View style={[styles.metaRow, isLandscape ? null : styles.metaRowCenter]}>
+            <Text style={[styles.meta, { color: p.muted }]} numberOfLines={1}>
+              {event?.clientName || orgName}
+            </Text>
+            <View style={[styles.metaDot, { backgroundColor: p.pink }]} />
+            <Text style={[styles.meta, { color: p.muted }]} numberOfLines={1}>
+              {event?.location || 'On-site studio'}
+            </Text>
+          </View>
+          {event?.branding?.tagline ? (
+            <Text style={[styles.quote, { color: '#9a7293' }]}>“{event.branding.tagline}”</Text>
+          ) : null}
         </View>
 
-        <View style={[styles.prompt, { backgroundColor: pressed ? p.pinkDeep : p.pink }]}>
-          <Text style={styles.promptText}>Touch anywhere to begin</Text>
-          <Icon name="arrow-right" size={fontSize(20)} color="#ffffff" />
+        {/* Electron `.touch-prompt`: quiet text + pink arrow disc, bottom right,
+            nudging. Not a fat CTA pill — the whole screen is the button. */}
+        <View
+          style={[styles.prompt, isLandscape ? styles.promptRight : styles.promptCenter]}
+          pointerEvents="none"
+        >
+          <Text style={[styles.promptText, { color: pressed ? p.pink : p.pinkDeep }]}>
+            Touch anywhere to begin
+          </Text>
+          <Animated.View
+            style={[
+              styles.promptArrow,
+              { backgroundColor: p.pink, transform: [{ translateX: nudge }] },
+            ]}
+          >
+            <Icon name="arrow-right" size={scale(20)} color="#ffffff" strokeWidth={2.4} />
+          </Animated.View>
         </View>
-
       </Pressable>
     </AppShell>
   );
 };
 
 const styles = StyleSheet.create({
-  touch: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: scale(20) },
-  body: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%', maxWidth: scale(1120) },
-  bodyRow: { flexDirection: 'row', gap: scale(48) },
-  bodyCol: { flexDirection: 'column', gap: verticalScale(28) },
+  // Electron `.start-touch`: two columns (minmax(330px,.9fr) | minmax(390px,1.1fr)),
+  // gap clamp(40px,6vw,100px), padding clamp(28px,4vw,70px), and a pink wash
+  // bottom-left. The prompt is positioned, not stacked — nothing is vertically
+  // scrolled on this screen.
+  touch: { flex: 1, width: '100%', paddingHorizontal: scale(28), paddingVertical: verticalScale(18) },
+  touchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: scale(56) },
+  touchCol: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: verticalScale(18) },
 
-  art: { width: scale(300), height: scale(286), alignItems: 'center', justifyContent: 'center' },
-  frame: {
-    position: 'absolute',
-    width: scale(150),
-    height: scale(200),
-    borderRadius: moderateScale(14),
-    padding: scale(9),
-    ...shadows.soft,
+  // `.start-art { width: min(39vw, 570px); aspect-ratio: .92 }`
+  art: { width: Math.min(scale(570), scale(412)), aspectRatio: 0.92, alignSelf: 'center' },
+  artPortrait: { width: Math.min(scale(490), scale(420)) },
+  photo: { position: 'absolute', borderRadius: scale(3), ...shadows.soft },
+  // inset: 3% 30% 29% 3% — rotate(-7deg)
+  photoOne: {
+    left: '3%',
+    right: '30%',
+    top: '3%',
+    bottom: '29%',
+    backgroundColor: '#f4a3bd',
   },
-  frameInner: { flex: 1, borderRadius: moderateScale(9) },
-  frameLeft: { left: scale(6), top: scale(48) },
-  frameRight: { right: scale(6), top: scale(36) },
-  frameCenter: { width: scale(168), height: scale(222), padding: scale(10), ...shadows.card },
+  // inset: 23% 1% 7% 36% — rotate(7deg)
+  photoTwo: {
+    left: '36%',
+    right: '1%',
+    top: '23%',
+    bottom: '7%',
+    backgroundColor: '#ef83ab',
+  },
+  // inset: 35% 24% 2% 17% — rotate(-1deg)
+  photoThree: {
+    left: '17%',
+    right: '24%',
+    top: '35%',
+    bottom: '2%',
+    backgroundColor: '#e4a1bc',
+  },
+  // `.start-heart { left:47%; top:42%; width:74px; height:74px }`
   seal: {
     position: 'absolute',
-    right: -scale(16),
-    bottom: -scale(14),
-    width: scale(70),
-    height: scale(70),
-    borderRadius: scale(35),
+    left: '47%',
+    top: '42%',
+    width: scale(74),
+    height: scale(74),
+    borderRadius: scale(37),
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.32,
-    shadowRadius: scale(18),
-    shadowOffset: { width: 0, height: verticalScale(10) },
+    shadowOpacity: 0.36,
+    shadowRadius: scale(16),
+    shadowOffset: { width: 0, height: verticalScale(12) },
     elevation: 8,
   },
 
-  copy: { maxWidth: scale(560) },
-  copyLeft: { alignItems: 'flex-start' },
+  copy: { maxWidth: scale(640) },
+  copyLeft: { alignItems: 'flex-start', flexShrink: 1 },
   copyCenter: { alignItems: 'center' },
-  eyebrow: { fontFamily: fonts.bodyBlack, fontSize: fontSize(11), letterSpacing: 1.9 },
+  eyebrow: { fontFamily: fonts.bodyBlack, fontSize: fontSize(11), letterSpacing: 1.9, marginBottom: verticalScale(15) },
   textLeft: { textAlign: 'left' },
+  textCenter: { textAlign: 'center' },
   eventName: {
     fontFamily: fonts.display,
     fontSize: fontSize(52),
-    lineHeight: Math.round(fontSize(52) * 1.02),
-    letterSpacing: -1.4,
-    marginTop: verticalScale(10),
-    textAlign: 'center',
+    lineHeight: Math.round(fontSize(52) * 0.98),
+    letterSpacing: -1.8,
   },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: scale(9), marginTop: verticalScale(12) },
-  meta: { fontFamily: fonts.bodyBold, fontSize: fontSize(13) },
-  metaDot: { width: scale(4), height: scale(4), borderRadius: scale(2) },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: scale(12), marginTop: verticalScale(21) },
+  metaRowCenter: { justifyContent: 'center' },
+  meta: { fontFamily: fonts.body, fontSize: fontSize(14) },
+  metaDot: { width: scale(5), height: scale(5), borderRadius: scale(3) },
   quote: {
     fontFamily: fonts.displayLight,
-    fontSize: fontSize(17),
-    lineHeight: Math.round(fontSize(17) * 1.45),
-    marginTop: verticalScale(14),
-    textAlign: 'center',
+    fontSize: fontSize(19),
+    lineHeight: Math.round(fontSize(19) * 1.4),
+    marginTop: verticalScale(20),
   },
 
   prompt: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: scale(10),
-    height: verticalScale(56),
-    paddingHorizontal: scale(28),
-    borderRadius: radii.pill,
-    marginTop: verticalScale(18),
-    marginBottom: verticalScale(6),
-    shadowColor: '#d83585',
-    shadowOpacity: 0.28,
-    shadowRadius: scale(18),
-    shadowOffset: { width: 0, height: verticalScale(10) },
-    elevation: 6,
+    gap: scale(18),
+    position: 'absolute',
+    bottom: verticalScale(26),
   },
-  promptText: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(16), color: '#ffffff', letterSpacing: 0.2 },
-  idle: { fontFamily: fonts.body, fontSize: fontSize(10), marginBottom: verticalScale(14) },
+  promptRight: { right: scale(34) },
+  promptCenter: { alignSelf: 'center', left: 0, right: 0, justifyContent: 'center' },
+  promptText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(14), letterSpacing: 0.2 },
+  promptArrow: {
+    width: scale(42),
+    height: scale(42),
+    borderRadius: scale(21),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 export default StartScreen;

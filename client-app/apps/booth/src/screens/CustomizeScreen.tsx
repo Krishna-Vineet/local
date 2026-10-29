@@ -83,77 +83,72 @@ const FILTERS: { id: FilterId; label: string; swatch: string }[] = [
 const EMOJIS = ['❤️', '✨', '🎉', '📸', '👑', '🦋', '🌸', '🥳', '💫', '🌈', '🫶', '🥂'];
 
 /**
- * A sticker's `size` is a proportion of the print width, not a font size.
- *
- * `size / STICKER_UNIT` is the em size as a fraction of the canvas width, which
- * makes the preview and the 300 dpi composite agree: the same expression
- * (`dims.width * size / STICKER_UNIT`) drives both. Before this the preview used
- * `moderateScale(size)` and the print used a hard-coded 90 px, so a sticker was
- * roughly the right size on screen and a speck on paper.
+ * A sticker is positioned at `x% / y%` of the print and sized by `scale`
+ * (0.5–4, default 1) — Electron's model exactly. One em is 9.6% of the print
+ * width on screen *and* in the 300 dpi composite (`STICKER_EM_FRACTION`), so a
+ * sticker prints at the size it was placed at.
  */
-export const STICKER_UNIT = 500;
+export const STICKER_EM_FRACTION = 0.096;
 
 /* ── draggable sticker ─────────────────────────────────────────────────── */
 
+/**
+ * A sticker on the print — dot for dot Electron's `.placed-sticker`.
+ *
+ * Electron positions it with `left: x%; top: y%; transform: translate(-50%,-50%)`
+ * and sizes it with `font-size: scale * 1.8em` (≈9.6% of the frame width at
+ * 100%). Dragging is clamped to 0–100% of the frame in both axes, and there are
+ * deliberately NO controls on the image: the desktop puts − / % / + / × in the
+ * Stickers tab, because a toolbar attached to a drag point drifts off the print.
+ */
 const PlacedStickerView: React.FC<{
   sticker: PlacedSticker;
   canvasWidth: number;
   canvasHeight: number;
-  onMove: (id: string, x: number, y: number, size: number) => void;
-  onScale: (id: string, delta: number) => void;
-  onRemove: (id: string) => void;
-}> = ({ sticker, canvasWidth, canvasHeight, onMove, onScale, onRemove }) => {
-  const { theme } = useAppTheme();
-  const p = theme.palette;
-  const [selected, setSelected] = useState(false);
-  const size = sticker.size || 34;
+  onMove: (id: string, x: number, y: number) => void;
+  draggable?: boolean;
+}> = ({ sticker, canvasWidth, canvasHeight, onMove, draggable = true }) => {
   const origin = useRef({ x: sticker.x, y: sticker.y });
+  const scaleFactor = sticker.scale ?? (sticker.size ? sticker.size / 34 : 1);
+  // `font-size: scale * 1.8em` against an 8cqw base ≈ 9.6% of the frame width.
+  const size = Math.max(12, canvasWidth * STICKER_EM_FRACTION * scaleFactor);
 
   const responder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_evt, gesture) => Math.abs(gesture.dx) + Math.abs(gesture.dy) > 3,
+      onStartShouldSetPanResponder: () => draggable,
+      onMoveShouldSetPanResponder: (_evt, gesture) =>
+        draggable && Math.abs(gesture.dx) + Math.abs(gesture.dy) > 3,
       onPanResponderGrant: () => {
         origin.current = { x: sticker.x, y: sticker.y };
-        setSelected(true);
       },
       onPanResponderMove: (_evt, gesture) => {
-        const x = Math.max(0, Math.min(90, origin.current.x + (gesture.dx / canvasWidth) * 100));
-        const y = Math.max(0, Math.min(90, origin.current.y + (gesture.dy / canvasHeight) * 100));
+        // Electron: `Math.max(0, Math.min(100, start + dx/width*100))`
+        const x = Math.max(0, Math.min(100, origin.current.x + (gesture.dx / canvasWidth) * 100));
+        const y = Math.max(0, Math.min(100, origin.current.y + (gesture.dy / canvasHeight) * 100));
         origin.current = { x, y };
-        onMove(sticker.id, x, y, size);
+        onMove(sticker.id, x, y);
       },
     })
   ).current;
 
   return (
     <View
-      {...responder.panHandlers}
+      {...(draggable ? responder.panHandlers : {})}
       style={[
         styles.sticker,
         {
           left: `${sticker.x}%` as unknown as number,
           top: `${sticker.y}%` as unknown as number,
-          borderColor: selected ? p.pink : 'transparent',
+          // Electron draws the glyph centred on (x, y): `translate(-50%,-50%)`.
+          // The em box is square enough to use the font size for both axes.
+          transform: [
+            { translateX: -size * 0.6 },
+            { translateY: -size * 0.6 },
+          ],
         },
       ]}
     >
-      <Text style={{ fontSize: Math.max(12, (canvasWidth * size) / STICKER_UNIT) }}>
-        {sticker.emoji}
-      </Text>
-      {selected ? (
-        <View style={styles.stickerTools}>
-          <Pressable onPress={() => onScale(sticker.id, -0.2)} style={[styles.stickerTool, { backgroundColor: p.surface }]} hitSlop={6}>
-            <Text style={[styles.stickerToolText, { color: p.violet }]}>−</Text>
-          </Pressable>
-          <Pressable onPress={() => onScale(sticker.id, 0.2)} style={[styles.stickerTool, { backgroundColor: p.surface }]} hitSlop={6}>
-            <Text style={[styles.stickerToolText, { color: p.violet }]}>+</Text>
-          </Pressable>
-          <Pressable onPress={() => onRemove(sticker.id)} style={[styles.stickerTool, styles.stickerToolDanger]} hitSlop={6}>
-            <Text style={[styles.stickerToolText, { color: p.white }]}>×</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      <Text style={{ fontSize: size }}>{sticker.emoji}</Text>
     </View>
   );
 };
@@ -237,9 +232,10 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
           {
             id: `st-${now}-${placed}`,
             emoji,
-            x: 32 + (placed % 4) * 9,
-            y: 34 + (placed % 4) * 8,
-            size: 38,
+            // Electron `addSticker`: base 35 + (n % 5) * 8, scale 1.
+            x: 35 + (customization.stickers.length % 5) * 8,
+            y: 35 + (customization.stickers.length % 5) * 8,
+            scale: 1,
           } as PlacedSticker,
         ],
       },
@@ -247,11 +243,11 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  const moveSticker = (id: string, x: number, y: number, size: number) =>
+  const moveSticker = (id: string, x: number, y: number) =>
     updateSession({
       customization: {
         ...customization,
-        stickers: customization.stickers.map((st) => (st.id === id ? { ...st, x, y, size } : st)),
+        stickers: customization.stickers.map((st) => (st.id === id ? { ...st, x, y } : st)),
       },
     });
 
@@ -259,9 +255,12 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
     SoundManager.play('click');
     update(
       {
-        stickers: customization.stickers.map((st) =>
-          st.id === id ? { ...st, size: Math.max(22, Math.min(72, (st.size || 34) + delta * 40)) } : st
-        ),
+        stickers: customization.stickers.map((st) => {
+          if (st.id !== id) return st;
+          const current = st.scale ?? (st.size ? st.size / 34 : 1);
+          // Electron: `Math.max(0.5, Math.min(4, scale + delta))`
+          return { ...st, scale: Math.max(0.5, Math.min(4, current + delta)) };
+        }),
       },
       true
     );
@@ -345,15 +344,13 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                       canvasWidth={width}
                       canvasHeight={height}
                       onMove={moveSticker}
-                      onScale={scaleSticker}
-                      onRemove={removeSticker}
                     />
                   ))}
                   {printing ? (
                     <View style={styles.preparing}>
                       <View style={styles.preparingPill}>
-                        <ActivityIndicator size="small" color={p.pink} />
-                        <Text style={[styles.preparingText, { color: p.ink }]}>Preparing your print…</Text>
+                        <ActivityIndicator size="small" color="#ffffff" />
+                        <Text style={styles.preparingText}>Preparing your print…</Text>
                       </View>
                     </View>
                   ) : null}
@@ -448,7 +445,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
               <>
                 <Eyebrow color={p.pinkDeep}>Tap to add · drag to move</Eyebrow>
                 <Text style={[styles.toolNote, { color: p.faint }]}>
-                  Tap a sticker to show its − + × controls. Resize here, not on the print.
+                  Resize or remove stickers using the controls below — not on the image itself.
                 </Text>
                 <View style={styles.emojiGrid}>
                   {EMOJIS.map((emoji) => (
@@ -470,20 +467,20 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                       <View key={st.id} style={[styles.stickerRow, { borderColor: p.line, backgroundColor: p.surfaceSoft }]}>
                         <Text style={{ fontSize: fontSize(18) }}>{st.emoji}</Text>
                         <Text style={[styles.stickerName, { color: p.muted }]} numberOfLines={1}>
-                          Sticker
+                          {st.emoji} sticker
                         </Text>
                         <Pressable
-                          onPress={() => scaleSticker(st.id, -0.2)}
+                          onPress={() => scaleSticker(st.id, -0.25)}
                           style={[styles.sizeBtn, { borderColor: p.line, backgroundColor: p.surface }]}
                           accessibilityLabel="Make smaller"
                         >
                           <Text style={[styles.sizeBtnText, { color: p.violet }]}>−</Text>
                         </Pressable>
                         <Text style={[styles.sizeValue, { color: p.ink }]}>
-                          {Math.round(((st.size || 34) / 34) * 100)}%
+                          {Math.round((st.scale ?? (st.size ? st.size / 34 : 1)) * 100)}%
                         </Text>
                         <Pressable
-                          onPress={() => scaleSticker(st.id, 0.2)}
+                          onPress={() => scaleSticker(st.id, 0.25)}
                           style={[styles.sizeBtn, { borderColor: p.line, backgroundColor: p.surface }]}
                           accessibilityLabel="Make larger"
                         >
@@ -504,7 +501,7 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
                   </View>
                 ) : (
                   <Text style={[styles.toolNote, { color: p.faint, marginTop: verticalScale(12) }]}>
-                    No stickers yet. Tap an emoji above to place it on your print.
+                    No stickers yet. Tap an emoji above to place it on your print. Use − / + to resize and × to remove — controls sit here, next to the list.
                   </Text>
                 )}
               </>
@@ -656,7 +653,17 @@ const styles = StyleSheet.create({
   stage: { flex: 1.05, alignItems: 'center', justifyContent: 'center' },
   frame: { flex: 1, width: '100%', minHeight: 0, maxHeight: verticalScale(460) },
   previewBox: { flex: 1 },
-  preparing: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
+  // `.transition-overlay`: dim wash + pill, so the print stays readable behind it.
+  preparing: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17,8,22,0.55)',
+  },
   preparingPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -664,10 +671,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(18),
     paddingVertical: verticalScale(12),
     borderRadius: radii.pill,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(33,19,43,0.92)',
     ...shadows.soft,
   },
-  preparingText: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(13) },
+  preparingText: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(13), color: '#ffffff' },
   hintRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -738,31 +745,34 @@ const styles = StyleSheet.create({
   },
 
   stickerList: { marginTop: verticalScale(14), gap: verticalScale(8) },
+  // `.sticker-list-row` — padding 10px 12px, radius 14, gap 8.
   stickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(8),
-    paddingHorizontal: scale(11),
-    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(10),
     borderWidth: 1,
     borderRadius: moderateScale(14),
   },
-  stickerName: { flex: 1, fontFamily: fonts.bodyBold, fontSize: fontSize(11) },
+  stickerName: { flex: 1, fontFamily: fonts.bodyBold, fontSize: fontSize(12) },
+  // `.sticker-size-btn` — 34×34, radius 10.
   sizeBtn: {
-    width: scale(30),
-    height: verticalScale(30),
+    width: scale(34),
+    height: verticalScale(34),
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderRadius: moderateScale(9),
+    borderRadius: moderateScale(10),
   },
   sizeBtnText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(14) },
   deleteBtn: { borderWidth: 1 },
+  // `.sticker-size-value` — min-width 44, 12px/800.
   sizeValue: {
-    minWidth: scale(42),
+    minWidth: scale(44),
     textAlign: 'center',
     fontFamily: fonts.bodyHeavy,
-    fontSize: fontSize(11),
+    fontSize: fontSize(12),
   },
   textAction: { paddingVertical: verticalScale(8), alignSelf: 'flex-start' },
   textActionLabel: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(12) },
@@ -830,31 +840,11 @@ const styles = StyleSheet.create({
   },
   actionsRight: { flexDirection: 'row', alignItems: 'center', gap: scale(10) },
 
+  // `.placed-sticker { position:absolute; transform: translate(-50%,-50%) }`
+  // — centred on its point, no chrome of its own.
   sticker: {
     position: 'absolute',
-    padding: scale(4),
-    borderRadius: moderateScale(8),
-    borderWidth: 1.5,
   },
-  stickerTools: {
-    position: 'absolute',
-    top: -verticalScale(30),
-    right: 0,
-    flexDirection: 'row',
-    gap: scale(3),
-    padding: scale(2),
-    borderRadius: moderateScale(10),
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  stickerTool: {
-    width: scale(24),
-    height: verticalScale(24),
-    borderRadius: moderateScale(7),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stickerToolDanger: { backgroundColor: '#d84b64' },
-  stickerToolText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(13) },
 });
 
 export default CustomizeScreen;

@@ -481,7 +481,10 @@ export class RenderEngine {
         ctx.translate(-cx, -cy);
 
         if (sticker.emoji) {
-          ctx.font = `${sticker.height * 0.75}px Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"`;
+          // The box is the em box: the customise preview draws the glyph at
+          // `width * 0.096 * scale`, so the print must draw it at the same size
+          // rather than at 75 % of it, which is what made stickers print small.
+          ctx.font = `${sticker.height}px Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(sticker.emoji, cx, cy);

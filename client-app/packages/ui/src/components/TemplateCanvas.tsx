@@ -576,15 +576,22 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
                       borderBottomRightRadius: 6,
                     }
                   : {}),
+                // Electron `.template-slot`: a 2px white ring over a 14% white
+                // wash, with a soft drop shadow. Tinting the ring with the
+                // template accent turned every empty slot into an orange or
+                // mustard rectangle floating on the design — the thing that made
+                // the tablet previews look nothing like the desktop.
                 borderColor: hasExplicitBorder
                   ? (palette.primary || accent)
-                  : accent + '70',
+                  : 'rgba(255,255,255,0.78)',
                 borderWidth: hasExplicitBorder
                   ? design.photoTreatment.borderWidth || 2
                   : photoSource
                   ? 0
-                  : 1.5,
+                  : 2,
+                backgroundColor: photoSource ? 'transparent' : 'rgba(255,255,255,0.14)',
                 overflow: 'hidden',
+                ...(photoSource ? null : styles.emptySlotShadow),
               },
             ]}
           >
@@ -603,10 +610,21 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
               </>
             ) : (
               <View style={styles.emptySlot}>
-                <Text style={[styles.emptySlotNumber, { color: textColor + '90' }]}>
+                {/* Electron: `b { font: 650 8cqw }`, `small { 3cqw .15em }` */}
+                <Text
+                  style={[
+                    styles.emptySlotNumber,
+                    { color: 'rgba(255,255,255,0.85)', fontSize: Math.max(9, (containerWidth || 300) * 0.08) },
+                  ]}
+                >
                   {index + 1}
                 </Text>
-                <Text style={[styles.emptySlotLabel, { color: textColor + '70' }]}>
+                <Text
+                  style={[
+                    styles.emptySlotLabel,
+                    { color: 'rgba(255,255,255,0.7)', fontSize: Math.max(5, (containerWidth || 300) * 0.03) },
+                  ]}
+                >
                   PHOTO
                 </Text>
               </View>
@@ -704,7 +722,18 @@ export const TemplateCanvas: React.FC<TemplateCanvasProps> = ({
               { left: `${st.x}%` as any, top: `${st.y}%` as any, zIndex: 30 },
             ]}
           >
-            <Text style={[styles.stickerText, st.size ? { fontSize: st.size } : { fontSize: 34 }]}>
+            {/* Electron `.placed-sticker`: font-size `scale * 8cqw`, where cqw is
+                1% of the print width, and the glyph is centred on (x, y). */}
+            <Text
+              style={[
+                styles.stickerText,
+                {
+                  fontSize: Math.max(10, (containerWidth || 300) * 0.08 * (st.scale ?? 1)),
+                  marginLeft: -((containerWidth || 300) * 0.04 * (st.scale ?? 1)),
+                  marginTop: -((containerWidth || 300) * 0.04 * (st.scale ?? 1)),
+                },
+              ]}
+            >
               {st.emoji}
             </Text>
           </View>
@@ -761,10 +790,15 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     position: 'relative',
-    backgroundColor: 'rgba(0,0,0,0.12)',
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptySlotShadow: {
+    shadowColor: '#000000',
+    shadowOpacity: 0.13,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   slotImage: {
     ...StyleSheet.absoluteFill,
@@ -776,13 +810,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptySlotNumber: {
-    fontSize: 22,
-    fontWeight: '800',
+    fontWeight: '600',
+    letterSpacing: -0.3,
   },
   emptySlotLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 2,
+    fontWeight: '900',
+    letterSpacing: 1.5,
     marginTop: 2,
   },
   clearBadge: {

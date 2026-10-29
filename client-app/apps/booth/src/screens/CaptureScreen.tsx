@@ -19,6 +19,7 @@ import { cameraManager } from '../../../../packages/camera-core/src/index';
 import {
   FlashOverlay,
   useAppTheme,
+  fonts,
   fontSize,
   scale,
   moderateScale,
@@ -200,128 +201,167 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const currentShot = Math.min(photos.length + 1, totalShots);
+  const total = Math.max(1, totalShots);
+  // `countdown-flash` font: clamp(90px, 16vw, 230px)
+  const countdownSize = Math.max(90, Math.min(230, width * 0.16));
+  const reelItems = Array.from({ length: totalShots });
+
+  /** `.film-cell:before/:after` — a strip of sprocket holes. */
+  const Sprocket = ({ at }: { at: 'top' | 'bottom' }) => (
+    <View style={[styles.sprocket, at === 'top' ? styles.sprocketTop : styles.sprocketBottom]}>
+      {Array.from({ length: 9 }).map((_, i) => (
+        <View key={i} style={styles.sprocketHole} />
+      ))}
+    </View>
+  );
 
   return (
-    <AppShell night step="camera" bleed testID="camera-screen">
-      <View style={styles.container}>
-        {/* Full-Screen Viewfinder — Covers 100% of frame in both Portrait and Landscape */}
-        <View style={styles.viewfinderContainer}>
-          {activeCameraType === 'canon' ? (
-            <CanonLiveView isFocused={isFocused} onReady={() => setCameraReady(true)} />
-          ) : hasPermission && device && isFocused ? (
-            <Camera
-              key={isLandscape ? 'cam-landscape' : 'cam-portrait'}
-              ref={cameraRef}
-              style={styles.cameraFullFrame}
-              device={device}
-              zoom={initialZoom}
-              enableZoomGesture={true}
-              resizeMode="cover"
-              androidPreviewViewType="texture-view"
-              isActive={isFocused}
-              photo={true}
-              onInitialized={() => setCameraReady(true)}
-            />
-          ) : (
-            <View style={styles.cameraPlaceholder}>
-              <View style={styles.placeholderIconWrap}>
-                <Svg width={48} height={48} viewBox="0 0 24 24">
-                  <Path
-                    fill="#ee4c96"
-                    d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm0 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm8-7.5h-3.17L15 4.17C14.65 3.82 14.17 3.63 13.68 3.63h-3.36c-.49 0-.97.19-1.32.54L7.17 6H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 13H4V8h3.83l1.83-2h4.68l1.83 2H20v11z"
-                  />
-                </Svg>
-              </View>
-              <Text style={styles.placeholderTitle}>Full Widescreen Viewfinder</Text>
-              <Text style={styles.placeholderSub}>
-                {device ? 'HD Camera active and ready' : 'Simulator HD Feed Active'}
+    <AppShell night step="camera" bleed stretch testID="camera-screen">
+      <View style={[styles.container, { paddingHorizontal: Math.max(14, Math.min(32, width * 0.022)) }]}>
+        {/* `.camera-hud` — hardware state left, capture progress right */}
+        <View style={styles.hud}>
+          <View style={styles.hudLeft}>
+            <View style={[styles.hardwareDot, !device && styles.hardwareDotWarning]} />
+            <View>
+              <Text style={styles.hudName}>{device ? 'Canon EOS · Live view' : 'Capture simulator'}</Text>
+              <Text style={styles.hudSmall}>
+                {device ? 'Live preview · ready' : 'Fallback simulator active'}
               </Text>
             </View>
-          )}
-
-          {/* Viewfinder Grid / Reticle Lines */}
-          <View style={[styles.reticle, styles.reticleTL]} pointerEvents="none" />
-          <View style={[styles.reticle, styles.reticleTR]} pointerEvents="none" />
-          <View style={[styles.reticle, styles.reticleBL]} pointerEvents="none" />
-          <View style={[styles.reticle, styles.reticleBR]} pointerEvents="none" />
-
-          {/* Top Floating Status Pill */}
-          <View style={styles.topStatusPill}>
-            <View style={[styles.statusDot, !device && styles.statusDotSim]} />
-            <Text style={styles.statusText}>
-              {device ? 'FULL WIDE CAMERA VIEW' : 'SIMULATOR MODE'}
-            </Text>
-            <Text style={styles.statusDivider}>•</Text>
-            <Text style={styles.statusCounter}>
-              SHOT {currentShot} OF {totalShots}
-            </Text>
           </View>
-
-          {/* Large Countdown Overlay */}
-          {countdown !== null && (
-            <View style={styles.countdownBadge}>
-              <Text style={styles.countdownNumber}>
-                {countdown > 0 ? countdown : 'SMILE!'}
+          <View style={styles.captureProgress}>
+            <View style={styles.captureProgressRow}>
+              <Text style={styles.captureLabel}>CAPTURE</Text>
+              <Text style={styles.captureValue}>
+                {photos.length} / {totalShots}
               </Text>
             </View>
-          )}
+            <View style={styles.captureTrack}>
+              <View style={[styles.captureFill, { width: `${(photos.length / total) * 100}%` }]} />
+            </View>
+          </View>
+        </View>
 
-          {/* Shutter Button when idle */}
-          {!running && (
-            <TouchableOpacity
-              style={[styles.shutterBtn, !isLandscape && { bottom: verticalScale(96) }]}
-              onPress={startCapture}
-              activeOpacity={0.85}
-            >
-              <View style={styles.cameraIconBadge}>
-                <Svg width={22} height={22} viewBox="0 0 24 24">
-                  <Path
-                    fill="#ffffff"
-                    d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm0 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm8-7.5h-3.17L15 4.17C14.65 3.82 14.17 3.63 13.68 3.63h-3.36c-.49 0-.97.19-1.32.54L7.17 6H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 13H4V8h3.83l1.83-2h4.68l1.83 2H20v11z"
-                  />
-                </Svg>
-              </View>
-              <View style={styles.shutterTextGroup}>
-                <Text style={styles.shutterTitle}>TAKE PHOTOS</Text>
-                <Text style={styles.shutterSub}>
-                  {totalShots} rapid shots • Pick your favorites
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )}
-
-          {/* Floating Film Strip Overlay (Docked right in landscape so 100% of vertical screen height is given to the camera) */}
-          <View style={isLandscape ? styles.sideFilmRail : styles.floatingBottomFilmRail}>
-            <View style={isLandscape ? styles.filmThumbsCol : styles.filmThumbsRow}>
-              {Array.from({ length: totalShots }).map((_, i) => {
+        {/* `.camera-workspace` — film reel column (landscape) / strip (portrait) + viewfinder */}
+        <View style={[styles.workspace, !isLandscape && styles.workspaceStacked]}>
+          <View style={[styles.filmReel, !isLandscape && styles.filmReelStacked]}>
+            <Text style={styles.filmLabel}>YOUR SHOTS</Text>
+            <View style={[styles.filmTrack, !isLandscape && styles.filmTrackStacked]}>
+              {reelItems.map((_, i) => {
                 const photo = photos[i];
                 const isCurrent = i === photos.length && running;
-
                 return (
                   <View
                     key={i}
                     style={[
-                      styles.thumbCell,
-                      isCurrent && styles.thumbCellActive,
-                      photo && styles.thumbCellFilled,
+                      styles.filmCell,
+                      !isLandscape && styles.filmCellStacked,
+                      isCurrent && styles.filmCellCurrent,
                     ]}
                   >
-                    <Text style={styles.thumbNum}>
-                      {String(i + 1).padStart(2, '0')}
-                    </Text>
+                    <Sprocket at="top" />
                     {photo ? (
-                      <Image source={{ uri: photo.uri }} resizeMode="cover" style={styles.thumbImage} />
+                      <Image source={{ uri: photo.uri }} resizeMode="cover" style={styles.filmImage} />
                     ) : (
-                      <View style={styles.thumbEmpty} />
+                      <Svg width={20} height={20} viewBox="0 0 24 24">
+                        <Path
+                          fill="#6f6376"
+                          d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm8-5h-3.17L15 5.17C14.65 4.82 14.17 4.63 13.68 4.63h-3.36c-.49 0-.97.19-1.32.54L7.17 7H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
+                        />
+                      </Svg>
                     )}
+                    <Sprocket at="bottom" />
+                    <Text style={styles.filmNum}>{String(i + 1).padStart(2, '0')}</Text>
                   </View>
                 );
               })}
             </View>
           </View>
+
+          <View style={styles.viewfinder}>
+            {/* `.viewfinder-rebate` — the film edge markings around the live feed */}
+            <View style={styles.rebate}>
+              <Text style={styles.rebateText}>KODAK PORTRA 400</Text>
+              <Text style={[styles.rebateText, styles.rebateBrand]}>HAPPYPIX LIVE</Text>
+              <Text style={styles.rebateText}>ISO AUTO</Text>
+            </View>
+
+            <View style={styles.videoWrap}>
+              {activeCameraType === 'canon' ? (
+                <CanonLiveView isFocused={isFocused} onReady={() => setCameraReady(true)} />
+              ) : hasPermission && device && isFocused ? (
+                <Camera
+                  key={isLandscape ? 'cam-landscape' : 'cam-portrait'}
+                  ref={cameraRef}
+                  style={styles.cameraFullFrame}
+                  device={device}
+                  zoom={initialZoom}
+                  enableZoomGesture={true}
+                  resizeMode="cover"
+                  androidPreviewViewType="texture-view"
+                  isActive={isFocused}
+                  photo={true}
+                  onInitialized={() => setCameraReady(true)}
+                />
+              ) : (
+                <View style={styles.cameraFallback}>
+                  <Svg width={52} height={52} viewBox="0 0 24 24">
+                    <Path
+                      fill="#8e7e94"
+                      d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm8-5h-3.17L15 5.17C14.65 4.82 14.17 4.63 13.68 4.63h-3.36c-.49 0-.97.19-1.32.54L7.17 7H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
+                    />
+                  </Svg>
+                  <Text style={styles.fallbackTitle}>
+                    {hasPermission ? 'Camera warming up' : 'Camera permission needed'}
+                  </Text>
+                  <Text style={styles.fallbackSmall}>
+                    {hasPermission ? 'The live preview appears in a moment' : 'Allow camera access and restart'}
+                  </Text>
+                </View>
+              )}
+
+              {/* `.focus-corner` brackets */}
+              <View style={[styles.corner, styles.cornerTL]} pointerEvents="none" />
+              <View style={[styles.corner, styles.cornerTR]} pointerEvents="none" />
+              <View style={[styles.corner, styles.cornerBL]} pointerEvents="none" />
+              <View style={[styles.corner, styles.cornerBR]} pointerEvents="none" />
+
+              {/* `.countdown-flash` — full-frame wash, digit centred */}
+              {countdown !== null ? (
+                <View style={[styles.countdownOverlay, countdown === 0 && styles.countdownFlash]}>
+                  <Text style={[styles.countdownNumber, { fontSize: countdownSize, lineHeight: countdownSize * 1.12 }]}>
+                    {countdown > 0 ? countdown : ''}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* `.shutter-button` — glass pill, white ringed shutter disc */}
+              {!running ? (
+                <TouchableOpacity style={styles.shutterButton} onPress={startCapture} activeOpacity={0.85}>
+                  <View style={styles.shutterDisc}>
+                    <Svg width={27} height={27} viewBox="0 0 24 24">
+                      <Path
+                        fill="#ffffff"
+                        d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm8-5h-3.17L15 5.17C14.65 4.82 14.17 4.63 13.68 4.63h-3.36c-.49 0-.97.19-1.32.54L7.17 7H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
+                      />
+                    </Svg>
+                  </View>
+                  <Text style={styles.shutterTitle}>Start shooting</Text>
+                  <Text style={styles.shutterSub}>{totalShots} photos · includes extra choices</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            <View style={styles.rebate}>
+              <Text style={styles.rebateText}>
+                EXP {currentShot}/{totalShots}
+              </Text>
+              <Text style={styles.rebateText}>LOOK HERE &amp; SMILE</Text>
+              <Text style={styles.rebateText}>SAFETY FILM</Text>
+            </View>
+          </View>
         </View>
 
-        {/* Full-screen Flash Overlay */}
         <FlashOverlay visible={flash} />
       </View>
     </AppShell>
@@ -331,276 +371,223 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create(withKioskFonts({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
-    justifyContent: 'space-between',
+    backgroundColor: '#140f17',
   },
-  topFilmRail: {
-    backgroundColor: '#0a0a0e',
-    paddingVertical: verticalScale(4),
-    paddingHorizontal: scale(16),
-    borderBottomWidth: 1,
-    borderBottomColor: '#1a1a24',
-  },
-  rebateMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  rebateAmber: {
-    color: '#d58b22',
-    fontSize: fontSize(9),
-    fontWeight: '900',
-    letterSpacing: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-  },
-  dxBarcode: {
+
+  /* ── hud ───────────────────────────────────────────────────────────── */
+  hud: {
+    height: verticalScale(55),
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-  },
-  barLine: {
-    height: 10,
-    backgroundColor: '#d58b22',
-  },
-  sprocketRow: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 3,
-    paddingHorizontal: 4,
+    gap: scale(20),
   },
-  sprocketHole: {
-    width: scale(14),
+  hudLeft: { flexDirection: 'row', alignItems: 'center', gap: scale(10), flexShrink: 1 },
+  hardwareDot: {
+    width: scale(9),
     height: scale(9),
-    borderRadius: 2.5,
-    backgroundColor: '#1f1f2e',
+    borderRadius: scale(4.5),
+    backgroundColor: '#39d89f',
+    shadowColor: '#39d89f',
+    shadowOpacity: 0.9,
+    shadowRadius: scale(13),
   },
-  viewfinderContainer: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-    position: 'relative',
-    backgroundColor: '#09090f',
-    alignItems: 'center',
-    justifyContent: 'center',
+  hardwareDotWarning: { backgroundColor: '#f0b34c', shadowColor: '#f0b34c' },
+  hudName: { fontFamily: fonts.bodyBlack, fontSize: fontSize(11), color: '#f4edf6' },
+  hudSmall: { fontFamily: fonts.body, fontSize: fontSize(9), color: '#9b8da4' },
+  captureProgress: { width: scale(220), flexShrink: 0 },
+  captureProgressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  captureLabel: {
+    fontFamily: fonts.bodyBlack,
+    fontSize: fontSize(9),
+    letterSpacing: 1.6,
+    color: '#9b8da4',
+  },
+  captureValue: { fontFamily: fonts.bodyBlack, fontSize: fontSize(12), color: '#f4edf6' },
+  captureTrack: {
+    height: 4,
+    marginTop: 3,
+    borderRadius: 999,
     overflow: 'hidden',
+    backgroundColor: '#352a3c',
   },
-  cameraFullFrame: {
-    ...StyleSheet.absoluteFill,
-    width: '100%',
-    height: '100%',
-  },
-  cameraPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeholderIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(139, 92, 246, 0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  placeholderTitle: {
-    color: '#ffffff',
-    fontSize: fontSize(20),
-    fontWeight: '900',
-  },
-  placeholderSub: {
-    color: '#9b8da4',
-    fontSize: fontSize(13),
-    marginTop: 4,
-  },
-  reticle: {
-    position: 'absolute',
-    width: 32,
-    height: 32,
-    borderColor: 'rgba(255,255,255,0.7)',
-  },
-  reticleTL: { top: 20, left: 20, borderTopWidth: 2.5, borderLeftWidth: 2.5 },
-  reticleTR: { top: 20, right: 20, borderTopWidth: 2.5, borderRightWidth: 2.5 },
-  reticleBL: { bottom: 20, left: 20, borderBottomWidth: 2.5, borderLeftWidth: 2.5 },
-  reticleBR: { bottom: 20, right: 20, borderBottomWidth: 2.5, borderRightWidth: 2.5 },
-  topStatusPill: {
-    position: 'absolute',
-    top: 14,
+  captureFill: { height: '100%', borderRadius: 999, backgroundColor: '#ee4c96' },
+
+  /* ── workspace ─────────────────────────────────────────────────────── */
+  workspace: {
+    flex: 1,
+    minHeight: 0,
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 16,
+    gap: Math.max(15, Math.min(30, scale(24))),
+  },
+  workspaceStacked: { flexDirection: 'column' },
+
+  /* `.film-reel` */
+  filmReel: {
+    width: Math.max(145, Math.min(scale(190), 200)),
+    paddingVertical: verticalScale(19),
+    paddingHorizontal: scale(12),
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#17131b',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 5,
-    paddingHorizontal: 14,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#22c55e',
-    marginRight: 8,
+  filmReelStacked: { width: '100%', height: verticalScale(118), paddingVertical: verticalScale(10) },
+  filmLabel: {
+    marginBottom: verticalScale(11),
+    textAlign: 'center',
+    fontFamily: fonts.bodyBlack,
+    fontSize: fontSize(9),
+    letterSpacing: 1.3,
+    color: '#c98443',
   },
-  statusDotSim: {
-    backgroundColor: '#d58b22',
+  filmTrack: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: scale(9) },
+  filmTrackStacked: { flexWrap: 'nowrap', flexDirection: 'row' },
+  filmCell: {
+    width: '46%',
+    minHeight: verticalScale(72),
+    borderRadius: 2,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#211b26',
+    borderWidth: 1,
+    borderColor: '#3c3342',
   },
-  statusText: {
-    color: '#ffffff',
-    fontSize: fontSize(10),
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  statusDivider: {
-    color: '#9b8da4',
-    marginHorizontal: 8,
-  },
-  statusCounter: {
-    color: '#fa7cb6',
-    fontSize: fontSize(11),
-    fontWeight: '900',
-  },
-  countdownBadge: {
-    position: 'absolute',
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    paddingVertical: verticalScale(20),
-    paddingHorizontal: scale(44),
-    borderRadius: 28,
-    borderWidth: 3,
+  filmCellStacked: { width: undefined, flex: 1, minHeight: 0 },
+  filmCellCurrent: {
     borderColor: '#ee4c96',
     shadowColor: '#ee4c96',
-    shadowOpacity: 0.8,
-    shadowRadius: 24,
-    elevation: 10,
+    shadowOpacity: 0.34,
+    shadowRadius: 15,
   },
-  countdownNumber: {
-    color: '#ffffff',
-    fontSize: fontSize(64),
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
-  shutterBtn: {
+  filmImage: { width: '100%', height: '100%' },
+  filmNum: {
     position: 'absolute',
-    bottom: verticalScale(24),
+    left: 5,
+    bottom: 5,
+    fontFamily: fonts.bodyBlack,
+    fontSize: fontSize(7),
+    color: '#e8a25e',
+  },
+  sprocket: {
+    position: 'absolute',
+    left: 2,
+    right: 2,
+    height: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    opacity: 0.55,
+  },
+  sprocketTop: { top: 2 },
+  sprocketBottom: { bottom: 2 },
+  sprocketHole: { width: 5, height: 4, backgroundColor: '#756878' },
+
+  /* `.viewfinder` */
+  viewfinder: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#181319',
+  },
+  rebate: {
+    height: verticalScale(28),
+    paddingHorizontal: scale(14),
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ee4c96',
-    paddingVertical: verticalScale(14),
-    paddingHorizontal: scale(32),
-    borderRadius: 36,
-    borderWidth: 2.5,
-    borderColor: '#ffffff',
-    shadowColor: '#ee4c96',
-    shadowOpacity: 0.6,
-    shadowRadius: 18,
-    elevation: 8,
+    justifyContent: 'space-between',
   },
-  cameraIconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  rebateText: {
+    fontFamily: fonts.bodyBlack,
+    fontSize: fontSize(8),
+    letterSpacing: 0.8,
+    color: '#d49350',
+  },
+  rebateBrand: { color: '#ee8ab8' },
+  videoWrap: {
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#050506',
+  },
+  cameraFullFrame: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
+  cameraFallback: {
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: scale(12),
+    gap: scale(8),
+    backgroundColor: '#0b0810',
   },
-  shutterTextGroup: {
-    alignItems: 'flex-start',
+  fallbackTitle: { fontFamily: fonts.bodyBlack, fontSize: fontSize(13), color: '#ddd1e2' },
+  fallbackSmall: { fontFamily: fonts.body, fontSize: fontSize(10), color: '#7d6e83' },
+
+  corner: { position: 'absolute', width: scale(48), height: scale(48), borderColor: 'rgba(255,255,255,0.72)' },
+  cornerTL: { left: scale(24), top: scale(24), borderLeftWidth: 2, borderTopWidth: 2 },
+  cornerTR: { right: scale(24), top: scale(24), borderRightWidth: 2, borderTopWidth: 2 },
+  cornerBL: { left: scale(24), bottom: scale(24), borderLeftWidth: 2, borderBottomWidth: 2 },
+  cornerBR: { right: scale(24), bottom: scale(24), borderRightWidth: 2, borderBottomWidth: 2 },
+
+  countdownOverlay: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.24)',
+  },
+  countdownFlash: { backgroundColor: '#ffffff' },
+  countdownNumber: {
+    fontFamily: fonts.display,
+    color: '#ffffff',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 8 },
+    textShadowRadius: 35,
+  },
+
+  shutterButton: {
+    position: 'absolute',
+    left: '50%',
+    bottom: '8%',
+    marginLeft: -scale(140),
+    width: scale(280),
+    paddingVertical: verticalScale(13),
+    paddingLeft: scale(13),
+    paddingRight: scale(24),
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: scale(12),
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(15,10,20,0.78)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.3,
+    shadowRadius: 40,
+    shadowOffset: { width: 0, height: 15 },
+  },
+  shutterDisc: {
+    width: scale(58),
+    height: scale(58),
+    borderRadius: scale(29),
+    borderWidth: 4,
+    borderColor: '#ffffff',
+    backgroundColor: '#ee4c96',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   shutterTitle: {
+    width: scale(183),
+    fontFamily: fonts.bodyBlack,
+    fontSize: fontSize(14),
     color: '#ffffff',
-    fontSize: fontSize(16),
-    fontWeight: '900',
-    letterSpacing: 1,
   },
   shutterSub: {
-    color: '#281637',
-    fontSize: fontSize(11),
-    fontWeight: '600',
-  },
-  bottomFilmRail: {
-    backgroundColor: '#0a0a0e',
-    paddingVertical: verticalScale(6),
-    paddingHorizontal: scale(16),
-    borderTopWidth: 1,
-    borderTopColor: '#1a1a24',
-  },
-  floatingBottomFilmRail: {
-    position: 'absolute',
-    bottom: 10,
-    left: 12,
-    right: 12,
-    backgroundColor: 'rgba(10, 10, 14, 0.72)',
-    borderRadius: 14,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  sideFilmRail: {
-    position: 'absolute',
-    right: 12,
-    top: 52,
-    bottom: 16,
-    backgroundColor: 'rgba(10, 10, 14, 0.72)',
-    borderRadius: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    justifyContent: 'center',
-  },
-  filmThumbsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: scale(8),
-    paddingVertical: verticalScale(4),
-  },
-  filmThumbsCol: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  thumbCell: {
-    width: scale(64),
-    height: scale(50),
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: '#222232',
-    backgroundColor: '#12121c',
-    padding: 2,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  thumbCellActive: {
-    borderColor: '#ee4c96',
-    shadowColor: '#ee4c96',
-    shadowOpacity: 0.7,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  thumbCellFilled: {
-    borderColor: '#3f3f50',
-  },
-  thumbNum: {
-    fontSize: fontSize(7),
-    fontWeight: '800',
-    color: '#9b8da4',
-  },
-  thumbImage: {
-    width: '100%',
-    height: '75%',
-    borderRadius: 4,
-  },
-  thumbEmpty: {
-    width: '100%',
-    height: '75%',
-    borderRadius: 4,
-    backgroundColor: '#1a1a26',
+    width: scale(183),
+    fontFamily: fonts.body,
+    fontSize: fontSize(9),
+    color: '#bbaec0',
   },
 }));

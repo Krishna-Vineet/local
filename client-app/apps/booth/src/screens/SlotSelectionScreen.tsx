@@ -112,15 +112,10 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
     goBackOr(navigation, 'Orientation');
   };
 
-  // Card sizing: fill the row on wide screens, two-up on a portrait iPad.
-  const columns = isLandscape ? 3 : 2;
-  const gutter = scale(14);
-  const rowWidth = Math.min(width - scale(40), scale(1120));
-  const cardWidth = Math.floor((rowWidth - gutter * (columns - 1)) / columns);
-  const previewHeight = Math.min(
-    Math.round(height * (isLandscape ? 0.44 : 0.3)),
-    Math.round(cardWidth * 1.18)
-  );
+  // `.template-card { flex: 0 0 clamp(260px, 23vw, 345px) }` — fixed card,
+  // carousel scrolls sideways instead of the page trying to fit everything.
+  const cardWidth = Math.min(scale(345), Math.max(scale(260), width * 0.23));
+  const previewHeight = Math.min(Math.round(height * 0.41), scale(420));
 
   const filters: { key: string; label: string; active: boolean; onPress: () => void }[] = [
     { key: 'size-all', label: 'All sizes', active: size === 'all', onPress: () => setSize('all') },
@@ -150,6 +145,7 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
       testID="template-screen"
       stretch
     >
+      {/* `.template-filters`: one centred row of two labelled chip groups. */}
       <View style={styles.filterBar}>
         {[
           { label: 'PRINT SIZE', items: filters },
@@ -157,90 +153,84 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
         ].map((group) => (
           <View key={group.label} style={styles.filterGroup}>
             <Text style={[styles.filterLabel, { color: p.faint }]}>{group.label}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {group.items.map((item) => (
-                <Pressable
-                  key={item.key}
-                  onPress={() => {
-                    SoundManager.play('click');
-                    item.onPress();
-                  }}
-                  style={[
-                    styles.chip,
-                    {
-                      borderColor: item.active ? 'transparent' : p.line,
-                      backgroundColor: item.active ? p.pink : p.surface,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.chipText, { color: item.active ? '#ffffff' : p.muted }]}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            {group.items.map((item) => (
+              <Pressable
+                key={item.key}
+                onPress={() => {
+                  SoundManager.play('click');
+                  item.onPress();
+                }}
+                style={[
+                  styles.chip,
+                  {
+                    borderColor: item.active ? p.pink : p.line,
+                    backgroundColor: item.active ? p.pink : p.surface,
+                  },
+                ]}
+              >
+                <Text style={[styles.chipText, { color: item.active ? '#ffffff' : p.muted }]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
         ))}
       </View>
 
+      {/* `.template-carousel`: the only thing on this screen that scrolls, and
+          it scrolls horizontally — Electron's strip behaviour. */}
       <ScrollView
-        style={styles.scroller}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+        horizontal
+        style={styles.carousel}
+        contentContainerStyle={styles.carouselContent}
+        showsHorizontalScrollIndicator={false}
       >
-        <View style={[styles.grid, { width: rowWidth }]}>
-          {filtered.map((item) => {
-            const selected = session.template?.id === item.id;
-            const price = getTemplatePrice(item, snapshot);
-            return (
-              <Pressable
-                key={item.id}
-                onPress={() => select(item)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                style={[
-                  styles.card,
-                  {
-                    width: cardWidth,
-                    borderColor: selected ? p.pink : 'transparent',
-                    backgroundColor: p.surface,
-                  },
-                  selected ? styles.cardSelected : null,
-                ]}
-              >
-                <View style={[styles.preview, { height: previewHeight, backgroundColor: '#efe8f2' }]}>
-                  <TemplatePreview
-                    template={item}
-                    maxHeight={previewHeight - scale(10)}
-                    radius={radiiInner}
-                  />
-                  {selected ? (
-                    <View style={[styles.selectedBadge, { backgroundColor: p.pink }]}>
-                      <Icon name="check" size={fontSize(12)} color="#ffffff" strokeWidth={2.6} />
-                      <Text style={styles.selectedText}>Selected</Text>
-                    </View>
-                  ) : null}
-                </View>
-
-                <View style={styles.cardCopy}>
-                  <View style={styles.cardCopyLeft}>
-                    <Text numberOfLines={1} style={[styles.cardName, { color: p.ink }]}>
-                      {item.name}
-                    </Text>
-                    <Text numberOfLines={1} style={[styles.cardMeta, { color: p.faint }]}>
-                      {item.layout.label} · {item.category}
-                    </Text>
+        {filtered.map((item) => {
+          const selected = session.template?.id === item.id;
+          const price = getTemplatePrice(item, snapshot);
+          return (
+            <Pressable
+              key={item.id}
+              onPress={() => select(item)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              style={[
+                styles.card,
+                {
+                  width: cardWidth,
+                  borderColor: selected ? p.pink : 'transparent',
+                  backgroundColor: p.surface,
+                },
+              ]}
+            >
+              <View style={[styles.preview, { backgroundColor: '#efe8f2' }]}>
+                <TemplatePreview template={item} maxHeight={previewHeight} maxWidth={cardWidth * 0.94} />
+                {selected ? (
+                  <View style={[styles.selectedBadge, { backgroundColor: p.pink }]}>
+                    <Icon name="check" size={scale(12)} color="#ffffff" strokeWidth={3} />
+                    <Text style={styles.selectedText}>Selected</Text>
                   </View>
-                  <Pill label={price === 0 ? 'Free' : `₹${price}`} tone="pink" />
+                ) : null}
+              </View>
+
+              <View style={styles.cardCopy}>
+                <View style={styles.cardCopyLeft}>
+                  <Text numberOfLines={1} style={[styles.cardName, { color: p.ink }]}>
+                    {item.name}
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.cardMeta, { color: p.muted }]}>
+                    {item.layout.label} · {item.category}
+                  </Text>
                 </View>
-              </Pressable>
-            );
-          })}
-        </View>
+                <Pill label={price === 0 ? 'Free' : `₹${price}`} tone="pink" />
+              </View>
+            </Pressable>
+          );
+        })}
 
         {filtered.length === 0 ? (
           <View style={styles.empty}>
-            <Icon name="image" size={fontSize(38)} color={p.faint} />
+            <Icon name="image" size={fontSize(34)} color={p.faint} />
             <Text style={[styles.emptyTitle, { color: p.ink }]}>No templates in this combination</Text>
             <Text style={[styles.emptyBody, { color: p.muted }]}>Try another print size or photo count.</Text>
           </View>
@@ -264,67 +254,92 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
   );
 };
 
-const radiiInner = moderateScale(12);
-
 const styles = StyleSheet.create({
-  filterBar: { width: '100%', maxWidth: scale(1120), alignSelf: 'center', gap: verticalScale(8) },
-  filterGroup: { flexDirection: 'row', alignItems: 'center', gap: scale(10) },
-  filterLabel: { fontFamily: fonts.bodyBlack, fontSize: fontSize(9.5), letterSpacing: 1.3, width: scale(76) },
-  chipRow: { gap: scale(8), alignItems: 'center', paddingVertical: verticalScale(2) },
+  // `.template-filters { display:flex; justify-content:center; gap: clamp(16px,4vw,55px) }`
+  filterBar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: scale(28),
+    flexShrink: 0,
+  },
+  filterGroup: { flexDirection: 'row', alignItems: 'center', gap: scale(7) },
+  filterLabel: { fontFamily: fonts.bodyBlack, fontSize: fontSize(10), letterSpacing: 1.1, marginRight: scale(5) },
+  // `.template-filters button { min-height:34px; padding:6px 13px; font-size:11px }`
   chip: {
-    height: verticalScale(34),
-    paddingHorizontal: scale(15),
+    minHeight: verticalScale(34),
+    paddingHorizontal: scale(13),
+    paddingVertical: verticalScale(5),
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chipText: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(12) },
+  chipText: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(11) },
 
-  scroller: { flex: 1, width: '100%', marginTop: verticalScale(14) },
-  scrollContent: { alignItems: 'center', paddingBottom: verticalScale(10) },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(14) },
-  card: { borderRadius: moderateScale(20), borderWidth: 1.5, padding: scale(9), ...shadows.soft },
-  cardSelected: { borderWidth: 2, shadowColor: '#d83585', shadowOpacity: 0.16 },
+  // `.template-carousel { flex:1; min-height:0; align-items:stretch; gap:20px }`
+  carousel: { flex: 1, minHeight: 0, marginTop: verticalScale(14), width: '100%' },
+  carouselContent: { gap: scale(20), paddingHorizontal: scale(4), paddingBottom: verticalScale(10), alignItems: 'stretch' },
+
+  // `.template-card { padding:11px; border:2px; border-radius:24px; background:#fff }`
+  card: { padding: scale(11), borderRadius: moderateScale(24), borderWidth: 2, ...shadows.soft },
+  // `.template-card-preview { flex:1; min-height:180px; border-radius:17px; background:#efe8f2 }`
   preview: {
-    width: '100%',
-    borderRadius: radiiInner,
+    flex: 1,
+    minHeight: verticalScale(180),
+    borderRadius: moderateScale(17),
     overflow: 'hidden',
-    position: 'relative',
-    padding: scale(5),
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  // `.selected-badge { left:50%; bottom:12px; translateX(-50%) }`
   selectedBadge: {
     position: 'absolute',
-    left: scale(8),
-    top: scale(8),
+    left: '50%',
+    bottom: verticalScale(12),
     flexDirection: 'row',
     alignItems: 'center',
     gap: scale(5),
-    paddingHorizontal: scale(9),
-    paddingVertical: verticalScale(4),
+    paddingHorizontal: scale(11),
+    paddingVertical: verticalScale(7),
     borderRadius: 999,
+    transform: [{ translateX: -scale(42) }],
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: scale(10),
+    shadowOffset: { width: 0, height: verticalScale(4) },
+    elevation: 4,
   },
-  selectedText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(9.5), letterSpacing: 0.5, color: '#ffffff' },
-  cardCopy: { flexDirection: 'row', alignItems: 'center', gap: scale(8), paddingTop: verticalScale(9), paddingHorizontal: scale(3) },
-  cardCopyLeft: { flex: 1 },
-  cardName: { fontFamily: fonts.display, fontSize: fontSize(15), letterSpacing: -0.2 },
-  cardMeta: { fontFamily: fonts.bodyBold, fontSize: fontSize(10.5), marginTop: verticalScale(2) },
+  selectedText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(10), color: '#ffffff' },
 
-  empty: { alignItems: 'center', gap: verticalScale(6), paddingVertical: verticalScale(40) },
+  cardCopy: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: scale(10),
+    paddingTop: verticalScale(12),
+    paddingHorizontal: scale(5),
+    paddingBottom: verticalScale(3),
+  },
+  cardCopyLeft: { flex: 1, minWidth: 0 },
+  cardName: { fontFamily: fonts.display, fontSize: fontSize(18) },
+  cardMeta: { fontFamily: fonts.body, fontSize: fontSize(10), marginTop: verticalScale(3) },
+
+  empty: { width: scale(420), alignItems: 'center', justifyContent: 'center', gap: verticalScale(8) },
   emptyTitle: { fontFamily: fonts.display, fontSize: fontSize(18) },
-  emptyBody: { fontFamily: fonts.body, fontSize: fontSize(12.5) },
+  emptyBody: { fontFamily: fonts.body, fontSize: fontSize(12) },
 
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: scale(12),
+    gap: scale(16),
     width: '100%',
-    maxWidth: scale(1120),
-    alignSelf: 'center',
-    marginTop: verticalScale(12),
+    marginTop: verticalScale(16),
+    flexShrink: 0,
   },
-  nextBtn: { flex: 1, maxWidth: scale(340) },
+  nextBtn: { minWidth: scale(240) },
 });
 
 export default SlotSelectionScreen;

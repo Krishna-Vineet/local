@@ -120,7 +120,7 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
                     portrait ? styles.paperTiltLeft : styles.paperTiltRight,
                   ]}
                 >
-                  <View style={styles.paperSlots}>
+                  <View style={[styles.paperSlots, portrait ? styles.paperSlotsCol : styles.paperSlotsRow]}>
                     {Array.from({ length: option.slots }).map((_, i) => (
                       <View key={i} style={styles.paperSlot} />
                     ))}
@@ -135,15 +135,16 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
               </View>
 
               <View
+                pointerEvents="none"
                 style={[
                   styles.check,
                   {
-                    borderColor: active ? p.pink : p.line,
-                    backgroundColor: active ? p.pink : 'transparent',
+                    borderColor: active ? p.pink : '#dcd0e2',
+                    backgroundColor: active ? p.pink : p.white,
                   },
                 ]}
               >
-                {active ? <Icon name="check" size={fontSize(15)} color="#ffffff" strokeWidth={2.4} /> : null}
+                {active ? <Icon name="check" size={scale(17)} color="#ffffff" strokeWidth={2.6} /> : null}
               </View>
             </Pressable>
           );
@@ -171,17 +172,19 @@ export const LayoutSelectionScreen: React.FC<Props> = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   body: { flex: 1, justifyContent: 'center', width: '100%' },
-  grid: { width: '100%', maxWidth: scale(1040), alignSelf: 'center', gap: scale(20) },
+  // `.orientation-grid { width: min(100%,1050px); grid-template-columns: 1fr 1fr }`
+  grid: { width: '100%', maxWidth: scale(1050), alignSelf: 'center', gap: scale(30) },
   gridRow: { flexDirection: 'row', alignItems: 'stretch' },
   gridCol: { flexDirection: 'column' },
   card: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: clampGap,
-    minHeight: verticalScale(210),
-    paddingHorizontal: scale(24),
-    paddingVertical: verticalScale(22),
+    gap: scale(27),
+    minHeight: verticalScale(300),
+    // `.orientation-card`: padding clamp(20px, 3vw, 42px), grid 1fr 1.05fr
+    paddingHorizontal: scale(34),
+    paddingVertical: verticalScale(26),
     borderRadius: moderateScale(28),
     borderWidth: 2,
     ...shadows.soft,
@@ -194,37 +197,46 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 
-  /* Electron `.paper-shape`: a white mount around a mauve mat, tilted 3°. */
-  paperStage: { width: scale(150), height: scale(160), alignItems: 'center', justifyContent: 'center' },
+  /* Electron `.paper-shape`: 6px white mount, mauve mat, 11px padding, ±3°. */
+  paperStage: { width: scale(210), height: scale(200), alignItems: 'center', justifyContent: 'center' },
   paper: {
-    padding: scale(9),
-    borderWidth: scale(5),
+    padding: scale(11),
+    borderWidth: scale(6),
     borderColor: '#ffffff',
     backgroundColor: '#e7dbe9',
     justifyContent: 'space-between',
   },
   paperTiltLeft: { transform: [{ rotate: '-3deg' }] },
   paperTiltRight: { transform: [{ rotate: '3deg' }] },
-  paperPortrait: { width: scale(96), height: scale(146) },
-  paperLandscape: { width: scale(146), height: scale(100) },
-  paperSlots: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: scale(5) },
-  paperSlot: { flexGrow: 1, flexBasis: '40%', borderRadius: moderateScale(3), backgroundColor: '#c9a9c9' },
+  // `--portrait { width:130; height:200; rows 1fr 1fr 22px }`
+  paperPortrait: { width: scale(130), height: scale(200) },
+  // `--landscape { width:210; height:140; cols 1fr 1fr; rows 1fr 18px }`
+  paperLandscape: { width: scale(210), height: scale(140) },
+  paperSlots: { flex: 1, gap: scale(7) },
+  paperSlotsCol: { flexDirection: 'column' },
+  paperSlotsRow: { flexDirection: 'row' },
+  // `.paper-shape span { background: linear-gradient(145deg,#6b3e76,#e77ca9) }`
+  paperSlot: { flex: 1, borderRadius: moderateScale(3), backgroundColor: '#a9738f' },
   paperBrand: {
     fontFamily: fonts.bodyBlack,
-    fontSize: fontSize(6),
-    letterSpacing: 0.9,
+    fontSize: fontSize(7),
+    letterSpacing: 1.05,
     color: '#8a718f',
     textAlign: 'center',
-    marginTop: verticalScale(4),
+    marginTop: verticalScale(6),
   },
   cardCopy: { flex: 1 },
   cardTitle: { fontFamily: fonts.display, fontSize: fontSize(24), letterSpacing: -0.4 },
   cardBlurb: { fontFamily: fonts.body, fontSize: fontSize(12.5), lineHeight: fontSize(18), marginTop: verticalScale(4) },
+  // `.select-check { position:absolute; top:18; right:18; width:35; height:35; border:2px }`
   check: {
-    width: scale(26),
-    height: scale(26),
-    borderRadius: scale(13),
-    borderWidth: 1.5,
+    position: 'absolute',
+    top: verticalScale(16),
+    right: scale(16),
+    width: scale(35),
+    height: scale(35),
+    borderRadius: scale(18),
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },

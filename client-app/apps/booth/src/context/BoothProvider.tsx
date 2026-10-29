@@ -39,8 +39,9 @@ import type { PrintTemplate } from '../../../../packages/types/src/index';
 import { photosAsDataUrls } from '../storage/deviceStorage';
 import { enqueueOfflineSession, processOfflineSyncQueue } from '../services/offlineSyncService';
 
-// Sticker size unit — must match `STICKER_UNIT` in apps/booth/src/screens/CustomizeScreen.tsx.
-const STICKER_UNIT = 500;
+// One em of a sticker as a fraction of the print width — must match
+// `STICKER_EM_FRACTION` in apps/booth/src/screens/CustomizeScreen.tsx.
+const STICKER_EM_FRACTION = 0.096;
 
 // ─── Final-print rendering ─────────────────────────────────────
 // The composite strip/page is rendered ONCE, then (a) printed and
@@ -146,19 +147,23 @@ async function renderSessionComposite(session: BoothSession): Promise<string | u
     decorations: Array.isArray(design.decorations) ? design.decorations : [],
     tagline: session.customization?.subtitle || design.subtitle || design.tagline,
     logo: session.customization?.logo || undefined,
-    // Stickers are stored as a percentage of the print plus a size unit that the
-    // customise screen and this renderer both interpret as `dims.width * size /
-    // STICKER_UNIT`. Anything else (the old fixed 90 px) printed as a speck.
+    // Stickers follow Electron's model: `x%`/`y%` of the print, sized by
+    // `scale` (0.5–4). The customise preview uses the same em fraction, so a
+    // sticker prints at exactly the size it was placed at.
     stickers: (session.customization?.stickers || []).map((s: any) => {
       const xPx = s.x <= 100 ? (Number(s.x) / 100) * dims.width : Number(s.x);
       const yPx = s.y <= 100 ? (Number(s.y) / 100) * dims.height : Number(s.y);
-      const unit = STICKER_UNIT;
-      const sizePx = Math.max(24, (dims.width * Number(s.size ?? 34)) / unit);
+      const scaleFactor = Number(s.scale ?? (s.size ? Number(s.size) / 34 : 1));
+      const sizePx = Math.max(24, dims.width * STICKER_EM_FRACTION * scaleFactor);
       return {
         id: s.id,
         emoji: s.emoji,
-        x: xPx,
-        y: yPx,
+        // `RenderEngine` centres the glyph on `x + width/2`, while the preview
+        // and Electron's `.placed-sticker` treat `x`/`y` as the centre. Offset
+        // by half a sticker here, or every sticker printed half a glyph up and
+        // to the left of where the guest put it.
+        x: xPx - sizePx / 2,
+        y: yPx - sizePx / 2,
         width: sizePx,
         height: sizePx,
         rotation: s.rotation ?? 0,

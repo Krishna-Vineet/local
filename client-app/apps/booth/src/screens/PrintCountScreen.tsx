@@ -54,6 +54,10 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
 
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  // `.order-preview-card > .template-frame { height: min(34vh, 300px) }`
+  const previewHeight = Math.min(Math.round(height * 0.34), scale(300));
+  // `.count-options button { width: clamp(58px, 5vw, 78px); aspect-ratio: 1 }`
+  const countSize = Math.min(scale(78), Math.max(scale(58), width * 0.05));
   const isFocused = useIsFocused();
 
   const event = snapshot?.event;
@@ -127,6 +131,9 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
                   style={[
                     styles.count,
                     {
+                      width: countSize,
+                      height: countSize,
+                      borderRadius: countSize / 2,
                       borderColor: active ? p.pink : p.line,
                       backgroundColor: active ? p.pink : p.surface,
                     },
@@ -179,10 +186,10 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
         </Card>
 
         <Card style={styles.previewCard} elevation="card">
-          <View style={styles.previewStage}>
+          <View style={[styles.previewStage, { height: previewHeight }]}>
             <TemplatePreview
               template={template}
-              maxHeight={Math.max(120, height * 0.34)}
+              maxHeight={previewHeight}
               maxWidth={scale(260)}
               radius={moderateScale(8)}
             />
@@ -233,12 +240,9 @@ const styles = StyleSheet.create({
   gridRow: { flexDirection: 'row', alignItems: 'stretch' },
   gridCol: { flexDirection: 'column' },
 
-  panel: { flex: 1.25, padding: scale(22), borderRadius: moderateScale(27), gap: verticalScale(12) },
+  panel: { flex: 1.25, padding: scale(34), borderRadius: moderateScale(27), gap: verticalScale(12) },
   counts: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(11), marginTop: verticalScale(6) },
   count: {
-    width: scale(64),
-    height: scale(64),
-    borderRadius: scale(32),
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -278,8 +282,17 @@ const styles = StyleSheet.create({
   },
   ynText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(11) },
 
-  previewCard: { flex: 0.75, padding: scale(15), borderRadius: moderateScale(25), alignItems: 'center', gap: verticalScale(8) },
-  previewStage: { alignItems: 'center', justifyContent: 'center', flex: 1, width: '100%', minHeight: 0, overflow: 'hidden' },
+  previewCard: {
+    flex: 0.75,
+    padding: scale(15),
+    borderRadius: moderateScale(25),
+    alignItems: 'center',
+    gap: verticalScale(8),
+    overflow: 'hidden',
+  },
+  // Fixed-height stage: a flex-1 stage let the print grow past the card and
+  // overlap the page heading on a short tablet.
+  previewStage: { alignItems: 'center', justifyContent: 'center', width: '100%' },
   previewCopy: { alignItems: 'center', marginTop: verticalScale(6) },
   previewName: { fontFamily: fonts.display, fontSize: fontSize(17), letterSpacing: -0.2 },
   previewMeta: { fontFamily: fonts.bodyBold, fontSize: fontSize(10.5), marginTop: verticalScale(2) },

@@ -135,10 +135,13 @@ tapping the photo in the active slot clears it. Slot tap = activate — or clear
 when it is the active slot and full. Next stays disabled until the number of
 filled slots equals the template's slot count.
 
-Sizing type is an emoji, and an emoji's size is a *proportion of the print*, not
-a font size. Both the customise preview and `RenderEngine` now compute
-`dims.width * size / STICKER_UNIT` (`STICKER_UNIT = 500`), so a sticker has the
-same footprint on screen and on paper.
+A sticker is `{ id, emoji, x, y, scale }` — `x`/`y` are percentages of the print
+(clamped 0–100 while dragging) and `scale` is 0.5–4 in 0.25 steps, exactly
+Electron's model. One em is 9.6 % of the print width, so the customise preview
+and `RenderEngine` both compute `dims.width * 0.096 * scale`
+(`STICKER_EM_FRACTION`) and a sticker prints at the size it was placed at. There
+are no −/+/× controls on the image: they live in the Stickers list, because a
+toolbar pinned to a drag point drifts off the print at the frame edge.
 
 ### 6.2 Stickers in the final print
 
@@ -199,15 +202,127 @@ go where. `resolvePhotoSlots`, `resolveSlotCount`, `placeSlot` and
 own — and `layout.slots`, which is a *count*, was mistaken for a slot list — so a
 photo could sit in slot 2 on screen and slot 1 on paper.
 
-### 6.6 Idle timer is invisible until it matters
+### 6.6 The idle timer: a pill in the header, a toast only at the end
 
-The header used to render a red `{secondsLeft}s` pill from the first second of a
-session, and the welcome screen printed "returns in Ns" — both read as errors.
-Electron shows no idle clock at all. The countdown now surfaces only through
-`InactivityToast`, which returns `null` unless `0 < secondsLeft <= 20` (red at
-10 s or less), and the header pill and welcome countdown are gone.
+The first attempt over-corrected. Electron *does* keep a clock on screen the
+whole time — `.timer-pill` sits beside `.connection-state` for the entire
+session — and removing it left the tablet with no idle feedback at all. The pill
+is therefore back and always visible: `HH:MM`-less `Ns` on `--red-soft`, turning
+solid red (`--red`, white text) at ≤ 10 s, matching `.timer-pill.is-urgent`.
+
+What stays threshold-gated is the *toast*: `InactivityToast` returns `null`
+unless `0 < secondsLeft <= 20`, so the modal never appears early. The welcome
+screen's "returns in Ns" line is gone for good — that one was invented here,
+not in Electron.
 
 Also fixed: `finishAndPrint(patch)` takes the final customisation in the same call
 that renders the print, because a `updateSession(...)` immediately before it is
 still in flight when the composite is built — the last consent/filter/sticker
 edit could miss the print entirely.
+
+## 7. Correction history — the round-3 diff, screen by screen
+
+The user diffed `electron ui.pdf` against `Native UI.pdf` and sent the two files
+back with three instructions: the navbar is not at the very top, branding is the
+HappyPix mark plus the organisation name and nothing else, and the timer pill is
+missing. Everything else in this section is the same exercise carried out across
+all nine screens — what the tablet had, what Electron has, what changed. Nothing
+here is a redesign: Electron is the source of truth, and every value below was
+copied out of `electron/src/ui/App.css`.
+
+### 7.1 Shell and header — `AppShell.tsx`
+
+| | |
+|---|---|
+| Native had | `paddingTop: insets.top` on the *shell*, so the page background showed above the bar — the "navbar is not on complete top" report. A second `HappyPix` wordmark node beside the logo. No timer. Progress rail was six flat pink dots, 26 × 5. |
+| Electron has | `.screen-shell` rows `74px auto 1fr`; the header is the topmost element and owns the safe-area strip. `Brand compact` (mark only — the asset already carries the wordmark) + `.header-divider` + `.org-brand`. `.flow-progress` bars `clamp(18px, 2.6vw, 42px) × 5px`, done = `linear-gradient(90deg, #ee4c96, #a968d9)`. `.connection-state` and `.timer-pill`, both 34 px tall, 11 px/850; timer `min-width: 69px`, `is-urgent` at ≤ 10 s. |
+| Now | The header owns the insets (`paddingTop: insets.top + 6`, `height: clamp(58, 11vh, 74) + insets.top`), so it is flush with the top edge on iPad and Android alike. Wordmark removed. Timer pill restored and **always visible**, red + white at ≤ 10 s. Progress bars are `Svg` rects with the real pink→violet gradient. `headerLeft` is `flex: 1; minWidth: 0` so the rail stays centred whatever the org name's length. |
+
+### 7.2 Start screen — `StartScreen.tsx`
+
+| | |
+|---|---|
+| Native had | Three white frames over flat tinted blocks, an oversized seal, and a fat full-width prompt pill at the bottom. |
+| Electron has | `.start-art` at `min(39vw, 570px)` with aspect `0.92`, three flat CSS-shape prints at `3 %/30 %/29 %/3 % #f4a3bd −7°`, `23 %/1 %/7 %/36 % #ef83ab +7°`, `35 %/24 %/2 %/17 % #e4a1bc`, and a 74 px pink heart at `left 47 % / top 42 %`. Type: `WELCOME TO` eyebrow, 52 px event name, `clientName · location`, optional tagline in curly quotes. Bottom right: a quiet "Touch anywhere to begin" with a 42 px pink arrow disc. |
+| Now | Rebuilt as one full-screen `Pressable` with exactly those three shapes, the 74 px heart seal, the eyebrow/name/meta/tagline stack and the bottom-right prompt + arrow disc with a nudge animation. Landscape is a two-column split, portrait stacks. |
+
+### 7.3 Orientation screen — `LayoutSelectionScreen.tsx`
+
+| | |
+|---|---|
+| Native had | Pale flat blocks for the two paper shapes, a grid that stretched edge to edge, and a centred check badge on selection. |
+| Electron has | `.paper-shape--portrait` 130 × 200, `.paper-shape--landscape` 210 × 140, both with a 6 px white border and slot placeholders; card grid `max-width: 1050`, gap 30; card padding `0 34`, `min-height: 300`, gap 27; check badge absolute top-right, 35 px. |
+| Now | Same geometry: 130 × 200 / 210 × 140 papers with white borders and real slot rows/columns, grid capped at 1050 with 30 gap, cards `minHeight: 300`, badge moved to the top-right at 35 px. |
+
+### 7.4 Template strip — `SlotSelectionScreen.tsx`
+
+| | |
+|---|---|
+| Native had | A vertically scrolling page of cards, slot borders tinted with the accent (`accent+'70'`), dark 12 % fill, badge top-left, previews that were not clipped to the card. |
+| Electron has | `.template-carousel` — horizontal, scroll-snap, `flex: 0 0 clamp(260px, 23vw, 345px)`; preview background `#efe8f2`; `.selected-badge` bottom-centre; `.template-slot` `2px rgba(255,255,255,.78)` + `rgba(255,255,255,.14)` fill, numeral `8cqw`. |
+| Now | Page scrolling removed — the screen is a single `stretch` body with a horizontal `ScrollView` carousel, `cardWidth = clamp(260, 23vw, 345)`, `previewHeight = min(41vh, 420)`. Cards carry labelled `PRINT SIZE` / `PHOTOS` chip groups, the "Selected" pill at the bottom centre, the price as a `Pill`, and a proper empty state. **Empty slots now use Electron's white chrome**: 2 px `rgba(255,255,255,.78)` ring, `.14` white fill, white numerals `max(9, 8 %w)` — the mustard/orange rectangles are gone from both the kiosk and the studio, because `TemplateCanvas` is shared and the tinted borders were the bug. |
+
+### 7.5 Print count — `PrintCountScreen.tsx`
+
+| | |
+|---|---|
+| Native had | The preview computed from the card's own padding and escaping the card; count buttons scaled from the 1024 guideline and read small. |
+| Electron has | `.count-options` buttons `clamp(58px, 5vw, 78px)`; the print frame pinned to `min(34vh, 300px)` on the stage; panel padding 34. |
+| Now | `previewHeight = min(34vh, 300)` passed to `TemplatePreview` on the stage, `countSize = clamp(58, 5vw, 78)` round buttons, `previewCard` clips (`overflow: 'hidden'`), panel padding 34. |
+
+### 7.6 Payment — `PaymentScreen.tsx`
+
+| | |
+|---|---|
+| Native had | Oversized mock cards that floated in the middle of the page without a shared baseline. |
+| Electron has | `.payment-layout` `max-width: 1030`, gap 54; `.summary-card` padding 42, radius 28, softer shadow, stretching with the column. |
+| Now | `mainLayout` capped at 1030 with a 54 gap; summary and coupon cards are `flex: 1` / `alignSelf: 'stretch'` with 42 padding and radius 28; the coupon block gained a 54 px pink-soft ticket disc. |
+
+### 7.7 Camera — `CaptureScreen.tsx`
+
+| | |
+|---|---|
+| Native had | A bare full-bleed viewfinder, a floating status pill and a right-hand thumbnail rail — none of which exist in Electron. The film rebate and sprocket styles were in the file but **never rendered**. |
+| Electron has | `.camera-hud` (55 px: hardware dot + camera name left, `CAPTURE n / total` + 4 px progress bar right), then `.camera-workspace` = `minmax(145px, 18vw)` `.film-reel` + `.viewfinder`. The reel is a 2-column `.film-track` of `.film-cell`s with sprocket strips and a per-frame number, current frame ringed pink. `.viewfinder` is `28px / 1fr / 28px`: top rebate `KODAK PORTRA 400 · HAPPYPIX LIVE · ISO AUTO`, bottom rebate `EXP n/total · LOOK HERE & SMILE · SAFETY FILM`, with 48 px focus corners and a glass shutter pill (white-ringed 58 px disc + "Start shooting"). Countdown is a full-frame wash with a `clamp(90, 16vw, 230)` digit. |
+| Now | Rebuilt to that structure. Landscape = reel column left / viewfinder right; portrait = viewfinder on top / 118 px reel strip below, mirroring Electron's `max-height: 720px` media query. The sprocket strips, frame numbers, rebate lines, focus corners, progress bar and glass shutter are all present; countdown washes the whole frame; the old floating pill and side rail are gone. |
+
+### 7.8 Photo selection — selection logic
+
+| | |
+|---|---|
+| Native had (before round 2) | Auto-selection of the first *N* shots. |
+| Electron has | Slot list starts empty; tap a photo → fills the active slot and advances past it; tap a photo already in another slot → swaps it with the active slot; tap the active slot's own photo → clears it; tap a slot → make it active (or clear it when it is active and full). Next is disabled until `filled === slots`. |
+| Now | Identical state machine (`handlePhotoTap` / `handleSlotTap`), including the wrap-around "any empty" fallback and the disabled Next. Slot count comes only from `resolveSlotCount`, and the preview is `TemplatePreview` so the canvas can no longer overflow its column. |
+
+### 7.9 Customise — sticker model and controls
+
+| | |
+|---|---|
+| Native had | `{ x, y, size }` with size in an invented unit, `x`/`y` clamped to 0–90, and −/+/× buttons floating on the image (half of them outside the frame at the edges). |
+| Electron has | `{ id, emoji, x, y, scale }`; drag clamps to 0–100 % on both axes; `.placed-sticker` is `translate(-50%,-50%)` at `font-size: scale * 8cqw`; scale is 0.5–4 in 0.25 steps; − / % / + / × live in `.sticker-list-row` inside the Stickers tab. |
+| Now | The model is `scale`, clamped 0.5–4 in 0.25 steps and rendered at `9.6 % × scale` of the print width in both the preview and the 300 dpi composite; drag clamps to 0–100; no controls on the print at all; the list rows carry 34 px −/+, the percentage, and the red ×, matching `.sticker-size-btn` / `.sticker-size-value` / `.sticker-delete-btn`. "Preparing your print…" is now Electron's dim wash + pill rather than a floating spinner. |
+
+### 7.10 Success / QR and the guest-support modal — `OrderSuccessScreen.tsx`
+
+| | |
+|---|---|
+| Native had (before round 2) | A dark screen with a single centred card — it looked like a different product at the most-photographed moment. |
+| Electron has | `.success-screen` light, `.success-layout` `1.08fr .72fr` gap `clamp(25, 6vw, 90)`; 100 px success mark, radius 32, rotated −3°; title `clamp(43px, 5vw, 72px)`; `.download-card` padding `clamp(24px, 3vw, 40px)`, radius 29, QR `min(29vh, 270px)`; "⚠ Need Help? Raise a Guest Support Ticket" as a quiet underlined link; the modal is a 600 px card (`radius 26`, 2-column `.cat-chip` grid, 50 px inputs, `.issue-meta` strip, `.ticket-success` state). |
+| Now | The light layout, both columns and the whole modal already existed from round 2; this round brings the *measurements* in line — mark 100 px/radius 32, title and QR sized from the real clamps instead of fixed `fontSize()` values, layout gap and card padding from the CSS, `.72` side column, and Electron's exact copy ("Your digital copy", "🔒 Link is secured and valid for 24 hours", the ⚠ help link). Modal categories, contact + name + description fields, session/event meta strip, inline error and the submitted-ticket reference are unchanged and shared verbatim with Electron. |
+
+### 7.11 What was deliberately *not* copied
+
+* Backdrop blur (`backdrop-filter`) — React Native has no equivalent; a
+  translucent surface at the same opacity reads identically at kiosk distance.
+* The CSS `radial-gradient` page washes — drawn as `react-native-svg` radial
+  fills instead, for the reason in §6.3.
+* Hover states (`:hover`) — there is no pointer on a tablet; the `:active`
+  press transform is kept.
+
+### 7.12 Standing rule
+
+When the tablet and the desktop disagree, **Electron wins** and the change is
+made here, not there. The only exception is the support modal, which is shared
+design and must be fixed in both. Every value in this section is traceable to a
+rule in `electron/src/ui/App.css`; if a future edit cannot name that rule, it is
+not parity, it is a new design decision and needs the user's sign-off.

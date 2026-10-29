@@ -43,6 +43,34 @@ Start in production mode:
 npm start
 ```
 
+## Health check
+
+```bash
+curl -s http://localhost:5000/api/health
+```
+
+Answers with the running build and the state of the device-token schema in one
+line of JSON — use it first when a device write fails:
+
+```json
+{"status":"ok","serverFile":"/…/backend/server.js","workingDirectory":"/…/backend",
+ "uptimeSeconds":42,
+ "deviceToken":{"loaded":true,"plaintextPath":"absent","hashedPath":true,
+                "guards":[{"model":"Device","path":"absent","action":"none"}]}}
+```
+
+* `serverFile` — the file this process actually booted; if it is not the checkout
+  you are editing, you are looking at a stale server.
+* `deviceToken.plaintextPath` — must be `absent`. A `required` plaintext path made
+  every device write fail with `Device validation failed: deviceToken: Path
+  \`deviceToken\` is required.` and surface as HTTP 500 `code: "INTERNAL"`.
+* `deviceToken.guards` — the schema guards applied at boot (see
+  `services/schemaGuards.js`). `action: "none"` means the model has no plaintext
+  path and needs no virtual setter.
+
+`GET /api/health/schema` gives the same device report plus every path on the
+`Device` model, for when the above is not enough.
+
 ## Seeding the Database
 
 You can run seed scripts to populate initial data:

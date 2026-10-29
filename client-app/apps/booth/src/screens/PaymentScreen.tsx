@@ -15,6 +15,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
 import type { CheckoutQuote, PaymentOrder } from '@happypix/types';
 import {
+  Icon,
   fontSize,
   scale,
   moderateScale,
@@ -408,6 +409,9 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
 
             {/* Coupon / Voucher Card */}
             <View style={styles.couponCard}>
+              <View style={styles.couponIcon}>
+                <Icon name="ticket" size={scale(26)} color="#d52d7b" />
+              </View>
               <Text style={styles.kicker}>PROMO / COUPON</Text>
               <Text style={styles.couponTitle}>Have a coupon code?</Text>
               <Text style={styles.couponSub}>
@@ -488,12 +492,15 @@ export const PaymentScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create(withKioskFonts({
+  // `.payment-summary-layout { width: min(100%,1030px); gap: clamp(20,4vw,54) }`
   mainLayout: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: scale(16),
-    gap: scale(20),
+    width: '100%',
+    maxWidth: scale(1030),
+    alignSelf: 'center',
+    gap: scale(54),
   },
   rowLayout: {
     flexDirection: 'row',
@@ -672,16 +679,18 @@ const styles = StyleSheet.create(withKioskFonts({
     fontWeight: '700',
   },
   summaryCard: {
+    flex: 1,
+    alignSelf: 'stretch',
     backgroundColor: '#ffffff',
-    borderRadius: moderateScale(24),
+    borderRadius: moderateScale(28),
     borderWidth: 1.5,
     borderColor: '#e9e0ef',
-    padding: scale(26),
-    width: scale(330),
+    padding: scale(42),
     shadowColor: '#3c204b',
-    shadowOpacity: 0.13,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: scale(20),
+    shadowOffset: { width: 0, height: verticalScale(10) },
+    elevation: 4,
   },
   summaryLine: {
     flexDirection: 'row',
@@ -739,16 +748,27 @@ const styles = StyleSheet.create(withKioskFonts({
     fontWeight: '800',
   },
   couponCard: {
+    flex: 1,
+    alignSelf: 'stretch',
     backgroundColor: '#ffffff',
-    borderRadius: moderateScale(24),
+    borderRadius: moderateScale(28),
     borderWidth: 1.5,
     borderColor: '#e9e0ef',
-    padding: scale(26),
-    width: scale(330),
+    padding: scale(42),
     shadowColor: '#3c204b',
-    shadowOpacity: 0.13,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: scale(20),
+    shadowOffset: { width: 0, height: verticalScale(10) },
+    elevation: 4,
+  },
+  couponIcon: {
+    width: scale(54),
+    height: scale(54),
+    borderRadius: moderateScale(17),
+    backgroundColor: '#ffedf6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: verticalScale(13),
   },
   couponTitle: {
     color: '#281637',

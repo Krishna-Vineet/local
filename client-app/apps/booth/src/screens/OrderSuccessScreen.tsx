@@ -171,6 +171,13 @@ export const OrderSuccessScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  // Electron clamps: title `clamp(43px,5vw,72px)`, QR `min(29vh,270px)`,
+  // layout gap `clamp(25px,6vw,90px)`, card padding `clamp(24px,3vw,40px)`.
+  const titleSize = Math.max(43, Math.min(72, width * 0.05));
+  const qrSize = Math.min(height * 0.29, 270);
+  const layoutGap = Math.max(25, Math.min(90, width * 0.06));
+  const cardPadding = Math.max(24, Math.min(40, width * 0.03));
+
   return (
     <AppShell
       step="customize"
@@ -180,7 +187,13 @@ export const OrderSuccessScreen: React.FC<Props> = ({ navigation }) => {
       secondsLeft={seconds}
       testID="success-screen"
     >
-      <View style={[styles.layout, isLandscape ? styles.layoutLandscape : styles.layoutPortrait]}>
+      <View
+        style={[
+          styles.layout,
+          { gap: layoutGap },
+          isLandscape ? styles.layoutLandscape : styles.layoutPortrait,
+        ]}
+      >
         {/* ── outcome ─────────────────────────────────────────────────────── */}
         <View style={styles.copyColumn}>
           <View
@@ -193,7 +206,7 @@ export const OrderSuccessScreen: React.FC<Props> = ({ navigation }) => {
           </View>
 
           <Eyebrow color={p.pinkDeep}>{isSuccess ? 'All done' : 'Printing needs help'}</Eyebrow>
-          <Text style={[styles.title, { color: p.ink }]}>
+          <Text style={[styles.title, { color: p.ink, fontSize: titleSize, lineHeight: titleSize * 1.02 }]}>
             {isSuccess
               ? 'Your memories are printing!'
               : outcome?.error && outcome.error.toLowerCase().includes('printer')
@@ -246,30 +259,30 @@ export const OrderSuccessScreen: React.FC<Props> = ({ navigation }) => {
             accessibilityLabel="Raise a guest support ticket"
           >
             <Icon name="info" size={fontSize(14)} color={p.pinkDeep} />
-            <Text style={[styles.raiseText, { color: p.pinkDeep }]}>Need help? Raise a support ticket</Text>
+            <Text style={[styles.raiseText, { color: p.pinkDeep }]}>⚠ Need Help? Raise a Guest Support Ticket</Text>
           </Pressable>
         </View>
 
         {/* ── digital pass / thank you ────────────────────────────────────── */}
         {session.digitalCopy !== false && effectiveShareUrl ? (
-          <Card elevation="card" style={styles.sideCard}>
-            <Eyebrow color={p.pinkDeep}>Your digital pass</Eyebrow>
+          <Card elevation="card" style={{ ...styles.sideCard, padding: cardPadding }}>
+            <Eyebrow color={p.pinkDeep}>Your digital copy</Eyebrow>
             <Text style={[styles.sideTitle, { color: p.ink }]}>Scan. Save. Share.</Text>
-            <View style={[styles.qrFrame, { borderColor: p.line }]}>
-              <QRCode value={effectiveShareUrl} size={scale(190)} backgroundColor="#ffffff" color="#281637" />
+            <View style={[styles.qrFrame, { borderColor: p.line, width: qrSize, height: qrSize }]}>
+              <QRCode value={effectiveShareUrl} size={qrSize - scale(20)} backgroundColor="#ffffff" color="#281637" />
             </View>
             <Text style={[styles.sideBody, { color: p.ink }]}>Open the camera on your phone and scan this code.</Text>
-            <Text style={[styles.sideFine, { color: p.faint }]}>Secured link · valid for 24 hours</Text>
+            <Text style={[styles.sideFine, { color: p.faint }]}>🔒 Link is secured and valid for 24 hours</Text>
             <Text numberOfLines={2} style={[styles.sideUrl, { color: p.faint }]}>
               {effectiveShareUrl}
             </Text>
           </Card>
         ) : (
-          <Card elevation="card" style={styles.sideCard}>
+          <Card elevation="card" style={{ ...styles.sideCard, padding: cardPadding }}>
             <Icon name="heart" size={scale(46)} color={p.pinkDeep} />
             <Text style={[styles.sideTitle, { color: p.ink }]}>Thank you for making memories with us.</Text>
             <Text style={[styles.sideFine, { color: p.muted }]}>
-              This screen resets automatically for the next guest.
+              Your session will reset automatically for the next guest.
             </Text>
           </Card>
         )}
@@ -421,9 +434,9 @@ const styles = StyleSheet.create({
 
   copyColumn: { flex: 1.08, maxWidth: scale(620) },
   mark: {
-    width: scale(96),
-    height: scale(96),
-    borderRadius: moderateScale(30),
+    width: scale(100),
+    height: scale(100),
+    borderRadius: moderateScale(32),
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: verticalScale(20),
@@ -454,15 +467,12 @@ const styles = StyleSheet.create({
     maxWidth: scale(390),
     alignSelf: 'center',
     alignItems: 'center',
-    padding: scale(24),
-    borderRadius: radii.card,
+    borderRadius: moderateScale(29),
     gap: verticalScale(10),
   },
-  sideTitle: { fontFamily: fonts.display, fontSize: fontSize(26), letterSpacing: -0.6, textAlign: 'center' },
+  sideTitle: { fontFamily: fonts.display, fontSize: fontSize(28), letterSpacing: -0.6, textAlign: 'center' },
   qrFrame: {
-    width: scale(210),
-    height: scale(210),
-    borderRadius: moderateScale(14),
+    borderRadius: moderateScale(12),
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',

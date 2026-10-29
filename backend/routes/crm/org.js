@@ -722,7 +722,8 @@ router.post('/devices', requirePerm(PERMS.EVENTS_DEVICES_MANAGE), requireWritabl
     deviceUuid,
     deviceName,
     location: String(req.body.location || '').trim(),
-    deviceToken: Device.generateToken(),
+    // Hash only — `deviceToken` is not a schema path (models/Device.js).
+    deviceTokenHash: Device.createToken().hash,
     operatorName: req.body.operatorName ? String(req.body.operatorName).trim() : null,
     operatorPhone: req.body.operatorPhone ? String(req.body.operatorPhone).trim() : null,
     assignedEventId: req.body.eventId || null,

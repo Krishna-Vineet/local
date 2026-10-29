@@ -14,6 +14,7 @@ import { authenticateDevice } from './middleware/deviceAuth.js';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import dns from 'dns';
 
 // Fix for MongoDB SRV resolution issue on certain networks (e.g. Windows local ISP)
@@ -44,13 +45,19 @@ import { ensurePlanCatalog } from './routes/crm/platform.js';
 
 // Services
 import cronService        from './services/CronService.js';
+import { applySchemaGuards, describeDeviceTokenPath } from './services/schemaGuards.js';
 
 // Model imports
 import Photo from './models/Photo.js';
 import WebsiteLead from './models/WebsiteLead.js';
 
+// Repair model schemas that a stale/foreign copy of the code declares wrongly,
+// before the first request can touch them (see services/schemaGuards.js).
+const SCHEMA_GUARD_REPORT = applySchemaGuards();
+
 const app = express();
 const PORT = process.env.PORT || 5000;
+const BOOTED_AT = new Date().toISOString();
 
 // ─── Startup ENV Validation ───────────────────────────────
 const REQUIRED_ENV = ['MONGODB_URI', 'JWT_SECRET', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET'];
@@ -170,6 +177,29 @@ app.use((req, res, next) => {
 // Root Route
 app.get('/', (req, res) => {
   res.send('🚀 HappyPix Server is running!');
+});
+
+/**
+ * Diagnostics. Tells an operator which copy of the backend is answering and
+ * what its Device token schema looks like — the two things that decide whether
+ * a `deviceToken` validation error can happen at all.
+ *
+ *   curl -s http://localhost:5000/api/health | jq
+ */
+app.get(['/api/health', '/api/health/schema'], (req, res) => {
+  res.json({
+    ok: true,
+    bootedAt: BOOTED_AT,
+    uptimeSeconds: Math.round(process.uptime()),
+    node: process.version,
+    mongoose: mongoose.version,
+    // Which file is actually serving this request — the usual reason a fix
+    // "does not work" is that a different checkout is running.
+    serverFile: fileURLToPath(import.meta.url),
+    workingDirectory: process.cwd(),
+    mongoState: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState] || 'unknown',
+    deviceToken: { ...describeDeviceTokenPath(), guards: SCHEMA_GUARD_REPORT },
+  });
 });
 
 // ─── MongoDB Connection (Serverless-safe) ─────────────────

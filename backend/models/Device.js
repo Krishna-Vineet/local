@@ -16,13 +16,25 @@ const deviceSchema = new mongoose.Schema(
     deviceUuid:      { type: String, required: true, unique: true, index: true }, // Persistent installation UUID
     deviceName:      { type: String, required: true, trim: true }, // "Booth-01"
     location:        { type: String, trim: true, default: '' },    // "Crown Ballroom"
-    // Legacy plaintext column — kept ONLY so pre-hashing rows can be found
-    // once and migrated. New writes never persist a raw token (see pre-save):
-    // only its SHA-256 hash is stored, so a database leak exposes no live
-    // booth credentials. The raw token is returned to the booth exactly
-    // once, at pairing time.
-    deviceToken:     { type: String, default: null, index: true },
-    deviceTokenHash: { type: String, index: true, default: null }, // SHA-256 hash for secure DB storage
+    // Tokens are HASH-ONLY, and deliberately not a schema path.
+    //
+    // The plaintext `deviceToken` column used to live here. Pairing assigned a
+    // raw token, a `pre('save')` hook hashed it and set the path to `undefined`,
+    // and every device write therefore carried a path that was declared on the
+    // schema and then intentionally left empty. The moment that path was (or
+    // is, in a deployment that has not picked up the change) marked
+    // `required: true`, every device write failed with
+    //
+    //   Device validation failed: deviceToken: Path `deviceToken` is required.
+    //
+    // — a 500 on assign, on pairing, on session completion. Removing the path
+    // is the structural fix: there is nothing left for Mongoose to validate, so
+    // no schema version, no stale build and no future edit can reintroduce it.
+    //
+    // Legacy rows that still hold a plaintext token are read through the raw
+    // driver (`Device.collection`), which skips casting and validation, and are
+    // migrated on first use or by `scripts/heal-device-tokens.js`.
+    deviceTokenHash: { type: String, index: true, default: null }, // SHA-256 of the raw token; the raw value only ever leaves the server once, at pairing
 
     // ─── Operator ─────────────────────────────────────────────
     // On-ground booth worker (not a CRM user)
@@ -78,48 +90,68 @@ deviceSchema.virtual('online').get(function () {
 deviceSchema.set('toJSON',   { virtuals: true });
 deviceSchema.set('toObject', { virtuals: true });
 
-// ─── Pre-save: hash the raw token, then erase the plaintext ─────
-// Callers assign `deviceToken = Device.generateToken()` and keep the raw
-// value in a local variable to return it once; after save, only the hash
-// exists anywhere in the database.
-deviceSchema.pre('save', function () {
-  if (this.isModified('deviceToken') && typeof this.deviceToken === 'string' && this.deviceToken.startsWith('hp_dev_')) {
-    this.deviceTokenHash = hashDeviceToken(this.deviceToken);
-    this.deviceToken = undefined;
-  }
-});
+// ─── Static: mint a token pair ───────────────────────────────
+// The raw token is handed to the booth exactly once (at pairing) and never
+// persisted; only `hash` is written. Callers must store the hash, not the raw
+// value — there is no schema path for the raw value any more.
+deviceSchema.statics.createToken = function () {
+  const raw = `hp_dev_${crypto.randomUUID()}`;
+  return { raw, hash: hashDeviceToken(raw) };
+};
 
-// ─── Static: Generate unique device token ────────────────────
+/** Back-compat: the raw half of `createToken()`. Prefer `createToken()`. */
 deviceSchema.statics.generateToken = function () {
-  return `hp_dev_${crypto.randomUUID()}`;
+  return this.createToken().raw;
+};
+
+/** SHA-256 of a raw token, for callers that already hold one. */
+deviceSchema.statics.hashToken = function (rawToken) {
+  return hashDeviceToken(rawToken);
 };
 
 // ─── Static: Find device by raw token (hash lookup; legacy rows migrate) ──
 deviceSchema.statics.findByToken = async function (rawToken) {
   if (!rawToken || typeof rawToken !== 'string') return null;
   const tokenHash = hashDeviceToken(rawToken);
+  if (!tokenHash) return null;
+
   const byHash = await this.findOne({ deviceTokenHash: tokenHash });
   if (byHash) return byHash;
-  // Legacy row still holding a plaintext token or double-hashed token:
-  // accept it once, then migrate it to hash-only storage.
-  const doubleHash = hashDeviceToken(tokenHash);
-  const legacy = await this.findOne({
-    $or: [
-      { deviceToken: rawToken },
-      { deviceToken: tokenHash },
-      { deviceTokenHash: doubleHash },
-    ],
-  });
-  if (legacy) {
-    legacy.deviceTokenHash = tokenHash;
-    legacy.deviceToken = undefined;
-    await this.updateOne(
-      { _id: legacy._id },
-      { $set: { deviceTokenHash: tokenHash }, $unset: { deviceToken: 1 } },
-    ).catch(() => {});
-    return legacy;
+
+  // Pre-hashing rows. `deviceToken` is no longer a schema path, so this has to
+  // go through the raw driver — a Mongoose query would silently strip an
+  // unknown field from the filter and match every document.
+  //
+  // Two shapes exist in the wild:
+  //   · the raw token                    → hash it
+  //   · the token's SHA-256 (older code)  → store it as the hash
+  const storedHash = /^[a-f0-9]{64}$/i.test(rawToken) ? rawToken : tokenHash;
+  let legacyRow = null;
+  for (const candidate of new Set([rawToken, tokenHash])) {
+    legacyRow = await this.collection.findOne({ deviceToken: candidate }).catch(() => null);
+    if (legacyRow) break;
   }
-  return null;
+  if (!legacyRow) {
+    // A row whose hash was written by the older double-hash path.
+    legacyRow = await this.collection
+      .findOne({ deviceTokenHash: hashDeviceToken(tokenHash) })
+      .catch(() => null);
+    if (legacyRow) {
+      await this.collection
+        .updateOne({ _id: legacyRow._id }, { $set: { deviceTokenHash: tokenHash } })
+        .catch(() => {});
+      return this.findById(legacyRow._id);
+    }
+    return null;
+  }
+
+  await this.collection
+    .updateOne(
+      { _id: legacyRow._id },
+      { $set: { deviceTokenHash: storedHash }, $unset: { deviceToken: '' } },
+    )
+    .catch(() => {});
+  return this.findById(legacyRow._id);
 };
 
 const Device = mongoose.model('Device', deviceSchema);

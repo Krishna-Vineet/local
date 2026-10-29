@@ -44,14 +44,22 @@ export async function resolveDevice(req) {
       if (byUuid.status === 'blocked' || byUuid.status === 'inactive') {
         return { error: { status: 403, code: BOOTH_STATES.DEVICE_BLOCKED, message: 'This device has been blocked by an administrator.' } };
       }
-      if (byUuid.status === 'active' && token.startsWith('hp_dev_')) {
+      // Adopt the presented token ONLY for a legacy row that has no hash yet —
+      // never overwrite an existing hash. The previous version re-hashed any
+      // `hp_dev_…` token whose UUID matched, so knowing a device UUID was
+      // enough to hijack that device (and to rotate it out from under the real
+      // booth). The filter is part of the update so two racing first-requests
+      // cannot both win.
+      if (byUuid.status === 'active' && !byUuid.deviceTokenHash && token.startsWith('hp_dev_')) {
         const healedHash = hashDeviceToken(token);
-        byUuid.deviceTokenHash = healedHash;
-        await Device.updateOne(
-          { _id: byUuid._id },
-          { $set: { deviceTokenHash: healedHash }, $unset: { deviceToken: 1 } },
-        ).catch(() => {});
-        device = byUuid;
+        await Device.collection
+          .updateOne(
+            { _id: byUuid._id, deviceTokenHash: null },
+            { $set: { deviceTokenHash: healedHash }, $unset: { deviceToken: '' } },
+          )
+          .catch(() => {});
+        const adopted = await Device.findById(byUuid._id);
+        if (adopted && adopted.deviceTokenHash === healedHash) device = adopted;
       }
     }
   }

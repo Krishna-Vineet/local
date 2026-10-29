@@ -78,14 +78,15 @@ router.post('/booth-login', boothLoginLimiter, async (req, res) => {
       return res.status(limitError.status || 409).json({ error: limitError.message, code: limitError.code || 'PLAN_LIMIT_REACHED' });
     }
 
-    // Create device with generated token
-    const deviceToken = Device.generateToken();
+    // Create device with generated token. Only the hash is stored — the raw
+    // value is returned once, below (see models/Device.js).
+    const { raw: deviceToken, hash: deviceTokenHash } = Device.createToken();
     const device = new Device({
       organizationId: orgId,
       deviceUuid:     req.body.deviceUuid || `PC-Booth-${Date.now()}-${Math.floor(Math.random()*1000)}`,
       deviceName:     deviceName || `Booth-${Date.now()}`,
       location:       location || '',
-      deviceToken,
+      deviceTokenHash,
       status:         'active',
     });
     await device.save();

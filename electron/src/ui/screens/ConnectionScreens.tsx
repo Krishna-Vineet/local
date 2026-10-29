@@ -71,7 +71,7 @@ export function LoginScreen({
           <label>Email address<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required/></label>
           <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" minLength={6} required/></label>
           <label>Booth location<input value={locationLabel} onChange={(event) => setLocationLabel(event.target.value)} placeholder="Main reception, Hall A…" required/></label>
-          <div className="location-note"><Icon name={coordinates ? 'check' : 'info'} size={16}/>{coordinates ? 'Device location captured for this pairing' : locating ? 'Requesting device location…' : 'Precise location unavailable — the label will be used'}</div>
+          {!error && <div className="location-note"><Icon name={coordinates ? 'check' : 'info'} size={16}/>{coordinates ? 'Device location captured for this pairing' : locating ? 'Requesting device location…' : 'Precise location unavailable — the label will be used'}</div>}
           {error && <div className="form-error"><Icon name="info" size={18}/>{error}</div>}
           <PrimaryButton type="submit" disabled={busy}>{busy ? 'Pairing booth…' : 'Pair & continue'}<Icon name="arrow-right" size={20}/></PrimaryButton>
         </form>

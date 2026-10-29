@@ -32,7 +32,7 @@ class KioskModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun startKiosk(promise: Promise) {
-        val activity = currentActivity
+        val activity = reactApplicationContext.currentActivity
         if (activity == null) {
             promise.reject("NO_ACTIVITY", "No current activity found")
             return
@@ -64,7 +64,7 @@ class KioskModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun stopKiosk(promise: Promise) {
-        val activity = currentActivity
+        val activity = reactApplicationContext.currentActivity
         if (activity == null) {
             promise.reject("NO_ACTIVITY", "No current activity found")
             return
@@ -105,7 +105,7 @@ class KioskModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun setImmersiveMode(enabled: Boolean, promise: Promise) {
-        val activity = currentActivity
+        val activity = reactApplicationContext.currentActivity
         if (activity == null) {
             promise.reject("NO_ACTIVITY", "No current activity found")
             return
@@ -125,7 +125,7 @@ class KioskModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun keepScreenOn(enabled: Boolean, promise: Promise) {
-        val activity = currentActivity
+        val activity = reactApplicationContext.currentActivity
         if (activity == null) {
             promise.reject("NO_ACTIVITY", "No current activity found")
             return

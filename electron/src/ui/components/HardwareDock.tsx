@@ -73,7 +73,6 @@ function rowsFrom(snapshot: HardwareSnapshot | null, online: boolean, locating: 
 
 export function HardwareDock({ online = true, locating = false }: { online?: boolean; locating?: boolean }) {
   const [snapshot, setSnapshot] = useState<HardwareSnapshot | null>(null)
-  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -107,7 +106,7 @@ export function HardwareDock({ online = true, locating = false }: { online?: boo
       </header>
 
       <ul>
-        {(showAll ? rows : rows.slice(0, 3)).map((row) => (
+        {rows.map((row) => (
           <li key={row.key} className={row.status === 'warn' ? 'is-warn' : undefined}>
             <span className="hw-dock-icon"><Icon name={row.icon} size={15} /></span>
             <span className="hw-dock-label">{row.label}</span>
@@ -117,9 +116,7 @@ export function HardwareDock({ online = true, locating = false }: { online?: boo
       </ul>
 
       <footer>
-        <button type="button" onClick={() => setShowAll((value) => !value)} aria-expanded={showAll}>
-          {showAll ? 'Show less' : 'Show all details'}
-        </button>
+ 
         {snapshot ? <span>Snapshot {new Date(snapshot.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> : <span>Awaiting snapshot…</span>}
       </footer>
     </section>

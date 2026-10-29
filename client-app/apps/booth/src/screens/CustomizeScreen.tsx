@@ -332,8 +332,8 @@ export const CustomizeScreen: React.FC<Props> = ({ navigation }) => {
               photos={photos}
               customization={customization}
               renderStickers={false}
-              maxHeight={verticalScale(400)}
-              maxWidth={scale(300)}
+              maxHeight={verticalScale(430)}
+              maxWidth={scale(460)}
               radius={moderateScale(14)}
               style={styles.previewBox}
               overlay={({ width, height }) => (
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
     paddingBottom: verticalScale(8),
   },
   stage: { flex: 1.05, alignItems: 'center', justifyContent: 'center' },
-  frame: { flex: 1, width: '100%', minHeight: 0, maxHeight: verticalScale(420) },
+  frame: { flex: 1, width: '100%', minHeight: 0, maxHeight: verticalScale(460) },
   previewBox: { flex: 1 },
   preparing: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
   preparingPill: {

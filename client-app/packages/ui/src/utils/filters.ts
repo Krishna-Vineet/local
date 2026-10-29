@@ -74,18 +74,18 @@ const chain = (...matrices: ColorMatrix[]) => matrices.reduce((acc, m) => multip
 
 export const FILTER_MATRICES: Record<FilterId, ColorMatrix | null> = {
   original: null,
-  // Warm: a little more red, less blue, extra saturation.
-  warm: chain(saturate(1.2), [1.08, 0, 0, 0, 0.02, 0, 1.02, 0, 0, 0, 0, 0, 0.88, 0, 0, 0, 0, 0, 1, 0]),
-  // Cool: more blue, less red.
-  cool: chain(saturate(1.05), [0.9, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1.12, 0, 0.02, 0, 0, 0, 1, 0]),
+  // Warm: unmistakable amber cast plus richer colour.
+  warm: chain(saturate(1.28), [1.12, 0, 0, 0, 0.035, 0, 1.02, 0, 0, 0.005, 0, 0, 0.72, 0, 0, 0, 0, 0, 1, 0]),
+  // Cool: visible blue/cyan cast while keeping skin-tone red channel intact.
+  cool: chain(saturate(1.18), [0.76, 0, 0, 0, 0, 0, 1.02, 0, 0, 0.005, 0, 0, 1.3, 0, 0.035, 0, 0, 0, 1, 0]),
   // Classic B&W: true grayscale with a little contrast.
   bw: chain(contrast(1.15), GRAYSCALE),
   // Vintage: sepia at 80% plus a slightly lower brightness.
-  vintage: chain(brightness(0.97), blend(SEPIA, 0.8), contrast(1.05)),
+  vintage: chain(brightness(0.96), blend(SEPIA, 0.9), contrast(1.08)),
   // Soft dream: lifted brightness, softer contrast, gentle pastel saturation.
-  soft: chain(saturate(0.92), contrast(0.92), brightness(1.06)),
+  soft: chain(saturate(0.72), contrast(0.84), brightness(1.12)),
   // Party pop: strong saturation and contrast.
-  party: chain(saturate(1.6), contrast(1.1)),
+  party: chain(saturate(1.9), contrast(1.18)),
 };
 
 export function filterMatrix(filter?: FilterId | string | null): ColorMatrix | null {

@@ -52,6 +52,24 @@ function targetForSnapshot(snapshot: BoothSnapshot): ScreenId {
   return snapshot.event?.status === 'live' ? 'start' : 'waiting'
 }
 
+/**
+ * Where the guest's download page lives.
+ *
+ * The booth's settings carry the display website's base URL; if a kiosk was
+ * paired before that field existed we fall back to the production site, because
+ * an empty base produced a QR code with nothing behind it.
+ */
+const resolveDownloadWebsiteBase = (snapshotUrl?: string): string => {
+  if (snapshotUrl && typeof snapshotUrl === 'string' && snapshotUrl.trim().length > 0) {
+    return snapshotUrl.trim().replace(/\/+$/, '')
+  }
+  const fromEnv = (import.meta as any).env?.VITE_WEBSITE_URL
+  if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
+    return fromEnv.trim().replace(/\/+$/, '')
+  }
+  return 'https://happypix.vercel.app'
+}
+
 function App() {
   const [screen, setScreen] = useState<ScreenId>('boot')
   const [bootMessage, setBootMessage] = useState('Checking this installation…')
@@ -64,6 +82,7 @@ function App() {
   const [refreshing, setRefreshing] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [outcome, setOutcome] = useState<PrintOutcome | null>(null)
+  const [lastCompositeUrl, setLastCompositeUrl] = useState<string | null>(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const installationRef = useRef<Installation | null>(null)
   const snapshotRef = useRef<BoothSnapshot | null>(snapshot)
@@ -184,6 +203,7 @@ function App() {
   const resetGuestSession = useCallback(() => {
     setSession(freshSession())
     setOutcome(null)
+    setLastCompositeUrl(null)
     setPrinting(false)
     setIsTransitioning(false)
     const current = snapshotRef.current
@@ -315,6 +335,7 @@ function App() {
     }
 
     if (compositeUrl) {
+      setLastCompositeUrl(compositeUrl)
       try {
         // Guard against hanging printer IPC with timeout
         const printPromise = bridge.print({
@@ -338,37 +359,58 @@ function App() {
     }
 
     let shareUrl: string | null = null
-    const resolveDownloadWebsiteBase = (snapshotUrl?: string): string => {
-      if (snapshotUrl && typeof snapshotUrl === 'string' && snapshotUrl.trim().length > 0) {
-        return snapshotUrl.trim().replace(/\/+$/, '')
+    let enqueueSucceeded = false
+    let enqueueError: string | null = null
+
+    // 1. Durably stage session to main-process disk queue BEFORE clearing memory or showing success
+    if (compositeUrl) {
+      try {
+        const enqueueRes = await (window as any).booth?.enqueueSession?.({
+          sessionId: session.id,
+          eventId: snapshot?.event?.id,
+          digitalCopy: session.digitalCopy,
+          guestConsent: session.customization.guestConsent ?? true,
+          composite: compositeUrl,
+          photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
+        })
+        if (enqueueRes && enqueueRes.success) {
+          enqueueSucceeded = true
+        } else {
+          enqueueError = enqueueRes?.error || 'Failed to save photos to queue storage'
+          console.warn('[finishAndPrint] Enqueue rejected:', enqueueError)
+        }
+      } catch (enqueueErr) {
+        enqueueError = enqueueErr instanceof Error ? enqueueErr.message : 'Durable disk enqueue failed'
+        console.warn('[finishAndPrint] Durable disk enqueue warning:', enqueueErr)
       }
-      const fromEnv = (import.meta as any).env?.VITE_WEBSITE_URL
-      if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim().length > 0) {
-        return fromEnv.trim().replace(/\/+$/, '')
-      }
-      return ''
-    }
-    const websiteBase = resolveDownloadWebsiteBase(snapshot?.settings?.websiteUrl) || 'https://happypix.vercel.app'
-    const guaranteedShareUrl = session.digitalCopy
-      ? `${websiteBase}/download/${encodeURIComponent(session.id)}`
-      : null
-    try {
-      const completed = await boothApi.completeSession(installation, {
-        sessionId: session.id,
-        digitalCopy: session.digitalCopy,
-        guestConsent: session.customization.guestConsent ?? true,
-        compositeUrl,
-        photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
-        eventId: snapshot?.event?.id,
-      })
-      shareUrl = (completed as any).shareUrl ?? (completed as any).downloadUrl ?? null
-    } catch (reason) {
-      console.warn('[completeSession] Digital copy upload delayed/failed:', reason)
     }
 
-    if (!shareUrl && session.digitalCopy) {
-      shareUrl = guaranteedShareUrl
+    // 2. Attempt direct online completion if digital copy is requested
+    if (session.digitalCopy) {
+      try {
+        const completed = await boothApi.completeSession(installation, {
+          sessionId: session.id,
+          digitalCopy: session.digitalCopy,
+          guestConsent: session.customization.guestConsent ?? true,
+          compositeUrl,
+          photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
+          eventId: snapshot?.event?.id,
+        })
+        shareUrl = (completed as any).shareUrl ?? (completed as any).downloadUrl ?? null
+      } catch (reason) {
+        console.warn('[completeSession] Online session upload failed/delayed; queued safely on disk:', reason)
+      }
     }
+
+    // The guest's QR must never be empty: when the upload is delayed, point it at
+    // the deterministic download page for this session. The disk queue uploads in
+    // the background and the page resolves as soon as the record lands.
+    if (!shareUrl && session.digitalCopy) {
+      const websiteBase = resolveDownloadWebsiteBase(snapshot?.settings?.websiteUrl)
+      shareUrl = `${websiteBase}/download/${encodeURIComponent(session.id)}`
+    }
+
+    const isSavedDurable = enqueueSucceeded || Boolean(shareUrl)
 
     // Surface printer failure: never stay on loading — always show outcome
     setOutcome({
@@ -376,9 +418,66 @@ function App() {
       jobId: printResult.jobId ?? null,
       error: printResult.success ? null : printError,
       shareUrl,
+      enqueueFailed: !enqueueSucceeded,
+      enqueueError,
+      isSavedDurable,
     })
     setPrinting(false)
     setScreen('success')
+  }
+
+  const retrySaveSession = async () => {
+    if (!session || !installation) return
+    const composite = lastCompositeUrl || (session.template ? await renderCompositeDataUrl({
+      template: session.template,
+      photos: session.selectedPhotos,
+      customization: session.customization,
+      eventName: snapshot?.event?.name,
+    }).catch(() => null) : null)
+
+    if (!composite) return
+    let saved = false
+    try {
+      const enqueueRes = await (window as any).booth?.enqueueSession?.({
+        sessionId: session.id,
+        eventId: snapshot?.event?.id,
+        digitalCopy: session.digitalCopy,
+        guestConsent: session.customization.guestConsent ?? true,
+        composite,
+        photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
+      })
+      if (enqueueRes && enqueueRes.success) {
+        saved = true
+        setOutcome((prev) => prev ? { ...prev, enqueueFailed: false, isSavedDurable: true, enqueueError: null } : null)
+        return
+      }
+    } catch (err) {
+      console.warn('[retrySaveSession] Enqueue retry failed:', err)
+    }
+
+    if (session.digitalCopy) {
+      try {
+        const completed = await boothApi.completeSession(installation, {
+          sessionId: session.id,
+          digitalCopy: session.digitalCopy,
+          guestConsent: session.customization.guestConsent ?? true,
+          compositeUrl: composite,
+          photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
+          eventId: snapshot?.event?.id,
+        })
+        const url = (completed as any).shareUrl ?? (completed as any).downloadUrl ?? null
+        if (url) {
+          saved = true
+          setOutcome((prev) => prev ? { ...prev, enqueueFailed: false, isSavedDurable: true, shareUrl: url, enqueueError: null } : null)
+        }
+      } catch (err) {
+        console.warn('[retrySaveSession] Online complete retry failed:', err)
+      }
+    }
+
+    if (!saved) {
+      setOutcome((prev) => prev ? { ...prev, enqueueError: 'Retry failed: could not save to disk queue or server. Please call attendant.' } : null)
+    }
   }
 
   if (screen === 'boot') return <BootScreen message={bootMessage}/>
@@ -416,7 +515,7 @@ function App() {
       content = session.template ? <CustomizeScreen event={event} template={session.template} photos={session.selectedPhotos} value={session.customization} secondsLeft={isTransitioning || printing ? timeoutSeconds : secondsLeft} printing={printing} onChange={(customization) => setSession((current) => ({ ...current, customization }))} onBack={() => { if (!printing) withPause('photos') }} onFinish={() => void finishAndPrint()}/> : null
       break
     case 'success':
-      content = outcome ? <SuccessScreen outcome={outcome} session={session} installation={installation} snapshot={snapshot} onDone={resetGuestSession} onRetryPrint={() => void finishAndPrint()} /> : null
+      content = outcome ? <SuccessScreen outcome={outcome} session={session} installation={installation} snapshot={snapshot} onDone={resetGuestSession} onRetryPrint={() => void finishAndPrint()} onRetrySave={() => void retrySaveSession()} /> : null
       break
     default:
       content = <StartScreen event={event} onStart={() => setScreen('orientation')}/>

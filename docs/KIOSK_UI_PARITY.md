@@ -384,3 +384,96 @@ photograph, it reads as three empty boxes.
 * The screenshot showed the live preview itself as a green test pattern. That is
   the capture simulator, not the chrome — it renders only when no camera device
   is attached, and it is labelled as a simulator in the HUD.
+
+## 9. Correction history — round 5: the print must be the picture on the screen
+
+Four reports, one root cause: *the booth has two renderers and they were written
+separately.*
+
+* `TemplateCanvas` (React Native views) draws the preview the guest edits.
+* `RenderEngine` (a Skia canvas) draws the 300 dpi bitmap that is **printed** and
+  **uploaded** as the session's final image.
+
+Both were correct in isolation and disagreed with each other in five places:
+
+| Customisation | Preview (what the guest saw) | Print (what the guest got) |
+|---|---|---|
+| Filter | `FilteredImage`, a 4×5 colour matrix from `utils/filters` | `ctx.filter = <CSS string>`, parsed by substring into one of five hand-written matrices — so `soft` and `party` matched nothing and printed **unfiltered**, and `bw` printed a different grayscale |
+| Title | drawn in the footer | **never drawn** — only the subtitle was |
+| Subtitle | drawn in the footer | drawn, but centred in a 15 % band with an invented “HAPPY PIX” caption beside it |
+| Logo | left cell of an 11 % footer, 4 % margins, `contain` | 5 % from the left edge, vertically centred in a 15 % band, stretched |
+| Stickers | `x% / y%` of the print, `9.6 % × scale` of the width | hard-coded `90 px × scale` at a different anchor, and any failure in Skia's font fallback dropped them **silently** |
+
+### 9.1 The fix: one description, two renderers
+
+`packages/ui/src/utils/printSpec.ts` (new) resolves a customisation into a single
+`PrintSpec` — **normalised 0..1 geometry** for the background, slots, filter
+matrix, stickers, template artwork and footer (logo cell, title/subtitle lines,
+text colour). It is pure: no React, no image loading, no platform APIs.
+
+* `TemplateCanvas` multiplies the spec by its measured width/height.
+* `RenderEngine.drawSpec` multiplies the same spec by the 300 dpi paper size.
+
+A divergence is no longer possible by construction: there is one set of numbers.
+Anything that legitimately differs per surface is now an explicit field, not a
+recomputed value.
+
+Concretely:
+
+* **Filter** — `applyFilter` hands the spec's matrix to the Skia adapter's new
+  `setColorMatrix`, which builds a real `ColorFilter`. The CSS-string path
+  remains only for a plain 2d canvas. `soft` and `party` now print as designed.
+* **Text** — the footer draws the guest's title *and* subtitle, right-aligned in
+  the same band, at `5cqw` / `2.5cqw`, with the template's text colour. The
+  invented “HAPPY PIX” caption is gone, and so is the white band Electron's
+  composite painted but its own preview did not.
+* **Logo** — both sides use `logoRect()`, which resolves `contain` in pixels and
+  converts back, so a 4:3 logo keeps its aspect inside the same cell.
+* **Stickers** — one constant, `STICKER_EM_FRACTION = 0.096`, and one anchor
+  (the glyph's centre). The composite draws at `size × paper width`, centred on
+  `(cx, cy)`; the preview and the drag layer draw the same box.
+* **Designer presets** — the preset table (`DESIGNER_PRESETS`) moved out of
+  `TemplateCanvas` and into the spec, together with `resolveDesign()`, the
+  preset-plus-template merge. The two screens used to merge separately, so a
+  preset-only template (RoyalWedding, FestiveMaroon, NeonParty…) previewed with
+  its own purple/maroon/gradient palette and printed on the renderer's default
+  dark canvas.
+* **Title band** — RoyalWedding, FestiveMaroon and LegacyGuestbook carry the
+  guest's title across the top instead of the footer. That box is now
+  `spec.titleBand` (6 % margins, 3.2 % from the top, 4.2 cqw, accent rule at
+  36 %), drawn by both surfaces; the footer suppresses its duplicate title, so
+  the words appear exactly once, as they did on screen.
+* **Artwork** — template decorations are in the spec too, split into under-photo
+  and over-photo passes like the preview, as does `contain` vs full-frame.
+* **Text on paper** — the Skia paragraph fallback now receives
+  `Skia.FontMgr.System()`. Without a font manager the run shaped to nothing and
+  `paint()` drew an empty paragraph, which is how text *and* emoji stickers could
+  vanish from the composite while the photographs came out perfectly.
+
+### 9.2 Why the filters looked absent on screen
+
+`FilteredImage` decodes the photo into a Skia bitmap to apply the matrix; when
+that decode fails it falls back to the plain (unfiltered) `<Image>` with only a
+warning in the console. The loader now tries four strategies in order —
+`data:`, `http(s)` fetch, `Skia.Data.fromURI` with *and* without the `file://`
+scheme, and finally XHR → FileReader → base64 (which covers the `ph://` and
+`content://` URIs React Native itself can read) — and logs the URI if all four
+fail, so the next report is diagnosable instead of a guess.
+
+### 9.3 Photo selection strip
+
+The strip was a fixed 168 × 126 frame inside a gallery that stretched to fill its
+column, so four photographs floated in a mostly-empty dark rectangle and each
+thumb was smaller than a postage stamp.
+
+* The frame is now one photo aspect (4:3, what the camera writes) sized from the
+  room the gallery actually has, capped so at least ~2.2 frames share the column.
+* The gallery is content-height (`alignSelf: 'center'`, no vertical flex), so the
+  dark film strip is exactly as tall as its images — no empty box.
+
+### 9.4 Known gap
+
+Template **ornaments** (the heart/star motifs `TemplateCanvas.renderOrnament`
+draws for some designs) are not yet painted into the composite. They are the last
+piece of the preview that the print does not reproduce; the spec is the place
+they will live when they are.

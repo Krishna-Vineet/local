@@ -194,7 +194,17 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
       try {
         if (!skia?.ParagraphBuilder) return false;
         const families = [...parseFamilies(style.family), ...platformFamilies()];
-        const builder = skia.ParagraphBuilder.Make({});
+        // The second argument is the font *manager*. Without it Skia has no
+        // platform fallback chain, so the run shapes to nothing and `paint()`
+        // draws an empty paragraph — text and every emoji sticker silently
+        // disappeared from the composite while the photos came out fine.
+        let fontMgr: any = null;
+        try {
+          fontMgr = skia.FontMgr?.System?.() ?? null;
+        } catch {
+          fontMgr = null;
+        }
+        const builder = fontMgr ? skia.ParagraphBuilder.Make({}, fontMgr) : skia.ParagraphBuilder.Make({});
         builder.pushStyle({
           color: skia.Color(fillStyle),
           fontFamilies: families,
@@ -349,6 +359,28 @@ export class SkiaRenderAdapter implements RenderEnginePlatformAdapter {
       },
       get textBaseline() {
         return textBaseline;
+      },
+      /**
+       * Applies the preview's own 4x5 colour matrix (`utils/filters`), or clears
+       * it with `null`.
+       *
+       * The old path took a CSS filter *string* and guessed which of five
+       * matrices it meant by matching substrings ("saturate(1.35)" → warm). Any
+       * filter that did not happen to match — `soft`, `party` — printed
+       * unfiltered, and the ones that did match were a different look from the
+       * screen. The matrix is the same value `FilteredImage` renders, so a B&W
+       * print is the B&W the guest approved.
+       */
+      setColorMatrix(matrix: number[] | null) {
+        try {
+          if (!matrix || !skia.ColorFilter) {
+            paint.setColorFilter(null);
+            return;
+          }
+          paint.setColorFilter(skia.ColorFilter.MakeMatrix(matrix));
+        } catch (err) {
+          console.warn('SkiaRenderAdapter: colour matrix rejected:', err);
+        }
       },
       set filter(f: string) {
         filterType = f;

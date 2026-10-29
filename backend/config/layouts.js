@@ -65,7 +65,7 @@ export function parseLayoutId(layoutId) {
   const legacyMatch = raw.match(/^(.+?)-([vh])(\d+)$/i);
   if (legacyMatch) {
     const [, familyId, orientationCode, slotsText] = legacyMatch;
-    const family = FAMILY_BY_ID[familyId] || LAYOUT_FAMILIES.find((f) => f.id === familyId || f.code.includes(familyId));
+    const family = FAMILY_BY_ID[familyId] || LAYOUT_FAMILIES.find((f) => f.id === familyId || (f.code && f.code.includes(familyId)));
     if (family) {
       const slots = Number(slotsText);
       if (Number.isInteger(slots) && slots >= 1) {
@@ -91,7 +91,7 @@ export function parseLayoutId(layoutId) {
 
     // Match family
     const family = FAMILY_BY_ID[mediaPart] ||
-      LAYOUT_FAMILIES.find((f) => f.id === mediaPart || f.id.endsWith(`-${mediaPart}`) || f.code.includes(mediaPart)) ||
+      LAYOUT_FAMILIES.find((f) => f.id === mediaPart || f.id.endsWith(`-${mediaPart}`) || (f.code && f.code.includes(mediaPart))) ||
       FAMILY_BY_ID['46'];
 
     return {

@@ -16,6 +16,10 @@ import type {
   PrintTemplate,
 } from '../../types/src/index';
 import { PATTERNS } from '../../ui/src/constants/patterns';
+// Type-only: erased at runtime, so printer-core keeps no runtime dependency on
+// the UI package while sharing the exact geometry the preview draws.
+import type { PrintSpec, SpecText } from '../../ui/src/utils/printSpec';
+import { logoRect } from '../../ui/src/utils/printSpec';
 
 // Fallback typings for React Native / Node compile targets lacking DOM definitions
 declare global {
@@ -94,6 +98,12 @@ export interface RenderInput {
   framePatternUrl?: string;
   framePatternId?: string;
   stickers?: Sticker[];
+  /**
+   * The single description of the print (see `utils/printSpec`). When present it
+   * is the *only* source of geometry: footer, stickers, filter and background
+   * are drawn from it, so the bitmap cannot disagree with the on-screen preview.
+   */
+  spec?: PrintSpec;
 }
 
 export interface RenderOutput {
@@ -156,6 +166,19 @@ export class RenderEngine {
     // This base implementation works in web/test environments.
     const canvas = this.createCanvas(dims.width, dims.height);
     const ctx = this.getContext(canvas);
+
+    // One renderer, one description. `PrintSpec` is built from the same numbers
+    // the preview draws with; the legacy path below remains for callers that
+    // have not moved over (and for the web preview harness).
+    if (input.spec) {
+      await this.drawSpec(ctx, dims, input.spec, photos);
+      return {
+        bitmap: this.canvasToDataUrl(canvas),
+        width: dims.width,
+        height: dims.height,
+        dpi: template.dpi,
+      };
+    }
 
     // 1. Background
     const selectedPattern = framePatternId ? PATTERNS.find(p => p.id === framePatternId) : undefined;
@@ -550,6 +573,271 @@ export class RenderEngine {
       height: dims.height,
       dpi: template.dpi,
     };
+  }
+
+  // ── Spec renderer ─────────────────────────────────────────────────
+
+  /**
+   * Draws the print from `PrintSpec`.
+   *
+   * Every coordinate in the spec is a 0..1 fraction, so this function needs no
+   * knowledge of the design — it multiplies by the paper size and paints. The
+   * preview (`TemplateCanvas`) reads the same numbers against its own measured
+   * size, which is what makes "what you see" and "what prints" the same thing.
+   *
+   * Two deliberate departures from the old footer:
+   *  · no invented `HAPPY PIX` caption — the guest's own title and subtitle are
+   *    the footer copy, exactly as on screen;
+   *  · no white band behind it. Electron's composite painted one, but its own
+   *    preview does not, so the printed sheet contradicted the screen. The
+   *    footer is transparent and uses the template's text colour.
+   */
+  private async drawSpec(
+    ctx: any,
+    dims: { width: number; height: number },
+    spec: PrintSpec,
+    photos: CapturedPhoto[],
+  ): Promise<void> {
+    const W = dims.width;
+    const H = dims.height;
+
+    // 1. Background — the same three cases, in the same order, as the preview.
+    if (spec.background.kind === 'image' && spec.background.url) {
+      ctx.fillStyle = spec.background.color;
+      ctx.fillRect(0, 0, W, H);
+      try {
+        const img = await this.loadImage(spec.background.url);
+        const { sx, sy, sw, sh } = this.objectCoverCrop(img.width, img.height, W, H);
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+      } catch (err) {
+        console.warn('RenderEngine: background image failed:', err);
+      }
+    } else {
+      ctx.fillStyle = spec.background.color;
+      ctx.fillRect(0, 0, W, H);
+      if (spec.background.kind === 'gradient') {
+        // Preview: two stacked bands at 65 %/0.65 and 38 %/0.9 from the bottom.
+        ctx.save();
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle = spec.background.secondary;
+        ctx.fillRect(0, Math.round(H * 0.35), W, Math.round(H * 0.65));
+        ctx.globalAlpha = 0.9;
+        ctx.fillRect(0, Math.round(H * 0.62), W, Math.round(H * 0.38));
+        // `globalAlpha` lives on the paint, and `restore()` does not undo it —
+        // leaving it at 0.9 faded every sticker and footer line that followed.
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+    }
+
+    // 1.5 Template artwork, under the photos — the same list the preview draws.
+    await this.drawSpecDecorations(ctx, spec, dims, false);
+
+    // 2. Photos, with the *same matrix* the preview applies.
+    for (let i = 0; i < spec.slots.length && i < photos.length; i += 1) {
+      const slot = spec.slots[i];
+      const photo = photos[i];
+      if (!photo?.uri) continue;
+      try {
+        const img = await this.loadImage(photo.uri);
+        this.applyFilter(ctx, spec);
+        ctx.save();
+        const x = slot.x * W;
+        const y = slot.y * H;
+        const w = slot.width * W;
+        const h = slot.height * H;
+        if (slot.rotation) {
+          const cx = x + w / 2;
+          const cy = y + h / 2;
+          ctx.translate(cx, cy);
+          ctx.rotate((slot.rotation * Math.PI) / 180);
+          ctx.translate(-cx, -cy);
+        }
+        const { sx, sy, sw, sh } = this.objectCoverCrop(img.width, img.height, w, h);
+        ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+        ctx.restore();
+      } catch (err) {
+        console.warn(`RenderEngine: could not place photo ${i}:`, err);
+      } finally {
+        this.applyFilter(ctx, null);
+      }
+    }
+
+    // 2.5 Artwork above the photos (frames, vignettes).
+    await this.drawSpecDecorations(ctx, spec, dims, true);
+
+    // 3. Stickers — centred on (cx, cy), one em = `size × paper width`.
+    if (spec.stickers.length > 0) {
+      this.applyFilter(ctx, null);
+      for (const sticker of spec.stickers) {
+        if (!sticker.emoji) continue;
+        try {
+          const size = Math.max(8, sticker.size * W);
+          ctx.font = `${Math.round(size)}px Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji"`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#000000';
+          ctx.fillText(sticker.emoji, sticker.cx * W, sticker.cy * H);
+        } catch (err) {
+          console.warn(`RenderEngine: sticker ${sticker.id} failed:`, err);
+        }
+      }
+    }
+
+    // 3.5 Title band — the top-of-design title some templates wear instead of
+    // (or as well as) footer copy. Same box, size and rule as the preview.
+    const band = spec.titleBand;
+    if (band && band.text) {
+      try {
+        const bandTop = band.box.y * H;
+        const bandWidth = band.box.width * W;
+        const bandCentreX = (band.box.x + band.box.width / 2) * W;
+        const fontSizePx = band.fontSize * W;
+        ctx.fillStyle = band.color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `700 ${Math.round(fontSizePx)}px Fredoka, Nunito, Arial, sans-serif`;
+        ctx.fillText(band.text, bandCentreX, bandTop + (fontSizePx * 1.2) / 2);
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = band.accent;
+        ctx.fillRect(
+          bandCentreX - (band.ruleWidth * W) / 2,
+          bandTop + fontSizePx * 1.2 + 2,
+          band.ruleWidth * W,
+          Math.max(1, 0.0035 * W),
+        );
+        ctx.globalAlpha = 1;
+      } catch (err) {
+        console.warn('RenderEngine: title band failed:', err);
+      }
+    }
+
+    // 4. Footer — logos left, title/subtitle right, both from the spec.
+    const footer = spec.footer;
+    if (footer.logos?.length) {
+      let cursor = footer.logoArea.x * W;
+      for (const url of footer.logos) {
+        try {
+          const img = await this.loadImage(url);
+          const aspect = img.width / img.height || 1;
+          const box = logoRect(spec, aspect);
+          ctx.drawImage(img, cursor, box.y * H, box.width * W, box.height * H);
+          cursor += box.width * W + 0.012 * W;
+          if (cursor > (footer.logoArea.x + footer.logoArea.width) * W) break;
+        } catch (err) {
+          console.warn('RenderEngine: footer logo failed:', err);
+        }
+      }
+    }
+
+    ctx.fillStyle = footer.color;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    this.drawSpecText(ctx, footer.title, footer.textRight * W, W, H);
+    if (footer.subtitle) {
+      ctx.save();
+      ctx.globalAlpha = 0.72;
+      this.drawSpecText(ctx, footer.subtitle, footer.textRight * W, W, H);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Template artwork, in the order the preview paints it.
+   *
+   * Non-full-frame images use `contain` semantics (centred, letterboxed in their
+   * box), which is what the preview's `resizeMode="contain"` does; stretching
+   * them instead would squash a corner flourish.
+   */
+  private async drawSpecDecorations(
+    ctx: any,
+    spec: PrintSpec,
+    dims: { width: number; height: number },
+    over: boolean,
+  ): Promise<void> {
+    for (const dec of spec.decorations) {
+      if (dec.over !== over) continue;
+      try {
+        const img = await this.loadImage(dec.url);
+        const boxW = dec.width * dims.width;
+        const boxH = dec.height * dims.height;
+        if (!dec.contain) {
+          ctx.drawImage(img, 0, 0, img.width, img.height, dec.x * dims.width, dec.y * dims.height, boxW, boxH);
+          continue;
+        }
+        const aspect = (img.width / img.height) || 1;
+        let w = boxW;
+        let h = w / aspect;
+        if (h > boxH) {
+          h = boxH;
+          w = h * aspect;
+        }
+        ctx.drawImage(
+          img,
+          0,
+          0,
+          img.width,
+          img.height,
+          dec.x * dims.width + (boxW - w) / 2,
+          dec.y * dims.height + (boxH - h) / 2,
+          w,
+          h,
+        );
+      } catch (err) {
+        console.warn('RenderEngine: decoration failed:', err);
+      }
+    }
+  }
+
+  /**
+   * One footer line. `centreY` is a fraction of the canvas height and the text
+   * is drawn with `textBaseline: 'middle'`, which is how the preview centres the
+   * same line in its own box — so the two agree without either knowing the
+   * other's pixel size.
+   */
+  private drawSpecText(
+    ctx: any,
+    line: SpecText | null,
+    rightX: number,
+    width: number,
+    height: number,
+  ): void {
+    if (!line || !line.text) return;
+    try {
+      // `fontSize` is a fraction of the canvas width (Electron's `cqw` base);
+      // `centreY` is a fraction of the height. Both preview and print read the
+      // same pair, so the line lands in the same place at any resolution.
+      ctx.font = `700 ${Math.round(line.fontSize * width)}px Fredoka, Nunito, Arial, sans-serif`;
+      ctx.fillText(line.text, rightX, line.centreY * height);
+    } catch (err) {
+      console.warn('RenderEngine: footer text failed:', err);
+    }
+  }
+
+  /**
+   * Applies the spec's photo filter to subsequent draws, or clears it with
+   * `null` (after the photos).
+   *
+   * The Skia adapter implements `setColorMatrix` with a real `ColorFilter`, fed
+   * the *same* matrix `FilteredImage` gives the preview — so B&W on paper is the
+   * B&W the guest approved, not a look-alike CSS chain. A plain 2d canvas has no
+   * matrix API, so it falls back to the CSS filter string for that filter.
+   */
+  private applyFilter(ctx: any, spec: PrintSpec | null): void {
+    if (typeof ctx.setColorMatrix === 'function') {
+      try {
+        ctx.setColorMatrix(spec?.filterMatrix ?? null);
+        return;
+      } catch {
+        /* fall through to the CSS path */
+      }
+    }
+    try {
+      ctx.filter = spec ? FILTER_CSS[spec.filter as FilterType] || 'none' : 'none';
+    } catch {
+      /* ignore */
+    }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────

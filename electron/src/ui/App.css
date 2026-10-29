@@ -77,6 +77,11 @@
 .login-form label, .text-tools label { display: grid; gap: 6px; margin: 15px 0; color: #655570; font-size: 12px; font-weight: 850; }
 .login-form input, .text-tools input { width: 100%; height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: var(--surface-soft); user-select: text; transition: border .15s, box-shadow .15s; }
 .login-form input:focus, .text-tools input:focus { border-color: #df6aa2; box-shadow: 0 0 0 4px rgba(238,76,150,.08); outline: none; }
+.password-field { position: relative; display: flex; align-items: center; }
+.password-field input { padding-right: 70px; }
+.password-visibility { position: absolute; right: 8px; min-width: 52px; height: 32px; border: 0; border-radius: 10px; color: var(--violet); background: #f1eafb; font: inherit; font-size: 11px; font-weight: 900; cursor: pointer; }
+.password-visibility:hover { background: #e8ddf6; }
+.password-visibility:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
 .location-note { min-height: 22px; display: flex; align-items: center; gap: 6px; color: var(--faint); font-size: 11px; }
 .form-error { padding: 0; display: flex; align-items: center; gap: 6px; color: #a9364a; font-size: 11px; }
 .coupon-error { margin: 12px 0; padding: 10px 12px; display: flex; align-items: flex-start; gap: 8px; border: 1px solid #f4cbd2; border-radius: 11px; color: #a9364a; background: var(--red-soft); font-size: 12px; }

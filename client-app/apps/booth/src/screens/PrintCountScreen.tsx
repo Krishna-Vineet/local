@@ -117,7 +117,7 @@ export const PrintCountScreen: React.FC<Props> = ({ navigation }) => {
     >
       <View style={styles.body}>
       <View style={[styles.grid, isLandscape ? styles.gridRow : styles.gridCol]}>
-        <Card style={styles.panel} elevation="soft">
+        <Card style={{ ...styles.panel, ...(isLandscape ? styles.panelLandscape : styles.panelPortrait) }} elevation="soft">
           <Eyebrow color={p.pinkDeep}>Number of prints</Eyebrow>
           <View style={styles.counts}>
             {choices.map((value) => {
@@ -240,7 +240,11 @@ const styles = StyleSheet.create({
   gridRow: { flexDirection: 'row', alignItems: 'stretch' },
   gridCol: { flexDirection: 'column' },
 
-  panel: { flex: 1.25, padding: scale(34), borderRadius: moderateScale(27), gap: verticalScale(12) },
+  // A bounded basis keeps the options card sized to its content without
+  // allowing it to steal the full row; the preview owns the remaining width.
+  panel: { flexGrow: 0, flexShrink: 0, padding: scale(34), borderRadius: moderateScale(27), gap: verticalScale(12) },
+  panelLandscape: { flexBasis: '61%' as const, alignSelf: 'center' },
+  panelPortrait: { alignSelf: 'stretch' },
   counts: { flexDirection: 'row', flexWrap: 'wrap', gap: scale(11), marginTop: verticalScale(6) },
   count: {
     borderWidth: 1,

@@ -22,6 +22,7 @@ export function SuccessScreen({
   snapshot,
   onDone,
   onRetryPrint,
+  onRetrySave,
 }: {
   outcome: PrintOutcome
   session?: BoothSession | null
@@ -29,10 +30,13 @@ export function SuccessScreen({
   snapshot?: BoothSnapshot | null
   onDone: () => void
   onRetryPrint?: () => Promise<void> | void
+  /** Retry the durable save when the photos exist only in memory. */
+  onRetrySave?: () => Promise<void> | void
 }) {
   const [seconds, setSeconds] = useState(30)
   const [paused, setPaused] = useState(false)
   const [retryingPrint, setRetryingPrint] = useState(false)
+  const [retryingSave, setRetryingSave] = useState(false)
 
   // Issue modal state
   const [showIssueModal, setShowIssueModal] = useState(false)
@@ -46,9 +50,14 @@ export function SuccessScreen({
 
   const qr = useQrCode(outcome.shareUrl, 360)
 
+  // Critical safeguard (from the durable-queue work): never auto-reset while the
+  // photos exist only in memory. A kiosk that resets here has thrown the guest's
+  // session away with nothing on disk and nothing on the server.
+  const hasUnsavedPhotos = Boolean(outcome.enqueueFailed && !outcome.isSavedDurable)
+
   // Countdown — paused while issue modal is open or QR is generating
   useEffect(() => {
-    if (paused || showIssueModal) return
+    if (paused || showIssueModal || hasUnsavedPhotos) return
     const timer = window.setInterval(() => {
       setSeconds((value) => {
         if (value <= 1) {
@@ -60,7 +69,7 @@ export function SuccessScreen({
       })
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [onDone, paused, showIssueModal])
+  }, [onDone, paused, showIssueModal, hasUnsavedPhotos])
 
   // Whenever QR becomes ready, give guest full time
   useEffect(() => {
@@ -111,6 +120,16 @@ export function SuccessScreen({
     }
   }
 
+  const handleRetrySave = async () => {
+    if (!onRetrySave) return
+    setRetryingSave(true)
+    try {
+      await onRetrySave()
+    } finally {
+      setRetryingSave(false)
+    }
+  }
+
   const handleRetryPrint = async () => {
     if (!onRetryPrint) return
     setRetryingPrint(true)
@@ -137,7 +156,26 @@ export function SuccessScreen({
             </SecondaryButton>
           )}
 
-          <PrimaryButton onClick={onDone} style={{ width: '100%', marginTop: 14 }}>Finish now <span>{seconds}s</span></PrimaryButton>
+          {hasUnsavedPhotos && (
+            <div
+              className="save-alert-box"
+              style={{ background: '#3b1212', border: '1px solid #f87171', borderRadius: 8, padding: 12, margin: '12px 0' }}
+            >
+              <strong style={{ color: '#fca5a5' }}>⚠️ Storage Alert: Photos Not Saved</strong>
+              <p style={{ margin: '4px 0 8px 0', fontSize: 13, color: '#fecaca' }}>
+                {outcome.enqueueError || 'Photos could not be saved to disk queue or server. Do not reset before saving.'}
+              </p>
+              {onRetrySave && (
+                <SecondaryButton onClick={handleRetrySave} disabled={retryingSave} style={{ width: '100%' }}>
+                  {retryingSave ? 'Retrying Save…' : 'Retry Saving Photos (No Re-Print)'}
+                </SecondaryButton>
+              )}
+            </div>
+          )}
+
+          <PrimaryButton onClick={onDone} disabled={hasUnsavedPhotos} style={{ width: '100%', marginTop: 14 }}>
+            {hasUnsavedPhotos ? 'Save Required Before Reset' : <>Finish now <span>{seconds}s</span></>}
+          </PrimaryButton>
 
           <button className="raise-issue-btn" onClick={handleOpenIssue} type="button">
             ⚠ Need Help? Raise a Guest Support Ticket

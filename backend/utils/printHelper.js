@@ -4,12 +4,32 @@ import fs from 'fs';
 import os from 'os';
 
 /**
+ * Check if the host platform supports physical Windows-based printing.
+ * In cloud/serverless environments (e.g. Linux on Vercel/AWS), physical printing is skipped.
+ */
+export function isPrintingSupported(platform = process.platform) {
+  return platform === 'win32';
+}
+
+/**
  * Silent image printing using Windows PowerShell and System.Drawing .NET assemblies.
  * @param {string} filePath - Absolute path to local image.
  * @param {number} printCount - Number of copies.
  * @param {string} printerName - Optional printer name. If empty, default system printer is used.
+ * @param {object} [options] - Optional overrides for testing/configuration.
  */
-export const printLocalImage = (filePath, printCount = 1, printerName = '') => {
+export const printLocalImage = (filePath, printCount = 1, printerName = '', options = {}) => {
+  const platform = options.platform || process.platform;
+  if (!isPrintingSupported(platform)) {
+    console.warn(`⚠️ [PrintHelper] Physical printing is not supported on platform '${platform}'. Cloud/serverless environments do not have physical printer hardware; print skipped.`);
+    return Promise.resolve({
+      success: false,
+      skipped: true,
+      reason: 'unsupported_platform',
+      platform,
+    });
+  }
+
   return new Promise((resolve, reject) => {
     const absolutePath = path.resolve(filePath);
     if (!fs.existsSync(absolutePath)) {
@@ -50,13 +70,18 @@ for ($i = 0; $i -lt ${safeCount}; $i++) {
     const buffer = Buffer.from(psScript, 'utf16le');
     const base64Script = buffer.toString('base64');
     
-    exec(`powershell -NoProfile -EncodedCommand ${base64Script}`, (error, stdout, stderr) => {
+    const execFn = options.execFn || exec;
+    execFn(`powershell -NoProfile -EncodedCommand ${base64Script}`, (error, stdout, stderr) => {
       if (error) {
         console.error('❌ PowerShell print error:', error);
         return reject(error);
       }
       console.log('✅ PowerShell print output:', stdout);
-      resolve(stdout);
+      resolve({
+        success: true,
+        skipped: false,
+        output: stdout,
+      });
     });
   });
 };
@@ -66,11 +91,23 @@ for ($i = 0; $i -lt ${safeCount}; $i++) {
  * @param {string} imageUrl - URL of the photo strip.
  * @param {number} printCount - Number of copies.
  * @param {string} printerName - Target printer name.
+ * @param {object} [options] - Optional overrides for testing/configuration.
  */
-export const printImage = async (imageUrl, printCount = 1, printerName = '') => {
+export const printImage = async (imageUrl, printCount = 1, printerName = '', options = {}) => {
+  const platform = options.platform || process.platform;
+  if (!isPrintingSupported(platform)) {
+    console.warn(`⚠️ [PrintHelper] Cloud host (${platform}) cannot print to physical hardware. Skipping print job.`);
+    return {
+      success: false,
+      skipped: true,
+      reason: 'unsupported_platform',
+      platform,
+    };
+  }
+
   if (!imageUrl) {
     console.warn('⚠️ No image URL provided to printHelper');
-    return;
+    return { success: false, skipped: true, reason: 'missing_image_url' };
   }
 
   let parsedUrl;
@@ -78,12 +115,12 @@ export const printImage = async (imageUrl, printCount = 1, printerName = '') => 
     parsedUrl = new URL(imageUrl);
   } catch {
     console.warn('⚠️ Invalid image URL provided to printHelper:', imageUrl);
-    return;
+    return { success: false, skipped: true, reason: 'invalid_image_url' };
   }
 
   if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
     console.warn('⚠️ Unsupported protocol for printHelper:', parsedUrl.protocol);
-    return;
+    return { success: false, skipped: true, reason: 'unsupported_protocol' };
   }
 
   const hostname = parsedUrl.hostname.toLowerCase();
@@ -101,7 +138,7 @@ export const printImage = async (imageUrl, printCount = 1, printerName = '') => 
 
   if (isPrivateOrLoopback) {
     console.warn('⚠️ Blocked SSRF attempt in printHelper to internal/loopback address:', hostname);
-    return;
+    return { success: false, skipped: true, reason: 'ssrf_blocked' };
   }
   
   console.log(`[PrintHelper] Starting print job for URL: ${imageUrl}, count: ${printCount}, printer: ${printerName || 'Default'}`);
@@ -109,24 +146,27 @@ export const printImage = async (imageUrl, printCount = 1, printerName = '') => 
   let tempFilePath = null;
   try {
     // 1. Download image with 10s timeout
-    const res = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) });
+    const fetchFn = options.fetchFn || fetch;
+    const res = await fetchFn(imageUrl, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) {
       throw new Error(`Failed to download image to print: ${res.statusText}`);
     }
     const arrayBuffer = await res.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     
-    const tempDir = os.tmpdir();
+    const tempDir = options.tempDir || os.tmpdir();
     tempFilePath = path.join(tempDir, `happypix_print_${Date.now()}.png`);
     fs.writeFileSync(tempFilePath, buffer);
     
     console.log(`[PrintHelper] Saved image temporarily to: ${tempFilePath}`);
     
     // 2. Print image
-    await printLocalImage(tempFilePath, printCount, printerName);
+    const result = await printLocalImage(tempFilePath, printCount, printerName, options);
     console.log(`[PrintHelper] Print job completed.`);
+    return result;
   } catch (error) {
     console.error('❌ [PrintHelper] Error printing image:', error);
+    return { success: false, skipped: false, error: error.message };
   } finally {
     // 3. Clean up
     if (tempFilePath && fs.existsSync(tempFilePath)) {

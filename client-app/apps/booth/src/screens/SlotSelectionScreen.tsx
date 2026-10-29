@@ -114,8 +114,11 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
 
   // `.template-card { flex: 0 0 clamp(260px, 23vw, 345px) }` — fixed card,
   // carousel scrolls sideways instead of the page trying to fit everything.
-  const cardWidth = Math.min(scale(345), Math.max(scale(260), width * 0.23));
-  const previewHeight = Math.min(Math.round(height * 0.41), scale(420));
+  const isHorizontalTemplate = orientation === 'landscape';
+  const cardWidth = isHorizontalTemplate
+    ? Math.min(scale(560), Math.max(scale(390), width * 0.44))
+    : Math.min(scale(345), Math.max(scale(260), width * 0.23));
+  const previewHeight = Math.min(Math.round(height * (isHorizontalTemplate ? 0.55 : 0.41)), scale(isHorizontalTemplate ? 500 : 420));
 
   const filters: { key: string; label: string; active: boolean; onPress: () => void }[] = [
     { key: 'size-all', label: 'All sizes', active: size === 'all', onPress: () => setSize('all') },
@@ -204,7 +207,11 @@ export const SlotSelectionScreen: React.FC<Props> = ({ navigation }) => {
               ]}
             >
               <View style={[styles.preview, { backgroundColor: '#efe8f2' }]}>
-                <TemplatePreview template={item} maxHeight={previewHeight} maxWidth={cardWidth * 0.94} />
+                <TemplatePreview
+                  template={item}
+                  maxHeight={previewHeight}
+                  maxWidth={cardWidth * 0.96}
+                />
                 {selected ? (
                   <View style={[styles.selectedBadge, { backgroundColor: p.pink }]}>
                     <Icon name="check" size={scale(12)} color="#ffffff" strokeWidth={3} />

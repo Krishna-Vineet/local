@@ -973,40 +973,81 @@ router.post('/sessions/upload-urls', authenticateDevice, asyncRoute(async (req, 
 // SESSION COMPLETION + GALLERY CONSENT  (#60, #61, #18)
 // ================================================================
 
+// In-memory concurrency lock to coordinate simultaneous completion attempts for the same session
+const inFlightSessionLocks = new Map();
+
+/**
+ * Normalizes and hashes an image item (data URL, object, or remote URL) to a sha256 hex string.
+ * Validates payload sizes and image formats without downloading untrusted remote URLs.
+ */
+export function computeNormalizedImageHash(item) {
+  if (!item) return 'none';
+
+  if (typeof item === 'object') {
+    if (item.dataUrl) return computeNormalizedImageHash(item.dataUrl);
+    if (item.key) return crypto.createHash('sha256').update(`s3key:${String(item.key).trim()}`).digest('hex');
+    if (item.url) return computeNormalizedImageHash(item.url);
+    return 'unknown_obj';
+  }
+
+  const str = String(item).trim();
+  if (str.startsWith('data:')) {
+    if (str.length > INLINE_PHOTO_MAX_CHARS) {
+      throw badRequest('Photo payload exceeds maximum size limit (25MB).', 'PAYLOAD_TOO_LARGE');
+    }
+    const commaIndex = str.indexOf(',');
+    if (commaIndex === -1) {
+      throw badRequest('Invalid data URL format: missing comma.', 'INVALID_PHOTO_FORMAT');
+    }
+    const header = str.slice(0, commaIndex);
+    const mimeMatch = header.match(/^data:image\/(jpeg|jpg|png|webp);base64/i);
+    if (!mimeMatch) {
+      throw badRequest('Unsupported photo format. Allowed formats: jpeg, png, webp.', 'INVALID_PHOTO_FORMAT');
+    }
+    const base64Data = str.slice(commaIndex + 1).replace(/\s/g, '');
+    if (!/^[A-Za-z0-9+/=]+$/.test(base64Data) || base64Data.length % 4 !== 0) {
+      throw badRequest('Invalid base64 encoding.', 'INVALID_PHOTO_FORMAT');
+    }
+    const buffer = Buffer.from(base64Data, 'base64');
+    return crypto.createHash('sha256').update(buffer).digest('hex');
+  }
+
+  // Remote URL (S3, CDN, etc.): do not fetch untrusted remote URLs, hash normalized URL
+  if (str.startsWith('http://') || str.startsWith('https://')) {
+    try {
+      const parsed = new URL(str);
+      const normalizedUrl = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+      return crypto.createHash('sha256').update(`url:${normalizedUrl}`).digest('hex');
+    } catch {
+      throw badRequest('Invalid photo URL format.', 'INVALID_PHOTO_FORMAT');
+    }
+  }
+
+  throw badRequest('Unsupported photo format or invalid data URL.', 'INVALID_PHOTO_FORMAT');
+}
+
+/**
+ * Deterministic fingerprint for a complete session payload.
+ * Sensitive to composite content and exact ordered photo sequence.
+ */
+export function computeSessionPayloadFingerprint(composite, photos = []) {
+  const compHash = composite ? computeNormalizedImageHash(composite) : 'none';
+  const photoHashes = (Array.isArray(photos) ? photos : []).map(computeNormalizedImageHash);
+  return crypto.createHash('sha256').update(`comp:${compHash}|photos:${photoHashes.join(',')}`).digest('hex');
+}
+
 router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res) => {
   const { device, organization } = await requireOperationalBooth(req);
   const sessionId = String(req.body.sessionId || '').trim();
   if (!sessionId) throw badRequest('sessionId is required.', 'BAD_SESSION');
   const digitalCopy = req.body.digitalCopy !== false;
 
-  device.telemetry = device.telemetry || {};
-  device.telemetry.prints = (Number(device.telemetry.prints) || 0) + 1;
-  device.telemetry.updatedAt = new Date();
-  await device.save();
-
   const settings = await getGallerySettings();
   const consent = !settings.requireGuestConsent
     ? true
     : (req.body.guestConsent === true || (req.body.consent && req.body.consent.publish === true));
-  let eventId = req.body.eventId || device.assignedEventId || null;
-  // If not provided on device or payload, auto-link to the organization's current active event
-  if (!eventId) {
-    const activeEvent = await Event.findOne({
-      organizationId: organization._id,
-      status: { $ne: 'cancelled' },
-    }).sort({ startDate: -1, createdAt: -1 });
-    if (activeEvent) {
-      eventId = activeEvent._id;
-      device.assignedEventId = activeEvent._id;
-      await device.save().catch(() => {});
-    }
-  } else if (!device.assignedEventId && mongoose.Types.ObjectId.isValid(eventId)) {
-    device.assignedEventId = eventId;
-    await device.save().catch(() => {});
-  }
+
   const submitted = Array.isArray(req.body.photos) ? req.body.photos.slice(0, 40) : [];
-  // The final composited output (print strip/page), when the booth sends it
-  // separately from the individual frames.
   const compositeObj = (req.body.composite && typeof req.body.composite === 'object' && req.body.composite.key && req.body.composite.url)
     ? req.body.composite
     : null;
@@ -1015,114 +1056,200 @@ router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res
     : typeof req.body.composite === 'string' ? req.body.composite
     : (req.body.composite && (req.body.composite.url || req.body.composite.dataUrl)) || null;
 
-  const stored = [];
-  const storedRecords = [];
-  const skipped = [];
+  // Validate payload formats/sizes and compute deterministic cryptographic fingerprint
+  const payloadFingerprint = computeSessionPayloadFingerprint(submittedComposite || compositeObj, submitted);
 
-  // Parallel persistence: process all photos concurrently for 5x faster session completion
-  const photoTasks = submitted.map(async (photo) => {
-    if (photo && typeof photo === 'object' && photo.key && photo.url) {
-      const isComposite = photo.isComposite === true || photo.type === 'composite';
+  const lockKey = `${organization._id.toString()}:${sessionId}`;
+
+  // ─── 1. Concurrency Mutex ───────────────────────────────────────────────────
+  // If another concurrent request is actively persisting this exact session, wait for it
+  if (inFlightSessionLocks.has(lockKey)) {
+    await inFlightSessionLocks.get(lockKey);
+    const existingPhotos = await Photo.find({ organizationId: organization._id, sessionId }).sort({ createdAt: 1 });
+    const existingDownload = await GuestDownload.findOne({ organizationId: organization._id, sessionId });
+
+    // Validate payload against what the other concurrent request saved
+    const canonicalFingerprint = existingPhotos.find((p) => p.payloadFingerprint)?.payloadFingerprint || existingDownload?.payloadFingerprint;
+    if (canonicalFingerprint && payloadFingerprint !== canonicalFingerprint) {
+      throw conflict(
+        `Session '${sessionId}' was already completed with different photo content. Conflicting re-submissions are rejected.`,
+        'SESSION_PAYLOAD_CONFLICT'
+      );
+    }
+
+    const downloadUrl = existingDownload
+      ? downloadUrlFor(existingDownload.downloadId)
+      : (digitalCopy !== false ? downloadUrlFor(sessionId) : null);
+
+    return res.json({
+      shareUrl: downloadUrl,
+      downloadUrl,
+      downloadId: existingDownload ? existingDownload.downloadId : null,
+      downloadExpiresAt: existingDownload ? existingDownload.expiresAt : null,
+      galleryEnabled: settings.galleryEnabled,
+      requireGuestConsent: settings.requireGuestConsent,
+      guestConsent: existingPhotos[0]?.guestConsent ?? consent,
+      galleryPhotoIds: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).map((p) => String(p._id)),
+      photosStored: existingPhotos.length,
+      photosVisibleInGallery: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).length,
+      photosSkipped: 0,
+      idempotent: true,
+      concurrentReconciled: true,
+    });
+  }
+
+  // ─── 2. Idempotency Check ───────────────────────────────────────────────────
+  // If session is already recorded, validate payload compatibility and return canonical record
+  const existingPhotos = await Photo.find({ organizationId: organization._id, sessionId }).sort({ createdAt: 1 });
+  if (existingPhotos.length > 0) {
+    const existingDownload = await GuestDownload.findOne({ organizationId: organization._id, sessionId });
+    const canonicalFingerprint = existingPhotos.find((p) => p.payloadFingerprint)?.payloadFingerprint || existingDownload?.payloadFingerprint;
+
+    if (canonicalFingerprint) {
+      if (payloadFingerprint !== canonicalFingerprint) {
+        throw conflict(
+          `Session '${sessionId}' was already completed with different photo content. Conflicting re-submissions are rejected.`,
+          'SESSION_PAYLOAD_CONFLICT'
+        );
+      }
+    } else {
+      // Historical session without stored fingerprint: handle safely without falsely claiming byte-level verification
+      if (submitted.length > 0 && Math.abs(submitted.length - existingPhotos.length) > 1) {
+        throw conflict(
+          `Session '${sessionId}' was already completed with different photo count. Conflicting re-submissions are rejected.`,
+          'SESSION_PAYLOAD_CONFLICT'
+        );
+      }
+    }
+
+    const downloadUrl = existingDownload
+      ? downloadUrlFor(existingDownload.downloadId)
+      : (digitalCopy !== false ? downloadUrlFor(sessionId) : null);
+
+    return res.json({
+      shareUrl: downloadUrl,
+      downloadUrl,
+      downloadId: existingDownload ? existingDownload.downloadId : null,
+      downloadExpiresAt: existingDownload ? existingDownload.expiresAt : null,
+      galleryEnabled: settings.galleryEnabled,
+      requireGuestConsent: settings.requireGuestConsent,
+      guestConsent: existingPhotos[0]?.guestConsent ?? consent,
+      galleryPhotoIds: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).map((p) => String(p._id)),
+      photosStored: existingPhotos.length,
+      photosVisibleInGallery: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).length,
+      photosSkipped: 0,
+      idempotent: true,
+    });
+  }
+
+  // ─── 3. Atomic Execution Under Mutex ─────────────────────────────────────────
+  let resolveLock;
+  const lockPromise = new Promise((resolve) => { resolveLock = resolve; });
+  inFlightSessionLocks.set(lockKey, lockPromise);
+
+  try {
+    // Atomic telemetry increment without read-modify-write race
+    await Device.updateOne(
+      { _id: device._id },
+      {
+        $inc: { 'telemetry.prints': 1 },
+        $set: { 'telemetry.updatedAt': new Date() },
+      }
+    ).catch((err) => console.warn('Could not increment device print telemetry:', err.message));
+
+    let eventId = req.body.eventId || device.assignedEventId || null;
+    // If not provided on device or payload, auto-link to the organization's current active event
+    if (!eventId) {
+      const activeEvent = await Event.findOne({
+        organizationId: organization._id,
+        status: { $ne: 'cancelled' },
+      }).sort({ startDate: -1, createdAt: -1 });
+      if (activeEvent) {
+        eventId = activeEvent._id;
+        device.assignedEventId = activeEvent._id;
+        await device.save().catch(() => {});
+      }
+    } else if (!device.assignedEventId && mongoose.Types.ObjectId.isValid(eventId)) {
+      device.assignedEventId = eventId;
+      await device.save().catch(() => {});
+    }
+
+    const stored = [];
+    const storedRecords = [];
+    const skipped = [];
+
+    // Parallel persistence: process all photos concurrently with deterministic naming
+    const photoTasks = submitted.map(async (photo, index) => {
+      if (photo && typeof photo === 'object' && photo.key && photo.url) {
+        const isComposite = photo.isComposite === true || photo.type === 'composite';
+        const record = await Photo.create({
+          organizationId: organization._id,
+          eventId,
+          deviceId: device._id,
+          s3Key: photo.key,
+          url: photo.url,
+          compositeUrl: isComposite ? photo.url : null,
+          sessionId,
+          payloadFingerprint,
+          guestConsent: consent,
+          generatedAt: new Date(),
+          finalised: true,
+        });
+        return { record, isVisible: photoVisibleInGallery(record, settings) };
+      }
+      const raw = typeof photo === 'string' ? photo : photo && (photo.url || photo.dataUrl);
+      if (!raw) return null;
+      const isComposite = photo && typeof photo === 'object' && (photo.isComposite === true || photo.type === 'composite');
+      const saved = await persistSessionPhoto(String(raw), { organizationId: organization._id, eventId, sessionId, index, isComposite });
+      if (!saved || !saved.url) {
+        return { error: 'photo could not be stored' };
+      }
       const record = await Photo.create({
         organizationId: organization._id,
         eventId,
         deviceId: device._id,
-        s3Key: photo.key,
-        url: photo.url,
-        compositeUrl: isComposite ? photo.url : null,
+        s3Key: saved.key || s3KeyFromUrl(saved.url) || '',
+        url: saved.url,
+        compositeUrl: isComposite ? saved.url : null,
         sessionId,
+        payloadFingerprint,
         guestConsent: consent,
         generatedAt: new Date(),
         finalised: true,
       });
       return { record, isVisible: photoVisibleInGallery(record, settings) };
-    }
-    const raw = typeof photo === 'string' ? photo : photo && (photo.url || photo.dataUrl);
-    if (!raw) return null;
-    const saved = await persistSessionPhoto(String(raw), { organizationId: organization._id, eventId, sessionId });
-    if (!saved || !saved.url) {
-      return { error: 'photo could not be stored' };
-    }
-    const isComposite = photo && typeof photo === 'object' && (photo.isComposite === true || photo.type === 'composite');
-    const record = await Photo.create({
-      organizationId: organization._id,
-      eventId,
-      deviceId: device._id,
-      s3Key: saved.key || s3KeyFromUrl(saved.url) || '',
-      url: saved.url,
-      compositeUrl: isComposite ? saved.url : null,
-      sessionId,
-      guestConsent: consent,
-      generatedAt: new Date(),
-      finalised: true,
     });
-    return { record, isVisible: photoVisibleInGallery(record, settings) };
-  });
 
-  const photoResults = await Promise.all(photoTasks);
-  for (const res of photoResults) {
-    if (!res) continue;
-    if (res.error) skipped.push(res.error);
-    if (res.record) {
-      storedRecords.push(res.record);
-      if (res.isVisible) stored.push(String(res.record._id));
+    const photoResults = await Promise.all(photoTasks);
+    for (const res of photoResults) {
+      if (!res) continue;
+      if (res.error) skipped.push(res.error);
+      if (res.record) {
+        storedRecords.push(res.record);
+        if (res.isVisible) stored.push(String(res.record._id));
+      }
     }
-  }
 
-  // Persist a separately-submitted composite and attach it to the session's
-  // records so gallery + guest download lead with the final print image.
-  let compositeUrl = null;
-  if (compositeObj) {
-    compositeUrl = compositeObj.url;
-    if (storedRecords.length > 0) {
-      await Photo.updateMany(
-        { _id: { $in: storedRecords.map((record) => record._id) } },
-        { $set: { compositeUrl } },
-      );
-    } else {
-      const record = await Photo.create({
-        organizationId: organization._id,
-        eventId,
-        deviceId: device._id,
-        s3Key: compositeObj.key,
-        url: compositeObj.url,
-        compositeUrl,
-        sessionId,
-        guestConsent: consent,
-        generatedAt: new Date(),
-        finalised: true,
-      });
-      storedRecords.push(record);
-      if (photoVisibleInGallery(record, settings)) stored.push(String(record._id));
-    }
-  } else if (submittedComposite) {
-    const existingComposite = storedRecords.find((record) => record.compositeUrl && record.url === record.compositeUrl);
-    if (existingComposite && existingComposite.compositeUrl) {
-      compositeUrl = existingComposite.compositeUrl;
+    // Persist a separately-submitted composite and attach it to the session's
+    // records so gallery + guest download lead with the final print image.
+    let compositeUrl = null;
+    if (compositeObj) {
+      compositeUrl = compositeObj.url;
       if (storedRecords.length > 0) {
         await Photo.updateMany(
           { _id: { $in: storedRecords.map((record) => record._id) } },
-          { $set: { compositeUrl } },
+          { $set: { compositeUrl, payloadFingerprint } },
         );
-      }
-    } else {
-      const savedComposite = await persistSessionPhoto(String(submittedComposite), { organizationId: organization._id, eventId, sessionId });
-      if (savedComposite && savedComposite.url) {
-        compositeUrl = savedComposite.url;
-        if (storedRecords.length > 0) {
-          await Photo.updateMany(
-            { _id: { $in: storedRecords.map((record) => record._id) } },
-            { $set: { compositeUrl } },
-          );
-        }
+      } else {
         const record = await Photo.create({
           organizationId: organization._id,
           eventId,
           deviceId: device._id,
-          s3Key: savedComposite.key || s3KeyFromUrl(savedComposite.url) || '',
-          url: savedComposite.url,
+          s3Key: compositeObj.key,
+          url: compositeObj.url,
           compositeUrl,
           sessionId,
+          payloadFingerprint,
           guestConsent: consent,
           generatedAt: new Date(),
           finalised: true,
@@ -1130,60 +1257,125 @@ router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res
         storedRecords.push(record);
         if (photoVisibleInGallery(record, settings)) stored.push(String(record._id));
       }
+    } else if (submittedComposite) {
+      const existingComposite = storedRecords.find((record) => record.compositeUrl && record.url === record.compositeUrl);
+      if (existingComposite && existingComposite.compositeUrl) {
+        compositeUrl = existingComposite.compositeUrl;
+        if (storedRecords.length > 0) {
+          await Photo.updateMany(
+            { _id: { $in: storedRecords.map((record) => record._id) } },
+            { $set: { compositeUrl, payloadFingerprint } },
+          );
+        }
+      } else {
+        const savedComposite = await persistSessionPhoto(String(submittedComposite), { organizationId: organization._id, eventId, sessionId, isComposite: true });
+        if (savedComposite && savedComposite.url) {
+          compositeUrl = savedComposite.url;
+          if (storedRecords.length > 0) {
+            await Photo.updateMany(
+              { _id: { $in: storedRecords.map((record) => record._id) } },
+              { $set: { compositeUrl, payloadFingerprint } },
+            );
+          }
+          const record = await Photo.create({
+            organizationId: organization._id,
+            eventId,
+            deviceId: device._id,
+            s3Key: savedComposite.key || s3KeyFromUrl(savedComposite.url) || '',
+            url: savedComposite.url,
+            compositeUrl,
+            sessionId,
+            payloadFingerprint,
+            guestConsent: consent,
+            generatedAt: new Date(),
+            finalised: true,
+          });
+          storedRecords.push(record);
+          if (photoVisibleInGallery(record, settings)) stored.push(String(record._id));
+        }
+      }
     }
-  }
-  if (!compositeUrl) {
-    const compositeRecord = storedRecords.find((record) => record.compositeUrl);
-    compositeUrl = compositeRecord ? compositeRecord.compositeUrl : null;
-  }
+    if (!compositeUrl) {
+      const compositeRecord = storedRecords.find((record) => record.compositeUrl);
+      compositeUrl = compositeRecord ? compositeRecord.compositeUrl : null;
+    }
 
-  // Digital copy: one 24-hour download link per session. The booth shows
-  // its QR on the success screen (existing behaviour renders `shareUrl`);
-  // the guest lands on the display website's hidden /download/:id page.
-  let guestDownload = null;
-  if (digitalCopy !== false) {
-    const event = eventId ? await Event.findById(eventId).select('name').lean().catch(() => null) : null;
-    guestDownload = await createGuestDownload({
-      organizationId: organization._id,
-      eventId,
-      deviceId: device._id,
-      sessionId,
-      compositeUrl,
-      photoUrls: storedRecords.filter((record) => !record.compositeUrl || record.url !== record.compositeUrl).map((record) => record.url),
-      photoIds: storedRecords.map((record) => record._id),
-      eventName: event ? event.name : '',
-      organizationName: organization.name || '',
-    }).catch((error) => {
-      console.error('⚠️ Could not create guest download:', error.message);
-      return null;
+    // Digital copy: one 24-hour download link per session.
+    let guestDownload = null;
+    if (digitalCopy !== false) {
+      const event = eventId ? await Event.findById(eventId).select('name').lean().catch(() => null) : null;
+      guestDownload = await createGuestDownload({
+        organizationId: organization._id,
+        eventId,
+        deviceId: device._id,
+        sessionId,
+        compositeUrl,
+        photoUrls: storedRecords.filter((record) => !record.compositeUrl || record.url !== record.compositeUrl).map((record) => record.url),
+        photoIds: storedRecords.map((record) => record._id),
+        eventName: event ? event.name : '',
+        organizationName: organization.name || '',
+        payloadFingerprint,
+      }).catch((error) => {
+        console.error('⚠️ Could not create guest download:', error.message);
+        return null;
+      });
+    }
+
+    await writeAudit({
+      organizationId: organization._id, actorId: null, actorName: 'Booth',
+      action: 'booth.session.completed', entity: 'session',
+      summary: `Session ${sessionId} completed on ${device.deviceName}${settings.requireGuestConsent ? ` — guest consent ${consent ? 'given' : 'not given'}` : ''}`,
     });
+
+    const downloadUrl = guestDownload
+      ? downloadUrlFor(guestDownload.downloadId)
+      : (digitalCopy !== false ? downloadUrlFor(sessionId) : null);
+
+    res.json({
+      shareUrl: downloadUrl,
+      downloadUrl,
+      downloadId: guestDownload ? guestDownload.downloadId : null,
+      downloadExpiresAt: guestDownload ? guestDownload.expiresAt : null,
+      galleryEnabled: settings.galleryEnabled,
+      requireGuestConsent: settings.requireGuestConsent,
+      guestConsent: consent,
+      galleryPhotoIds: stored,
+      photosStored: storedRecords.length,
+      photosVisibleInGallery: stored.length,
+      photosSkipped: skipped.length,
+    });
+  } catch (err) {
+    if (err.code === 11000 || (err.name === 'MongoServerError' && err.code === 11000)) {
+      console.warn(`[SessionCompletion] Caught MongoDB duplicate key error for session ${sessionId}; recovering canonical record.`);
+      const recoveredPhotos = await Photo.find({ organizationId: organization._id, sessionId }).sort({ createdAt: 1 });
+      if (recoveredPhotos.length > 0) {
+        const recoveredDownload = await GuestDownload.findOne({ organizationId: organization._id, sessionId });
+        const downloadUrl = recoveredDownload
+          ? downloadUrlFor(recoveredDownload.downloadId)
+          : (digitalCopy !== false ? downloadUrlFor(sessionId) : null);
+
+        return res.json({
+          shareUrl: downloadUrl,
+          downloadUrl,
+          downloadId: recoveredDownload ? recoveredDownload.downloadId : null,
+          downloadExpiresAt: recoveredDownload ? recoveredDownload.expiresAt : null,
+          galleryEnabled: settings.galleryEnabled,
+          requireGuestConsent: settings.requireGuestConsent,
+          guestConsent: recoveredPhotos[0]?.guestConsent ?? consent,
+          galleryPhotoIds: recoveredPhotos.filter((p) => photoVisibleInGallery(p, settings)).map((p) => String(p._id)),
+          photosStored: recoveredPhotos.length,
+          photosVisibleInGallery: recoveredPhotos.filter((p) => photoVisibleInGallery(p, settings)).length,
+          photosSkipped: 0,
+          idempotent: true,
+          duplicateKeyRecovered: true,
+        });
+      }
+    }
+    throw err;
+  } finally {
+    inFlightSessionLocks.delete(lockKey);
+    resolveLock?.();
   }
-
-  await writeAudit({
-    organizationId: organization._id, actorId: null, actorName: 'Booth',
-    action: 'booth.session.completed', entity: 'session',
-    summary: `Session ${sessionId} completed on ${device.deviceName}${settings.requireGuestConsent ? ` — guest consent ${consent ? 'given' : 'not given'}` : ''}`,
-  });
-
-  // Guaranteed downloadUrl: returns guestDownload.downloadId or sessionId fallback
-  const downloadUrl = guestDownload
-    ? downloadUrlFor(guestDownload.downloadId)
-    : (digitalCopy !== false ? downloadUrlFor(sessionId) : null);
-  res.json({
-    // `shareUrl` stays the booth contract (Success screen QR). It now points
-    // at the real, expiring download page instead of a guessed /share path.
-    shareUrl: downloadUrl,
-    downloadUrl,
-    downloadId: guestDownload ? guestDownload.downloadId : null,
-    downloadExpiresAt: guestDownload ? guestDownload.expiresAt : null,
-    galleryEnabled: settings.galleryEnabled,
-    requireGuestConsent: settings.requireGuestConsent,
-    guestConsent: consent,
-    galleryPhotoIds: stored,
-    photosStored: storedRecords.length,
-    photosVisibleInGallery: stored.length,
-    photosSkipped: skipped.length,
-  });
 }));
 
 /**
@@ -1192,7 +1384,7 @@ router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res
  * (this is what the CRM gallery and digital share use).
  */
 const INLINE_PHOTO_MAX_CHARS = 25 * 1024 * 1024;
-async function persistSessionPhoto(value, { organizationId, eventId, sessionId }) {
+async function persistSessionPhoto(value, { organizationId, eventId, sessionId, index = 0, isComposite = false }) {
   if (!value || typeof value !== 'string') return null;
 
   const s3Ready = Boolean(process.env.S3_BUCKET_NAME && process.env.AWS_REGION);
@@ -1214,7 +1406,7 @@ async function persistSessionPhoto(value, { organizationId, eventId, sessionId }
           buffer,
           mimetype,
           folder: `photos/${organizationId}/${eventId || 'no-event'}`,
-          originalname: `${sessionId}-${Date.now()}.${ext}`,
+          originalname: isComposite ? `${sessionId}-composite.${ext}` : `${sessionId}-photo-${index}.${ext}`,
         });
         const isLocalhostFallback =
           typeof uploadResult.url === 'string' &&

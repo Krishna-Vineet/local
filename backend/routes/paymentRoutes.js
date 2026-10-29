@@ -545,7 +545,13 @@ router.get('/status/:paymentId', optionalDeviceAuth, async (req, res) => {
         const settings = await getSettingsForOrg(payment.organizationId);
         if (settings && settings.enableHardwarePrinting && payment.compositeUrl) {
           printImage(payment.compositeUrl, payment.printCount, settings.printerName)
-            .then(() => console.log('Print job dispatched via polling flow'))
+            .then((result) => {
+              if (result && result.skipped) {
+                console.log(`Print job skipped on cloud host: ${result.reason}`);
+              } else {
+                console.log('Print job dispatched via polling flow');
+              }
+            })
             .catch((err) => console.error('Print job dispatch error:', err));
         }
       } catch (printErr) {
@@ -608,7 +614,13 @@ router.post('/verify', optionalDeviceAuth, async (req, res) => {
       const settings = await getSettingsForOrg(payment.organizationId);
       if (settings && settings.enableHardwarePrinting && payment.compositeUrl) {
         printImage(payment.compositeUrl, payment.printCount, settings.printerName)
-          .then(() => console.log('Print job dispatched for verification success'))
+          .then((result) => {
+            if (result && result.skipped) {
+              console.log(`Print job skipped on cloud host: ${result.reason}`);
+            } else {
+              console.log('Print job dispatched for verification success');
+            }
+          })
           .catch((err) => console.error('Print job dispatch error:', err));
       }
     } catch (printErr) {
@@ -682,7 +694,13 @@ router.post('/cashfree-webhook', express.raw({ type: 'application/json' }), asyn
         const settings = await getSettingsForOrg(payment.organizationId);
         if (settings && settings.enableHardwarePrinting && payment.compositeUrl) {
           printImage(payment.compositeUrl, payment.printCount, settings.printerName)
-            .then(() => console.log('Print job dispatched via Cashfree webhook'))
+            .then((result) => {
+              if (result && result.skipped) {
+                console.log(`Print job skipped on cloud host: ${result.reason}`);
+              } else {
+                console.log('Print job dispatched via Cashfree webhook');
+              }
+            })
             .catch((err) => console.error('Print job dispatch error:', err));
         }
       } catch (printErr) {
@@ -750,7 +768,13 @@ router.post('/razorpay-webhook', express.raw({ type: 'application/json' }), asyn
         const settings = await getSettingsForOrg(payment.organizationId);
         if (settings && settings.enableHardwarePrinting && payment.compositeUrl) {
           printImage(payment.compositeUrl, payment.printCount, settings.printerName)
-            .then(() => console.log('Print job dispatched via Razorpay webhook'))
+            .then((result) => {
+              if (result && result.skipped) {
+                console.log(`Print job skipped on cloud host: ${result.reason}`);
+              } else {
+                console.log('Print job dispatched via Razorpay webhook');
+              }
+            })
             .catch((err) => console.error('Print job dispatch error:', err));
         }
       } catch (printErr) {
@@ -852,7 +876,13 @@ router.post('/free-complete', optionalDeviceAuth, async (req, res) => {
       const settings = await getSettingsForOrg(orgId);
       if (settings && settings.enableHardwarePrinting && compositeUrl) {
         printImage(compositeUrl, printCount, settings.printerName)
-          .then(() => console.log('Print job dispatched for free complete'))
+          .then((result) => {
+            if (result && result.skipped) {
+              console.log(`Print job skipped on cloud host: ${result.reason}`);
+            } else {
+              console.log('Print job dispatched for free complete');
+            }
+          })
           .catch((err) => console.error('Print job dispatch error:', err));
       }
     } catch (printErr) {
@@ -900,7 +930,13 @@ router.post('/complete-prepaid', optionalDeviceAuth, async (req, res) => {
       const settings = await getSettingsForOrg(payment.organizationId);
       if (settings && settings.enableHardwarePrinting && compositeUrl) {
         printImage(compositeUrl, payment.printCount, settings.printerName)
-          .then(() => console.log('Print job dispatched for prepaid complete'))
+          .then((result) => {
+            if (result && result.skipped) {
+              console.log(`Print job skipped on cloud host: ${result.reason}`);
+            } else {
+              console.log('Print job dispatched for prepaid complete');
+            }
+          })
           .catch((err) => console.error('Print job dispatch error:', err));
       }
     } catch (printErr) {

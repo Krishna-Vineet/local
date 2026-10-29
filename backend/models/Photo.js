@@ -20,6 +20,7 @@ const photoSchema = new mongoose.Schema({
   // finalised, and whether the guest allowed social-media publishing.
   deviceId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Device', default: null, index: true },
   sessionId:     { type: String, default: null },
+  payloadFingerprint: { type: String, default: null, index: true },
   guestConsent:  { type: Boolean, default: false },
   generatedAt:   { type: Date, default: Date.now },
   finalised:     { type: Boolean, default: false },

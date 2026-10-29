@@ -10,6 +10,7 @@ import {
   fontSize,
   moderateScale,
   radii,
+  getScreenDimensions,
   scale,
   useAppTheme,
   verticalScale,
@@ -44,11 +45,10 @@ export interface AppShellProps {
   title?: string;
   subtitle?: string;
   /**
-   * Seconds left on the idle timer. Only used to decide *when* the warning
-   * appears — never rendered here. The header used to show a red `120s` pill from
-   * the first second of a session, which read as an error; the countdown now
-   * surfaces through `InactivityToast` in the last stretch, and through nothing
-   * at all before that (matching Electron, which shows no idle clock).
+   * Seconds left on the idle timer, shown in Electron's header timer pill
+   * (`.timer-pill`, red on `--red-soft`, solid red under 10s). It is always
+   * visible, exactly like the desktop kiosk — the thing that must stay
+   * threshold-gated is the *toast*, not the clock.
    */
   secondsLeft?: number;
   online?: boolean;
@@ -72,6 +72,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   title,
   subtitle,
   online,
+  secondsLeft,
   orgName,
   orgLogoUrl,
   hideProgress,
@@ -117,7 +118,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   return (
     <View
       testID={testID}
-      style={[styles.shell, { backgroundColor: surface, paddingTop: insets.top }]}
+      style={[styles.shell, { backgroundColor: surface }]}
     >
       {/* ambient tint — Electron's
           `radial-gradient(circle at 10% 100%, #f6e8f3, transparent 35%)` plus its
@@ -142,10 +143,11 @@ export const AppShell: React.FC<AppShellProps> = ({
         ]}
       >
         <View style={styles.headerLeft}>
-          <View style={styles.brandRow}>
-            <AppLogo width={scale(38)} height={scale(36)} forceDark={night} />
-            <Text style={[styles.wordmark, { color: ink }]}>HappyPix</Text>
-          </View>
+          {/* Electron shows the logomark only (the asset already carries the
+              HAPPYPIX wordmark), then a hairline divider, then the org. A second
+              "HappyPix" text node here duplicated the brand and pushed the org
+              name far right of where Electron puts it. */}
+          <AppLogo width={scale(42)} height={scale(34)} forceDark={night} />
           {resolvedOrgName ? (
             <>
               <View style={[styles.divider, { backgroundColor: night ? 'rgba(255,255,255,0.14)' : 'rgba(88,56,105,0.14)' }]} />
@@ -169,13 +171,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         {showProgress ? (
           <View style={styles.progress} accessibilityLabel={`Step ${index + 1} of ${FLOW.length}`}>
             {FLOW.map((item, i) => (
-              <View
-                key={item}
-                style={[
-                  styles.progressDot,
-                  { backgroundColor: i <= index ? p.pink : night ? '#362c3e' : '#e8dfec' },
-                ]}
-              />
+              <ProgressBar key={item} done={i <= index} night={Boolean(night)} />
             ))}
           </View>
         ) : (
@@ -184,11 +180,24 @@ export const AppShell: React.FC<AppShellProps> = ({
 
         <View style={styles.headerStatus}>
           <View style={[styles.statusPill, { backgroundColor: isOnline ? p.greenSoft : p.redSoft }]}>
-            <Icon name={isOnline ? 'wifi' : 'wifi-off'} size={fontSize(13)} color={isOnline ? p.green : p.red} />
+            <Icon name={isOnline ? 'wifi' : 'wifi-off'} size={scale(16)} color={isOnline ? p.green : p.red} />
             <Text style={[styles.statusText, { color: isOnline ? p.green : p.red }]}>
               {isOnline ? 'Connected' : 'Offline'}
             </Text>
           </View>
+          {secondsLeft !== undefined ? (
+            <View
+              style={[
+                styles.timerPill,
+                { backgroundColor: urgent ? p.red : p.redSoft },
+              ]}
+            >
+              <Icon name="clock" size={scale(16)} color={urgent ? p.white : p.red} />
+              <Text style={[styles.statusText, { color: urgent ? p.white : p.red, fontVariant: ['tabular-nums'] }]}>
+                {Math.max(0, secondsLeft)}s
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -215,6 +224,33 @@ export const AppShell: React.FC<AppShellProps> = ({
         {children}
       </View>
     </View>
+  );
+};
+
+/**
+ * One rung of the flow rail — Electron's `.flow-progress span` (5px tall,
+ * `clamp(18px, 2.6vw, 42px)` wide, `linear-gradient(90deg, --pink, #a968d9)`
+ * when done). A flat pink bar lost the gradient that makes the rail read as a
+ * progress meter rather than six dots.
+ */
+const ProgressBar: React.FC<{ done: boolean; night: boolean }> = ({ done, night }) => {
+  const dims = getScreenDimensions();
+  const width = Math.min(42, Math.max(18, Math.round(dims.width * 0.026)));
+  return (
+    <Svg width={width} height={5}>
+      <Defs>
+        <LinearGradient id="flow-done" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#ee4c96" />
+          <Stop offset="100%" stopColor="#a968d9" />
+        </LinearGradient>
+      </Defs>
+      <Rect
+        width={width}
+        height={5}
+        rx={2.5}
+        fill={done ? 'url(#flow-done)' : night ? '#362c3e' : '#e8dfec'}
+      />
+    </Svg>
   );
 };
 
@@ -251,34 +287,43 @@ const styles = StyleSheet.create({
   ambientB: { position: 'absolute', right: -scale(240), top: -scale(280) },
 
   header: {
+    // Electron `.booth-header`: flex, nowrap, 10px clamp(14px,2.2vw,32px),
+    // gap 14. `headerLeft` grows, the rail never shrinks, status sits right —
+    // that is what keeps the rail centred for any org-name length.
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: scale(14),
-    paddingHorizontal: scale(Platform.OS === 'ios' ? 26 : 20),
-    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(Platform.OS === 'ios' ? 24 : 20),
     borderBottomWidth: 1,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: scale(12), flexShrink: 1 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: scale(8) },
-  wordmark: { fontFamily: fonts.displayBold, fontSize: fontSize(17), letterSpacing: -0.4 },
-  divider: { width: 1, height: verticalScale(26) },
-  orgRow: { flexDirection: 'row', alignItems: 'center', gap: scale(8), flexShrink: 1 },
-  orgLogo: { width: scale(20), height: scale(20), borderRadius: moderateScale(6), borderWidth: 1, padding: scale(2) },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: scale(12), flex: 1, minWidth: 0 },
+  divider: { width: 1, height: verticalScale(28), flexShrink: 0 },
+  orgRow: { flexDirection: 'row', alignItems: 'center', gap: scale(8), flexShrink: 1, minWidth: 0 },
+  orgLogo: { width: scale(15), height: scale(15), borderRadius: moderateScale(6), borderWidth: 1, padding: scale(1) },
   orgLogoImage: { width: '100%', height: '100%' },
-  orgName: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(13), maxWidth: scale(240) },
+  orgName: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(13), letterSpacing: -0.1, flexShrink: 1 },
 
-  progress: { flexDirection: 'row', alignItems: 'center', gap: scale(7) },
-  progressDot: { width: scale(26), height: moderateScale(5), borderRadius: radii.pill },
-  progressSpacer: { width: scale(26) },
+  progress: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: scale(8) },
+  progressSpacer: { width: scale(28) },
 
-  headerStatus: { flexDirection: 'row', alignItems: 'center', gap: scale(8) },
+  headerStatus: { flexDirection: 'row', alignItems: 'center', gap: scale(9), flexShrink: 0 },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: scale(6),
-    paddingHorizontal: scale(11),
-    height: verticalScale(30),
+    justifyContent: 'center',
+    gap: scale(7),
+    paddingHorizontal: scale(12),
+    height: verticalScale(34),
+    borderRadius: radii.pill,
+  },
+  timerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: scale(7),
+    paddingHorizontal: scale(12),
+    minWidth: scale(69),
+    height: verticalScale(34),
     borderRadius: radii.pill,
   },
   statusText: { fontFamily: fonts.bodyHeavy, fontSize: fontSize(11) },

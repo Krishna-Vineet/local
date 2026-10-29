@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
   },
   slotBadgeText: { fontFamily: fonts.bodyBlack, fontSize: fontSize(12), color: '#ffffff' },
 
-  preview: { flex: 1, minWidth: 0, minHeight: 0, alignItems: 'center' },
+  preview: { flex: 1, minWidth: 0, minHeight: 0, alignItems: 'stretch' },
   previewHead: {
     width: '100%',
     flexDirection: 'row',

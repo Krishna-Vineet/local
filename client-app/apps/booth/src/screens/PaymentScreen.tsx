@@ -680,7 +680,6 @@ const styles = StyleSheet.create(withKioskFonts({
   },
   summaryCard: {
     flex: 1,
-    alignSelf: 'stretch',
     backgroundColor: '#ffffff',
     borderRadius: moderateScale(28),
     borderWidth: 1.5,
@@ -749,7 +748,6 @@ const styles = StyleSheet.create(withKioskFonts({
   },
   couponCard: {
     flex: 1,
-    alignSelf: 'stretch',
     backgroundColor: '#ffffff',
     borderRadius: moderateScale(28),
     borderWidth: 1.5,

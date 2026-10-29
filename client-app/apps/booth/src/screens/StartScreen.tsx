@@ -1,14 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   Icon,
   fonts,
   fontSize,
-  moderateScale,
-  radii,
   scale,
-  shadows,
   useAppTheme,
   verticalScale,
 } from '../../../../packages/ui/src/index';
@@ -25,12 +23,77 @@ import type { RootStackParamList } from '../../App';
  * a button. The three polaroids fan out behind a heart seal, then the event
  * name and copy of "Touch anywhere to begin" sit underneath.
  *
- * The old tablet version was a neon-dark hero with SVG glow orbs and stock
- * photos. Those are gone: Electron is the reference, and its art is drawn with
- * CSS shapes, which is why this file has no image assets left.
+ * The layout, the three insets and the rotations are Electron's. What sits
+ * inside the frames is not: on the desktop those blocks are flat CSS shapes, and
+ * on the tablet they read as three empty boxes on a screen whose whole job is to
+ * sell a photograph. They now hold this event's own recent shots
+ * (`event.samplePhotos`), and a designed gradient panel with the brand heart when
+ * the event has none yet.
  */
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Start'>;
+
+/**
+ * A polaroid on the attract screen.
+ *
+ * Electron draws these as three flat CSS blocks, and on a desktop browser with a
+ * real event behind it that reads fine. On the tablet they read as *empty boxes*,
+ * which is the one thing a photo booth must never look like. The snapshot already
+ * carries `event.samplePhotos` (the backend's `recentSamplePhotos`, up to three
+ * recent shots of this very event), so the frame now holds a real photograph.
+ * With no photos yet — a brand-new event — it falls back to a designed gradient
+ * panel with the brand heart, never to a blank rectangle. Image failures fall
+ * back the same way, so a dead S3 URL cannot leave a white hole on the screen.
+ */
+const Polaroid: React.FC<{
+  uri?: string;
+  style: object;
+  rotate: string;
+  gradient: [string, string];
+  gradientId: string;
+  caption: string;
+  seal?: React.ReactNode;
+}> = ({ uri, style, rotate, gradient, gradientId, caption, seal }) => {
+  const [broken, setBroken] = useState(false);
+  const showPhoto = Boolean(uri) && !broken;
+
+  return (
+    <View style={[styles.polaroid, style, { transform: [{ rotate }] }]}>
+      <View style={styles.polaroidWindow}>
+        {showPhoto ? (
+          <Image
+            source={{ uri: uri as string }}
+            style={styles.polaroidImage}
+            resizeMode="cover"
+            onError={() => setBroken(true)}
+          />
+        ) : (
+          <>
+            <Svg width="100%" height="100%" viewBox="0 0 100 120" preserveAspectRatio="none">
+              <Defs>
+                <LinearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+                  <Stop offset="0%" stopColor={gradient[0]} />
+                  <Stop offset="100%" stopColor={gradient[1]} />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100" height="120" fill={`url(#${gradientId})`} />
+              <Rect x="0" y="0" width="100" height="120" fill="rgba(255,255,255,0.10)" />
+            </Svg>
+            <View style={styles.polaroidGlyph} pointerEvents="none">
+              <Icon name="heart" size={scale(30)} color="rgba(255,255,255,0.82)" strokeWidth={1.6} />
+            </View>
+          </>
+        )}
+      </View>
+      <View style={styles.polaroidCaption}>
+        <Text style={styles.polaroidCaptionText} numberOfLines={1}>
+          {caption}
+        </Text>
+      </View>
+      {seal}
+    </View>
+  );
+};
 
 export const StartScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useAppTheme();
@@ -64,6 +127,16 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('Orientation');
   };
 
+  // Up to three photographs of this very event, straight from the snapshot.
+  const shots = (event?.samplePhotos ?? [])
+    .filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+    .slice(0, 3);
+  const captions = [
+    event?.location || 'On-site studio',
+    orgName,
+    event?.clientName || 'HappyPix',
+  ];
+
   const lift = float.interpolate({ inputRange: [0, 1], outputRange: [0, -8] });
   // Electron `.start-art .photo-*` rotations, kept static like the CSS.
   const tiltA = '-7deg';
@@ -80,23 +153,42 @@ export const StartScreen: React.FC<Props> = ({ navigation }) => {
         accessibilityRole="button"
         accessibilityLabel={`Start a photo session for ${event?.name || 'this event'}`}
       >
-        {/* Electron `.start-art`: three rotated gradient prints, heart seal on
-            top of the middle one. Widths are the CSS `min(39vw, 570px)`. */}
+        {/* Electron `.start-art`: three rotated prints at the same insets and
+            angles, now holding this event's own photographs. Widths are the CSS
+            `min(39vw, 570px)`. */}
         <Animated.View
           style={[styles.art, isLandscape ? null : styles.artPortrait, { transform: [{ translateY: lift }] }]}
           pointerEvents="none"
         >
-          <Animated.View
-            style={[styles.photo, styles.photoOne, { transform: [{ rotate: tiltA }] }]}
+          <Polaroid
+            uri={shots[0]}
+            style={styles.photoOne}
+            rotate={tiltA}
+            gradient={['#f6a9c4', '#e2708f']}
+            gradientId="start-p1"
+            caption={captions[0]}
           />
-          <Animated.View
-            style={[styles.photo, styles.photoTwo, { transform: [{ rotate: tiltB }] }]}
+          <Polaroid
+            uri={shots[1]}
+            style={styles.photoTwo}
+            rotate={tiltB}
+            gradient={['#c7b3f0', '#8f7bd8']}
+            gradientId="start-p2"
+            caption={captions[1]}
           />
-          <View style={[styles.photo, styles.photoThree, { transform: [{ rotate: '-1deg' }] }]}>
-            <View style={[styles.seal, { backgroundColor: p.pink, shadowColor: p.pink }]}>
-              <Icon name="heart" size={scale(38)} color="#ffffff" strokeWidth={2} />
-            </View>
-          </View>
+          <Polaroid
+            uri={shots[2]}
+            style={styles.photoThree}
+            rotate="-1deg"
+            gradient={['#ffd3ae', '#e79a6d']}
+            gradientId="start-p3"
+            caption={captions[2]}
+            seal={
+              <View style={[styles.seal, { backgroundColor: p.pink, shadowColor: p.pink }]}>
+                <Icon name="heart" size={scale(38)} color="#ffffff" strokeWidth={2} />
+              </View>
+            }
+          />
         </Animated.View>
 
         {/* Electron `.start-event` */}
@@ -157,14 +249,56 @@ const styles = StyleSheet.create({
   // `.start-art { width: min(39vw, 570px); aspect-ratio: .92 }`
   art: { width: Math.min(scale(570), scale(412)), aspectRatio: 0.92, alignSelf: 'center' },
   artPortrait: { width: Math.min(scale(490), scale(420)) },
-  photo: { position: 'absolute', borderRadius: scale(3), ...shadows.soft },
+  // A polaroid: white card, photo window, caption strip. The three CSS insets
+  // below are Electron's, unchanged — only what sits *inside* the frame is new.
+  polaroid: {
+    position: 'absolute',
+    padding: scale(6),
+    paddingBottom: 0,
+    borderRadius: scale(4),
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(88,56,105,0.07)',
+    shadowColor: '#3a1a33',
+    shadowOpacity: 0.22,
+    shadowRadius: scale(18),
+    shadowOffset: { width: 0, height: verticalScale(10) },
+    elevation: 6,
+  },
+  polaroidWindow: {
+    flex: 1,
+    overflow: 'hidden',
+    borderRadius: scale(2),
+    backgroundColor: '#f3e8f1',
+  },
+  polaroidImage: { width: '100%', height: '100%' },
+  polaroidGlyph: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  polaroidCaption: {
+    height: verticalScale(22),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  polaroidCaptionText: {
+    fontFamily: fonts.bodyBlack,
+    fontSize: fontSize(7),
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    color: '#b09aae',
+  },
   // inset: 3% 30% 29% 3% — rotate(-7deg)
   photoOne: {
     left: '3%',
     right: '30%',
     top: '3%',
     bottom: '29%',
-    backgroundColor: '#f4a3bd',
   },
   // inset: 23% 1% 7% 36% — rotate(7deg)
   photoTwo: {
@@ -172,7 +306,6 @@ const styles = StyleSheet.create({
     right: '1%',
     top: '23%',
     bottom: '7%',
-    backgroundColor: '#ef83ab',
   },
   // inset: 35% 24% 2% 17% — rotate(-1deg)
   photoThree: {
@@ -180,7 +313,6 @@ const styles = StyleSheet.create({
     right: '24%',
     top: '35%',
     bottom: '2%',
-    backgroundColor: '#e4a1bc',
   },
   // `.start-heart { left:47%; top:42%; width:74px; height:74px }`
   seal: {

@@ -10,7 +10,6 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -18,6 +17,7 @@ import type { CapturedPhoto } from '@happypix/types';
 import { cameraManager } from '../../../../packages/camera-core/src/index';
 import {
   FlashOverlay,
+  Icon,
   useAppTheme,
   fonts,
   fontSize,
@@ -204,7 +204,18 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const total = Math.max(1, totalShots);
   // `countdown-flash` font: clamp(90px, 16vw, 230px)
   const countdownSize = Math.max(90, Math.min(230, width * 0.16));
-  const reelItems = Array.from({ length: totalShots });
+  // Electron lays the reel out as a 2-column grid that scrolls, and as one
+  // horizontal strip under the viewfinder in portrait. Building explicit rows
+  // (instead of `flexWrap`) is what lets each row share the column height, so a
+  // 4-shot session fills the reel instead of leaving a dead rectangle below it.
+  const reelRows: number[][] = [];
+  if (isLandscape) {
+    for (let i = 0; i < totalShots; i += 2) {
+      reelRows.push([i, i + 1].filter((n) => n < totalShots));
+    }
+  } else {
+    reelRows.push(Array.from({ length: totalShots }, (_, i) => i));
+  }
 
   /** `.film-cell:before/:after` — a strip of sprocket holes. */
   const Sprocket = ({ at }: { at: 'top' | 'bottom' }) => (
@@ -247,34 +258,29 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
           <View style={[styles.filmReel, !isLandscape && styles.filmReelStacked]}>
             <Text style={styles.filmLabel}>YOUR SHOTS</Text>
             <View style={[styles.filmTrack, !isLandscape && styles.filmTrackStacked]}>
-              {reelItems.map((_, i) => {
-                const photo = photos[i];
-                const isCurrent = i === photos.length && running;
-                return (
-                  <View
-                    key={i}
-                    style={[
-                      styles.filmCell,
-                      !isLandscape && styles.filmCellStacked,
-                      isCurrent && styles.filmCellCurrent,
-                    ]}
-                  >
-                    <Sprocket at="top" />
-                    {photo ? (
-                      <Image source={{ uri: photo.uri }} resizeMode="cover" style={styles.filmImage} />
-                    ) : (
-                      <Svg width={20} height={20} viewBox="0 0 24 24">
-                        <Path
-                          fill="#6f6376"
-                          d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm8-5h-3.17L15 5.17C14.65 4.82 14.17 4.63 13.68 4.63h-3.36c-.49 0-.97.19-1.32.54L7.17 7H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
-                        />
-                      </Svg>
-                    )}
-                    <Sprocket at="bottom" />
-                    <Text style={styles.filmNum}>{String(i + 1).padStart(2, '0')}</Text>
-                  </View>
-                );
-              })}
+              {reelRows.map((row, rowIndex) => (
+                <View key={rowIndex} style={styles.filmRow}>
+                  {row.map((i) => {
+                    const photo = photos[i];
+                    const isCurrent = i === photos.length && running;
+                    return (
+                      <View
+                        key={i}
+                        style={[styles.filmCell, isCurrent && styles.filmCellCurrent]}
+                      >
+                        <Sprocket at="top" />
+                        {photo ? (
+                          <Image source={{ uri: photo.uri }} resizeMode="cover" style={styles.filmImage} />
+                        ) : (
+                          <Icon name="camera" size={scale(18)} color="#6f6376" strokeWidth={1.6} />
+                        )}
+                        <Sprocket at="bottom" />
+                        <Text style={styles.filmNum}>{String(i + 1).padStart(2, '0')}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
             </View>
           </View>
 
@@ -305,12 +311,9 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
                 />
               ) : (
                 <View style={styles.cameraFallback}>
-                  <Svg width={52} height={52} viewBox="0 0 24 24">
-                    <Path
-                      fill="#8e7e94"
-                      d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm8-5h-3.17L15 5.17C14.65 4.82 14.17 4.63 13.68 4.63h-3.36c-.49 0-.97.19-1.32.54L7.17 7H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
-                    />
-                  </Svg>
+                  <View style={styles.fallbackBadge}>
+                    <Icon name="camera" size={scale(34)} color="#c3a9cf" strokeWidth={1.7} />
+                  </View>
                   <Text style={styles.fallbackTitle}>
                     {hasPermission ? 'Camera warming up' : 'Camera permission needed'}
                   </Text>
@@ -337,18 +340,17 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
 
               {/* `.shutter-button` — glass pill, white ringed shutter disc */}
               {!running ? (
-                <TouchableOpacity style={styles.shutterButton} onPress={startCapture} activeOpacity={0.85}>
-                  <View style={styles.shutterDisc}>
-                    <Svg width={27} height={27} viewBox="0 0 24 24">
-                      <Path
-                        fill="#ffffff"
-                        d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm8-5h-3.17L15 5.17C14.65 4.82 14.17 4.63 13.68 4.63h-3.36c-.49 0-.97.19-1.32.54L7.17 7H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"
-                      />
-                    </Svg>
-                  </View>
-                  <Text style={styles.shutterTitle}>Start shooting</Text>
-                  <Text style={styles.shutterSub}>{totalShots} photos · includes extra choices</Text>
-                </TouchableOpacity>
+                <View style={styles.shutterDock} pointerEvents="box-none">
+                  <TouchableOpacity style={styles.shutterButton} onPress={startCapture} activeOpacity={0.86}>
+                    <View style={styles.shutterDisc}>
+                      <Icon name="camera" size={scale(26)} color="#ffffff" strokeWidth={2} />
+                    </View>
+                    <View style={styles.shutterCopy}>
+                      <Text style={styles.shutterTitle}>Start shooting</Text>
+                      <Text style={styles.shutterSub}>{totalShots} photos · includes extra choices</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
               ) : null}
             </View>
 
@@ -442,10 +444,12 @@ const styles = StyleSheet.create(withKioskFonts({
     letterSpacing: 1.3,
     color: '#c98443',
   },
-  filmTrack: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: scale(9) },
-  filmTrackStacked: { flexWrap: 'nowrap', flexDirection: 'row' },
+  filmTrack: { flex: 1, flexDirection: 'column', gap: scale(9) },
+  filmTrackStacked: { flexDirection: 'column' },
+  filmRow: { flex: 1, flexDirection: 'row', gap: scale(9), minHeight: 0 },
   filmCell: {
-    width: '46%',
+    // One frame; the row it sits in owns the height so the reel always fills.
+    flex: 1,
     minHeight: verticalScale(72),
     borderRadius: 2,
     overflow: 'hidden',
@@ -455,7 +459,6 @@ const styles = StyleSheet.create(withKioskFonts({
     borderWidth: 1,
     borderColor: '#3c3342',
   },
-  filmCellStacked: { width: undefined, flex: 1, minHeight: 0 },
   filmCellCurrent: {
     borderColor: '#ee4c96',
     shadowColor: '#ee4c96',
@@ -546,48 +549,76 @@ const styles = StyleSheet.create(withKioskFonts({
     textShadowRadius: 35,
   },
 
-  shutterButton: {
+  /*
+   * `.shutter-button` — Electron centres an absolutely-positioned pill on the
+   * bottom of the frame. Two things went wrong when this was first ported: the
+   * fixed 183 px text columns plus a 58 px disc overran the 280 px pill, so the
+   * text wrapped under the disc; and at 0.78 alpha over a bright live feed the
+   * pill turned into a muddy blob. Now the pill is sized by its content
+   * (`alignSelf: center` inside a full-width dock), the copy is one column, and
+   * the background is dark enough to hold white text on any frame.
+   */
+  shutterDock: {
     position: 'absolute',
-    left: '50%',
+    left: 0,
+    right: 0,
     bottom: '8%',
-    marginLeft: -scale(140),
-    width: scale(280),
-    paddingVertical: verticalScale(13),
-    paddingLeft: scale(13),
-    paddingRight: scale(24),
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    columnGap: scale(12),
+  },
+  shutterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: scale(12),
+    paddingVertical: verticalScale(11),
+    paddingLeft: scale(11),
+    paddingRight: scale(24),
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    backgroundColor: 'rgba(15,10,20,0.78)',
+    borderColor: 'rgba(255,255,255,0.20)',
+    backgroundColor: 'rgba(14,9,19,0.90)',
     shadowColor: '#000000',
-    shadowOpacity: 0.3,
-    shadowRadius: 40,
-    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.45,
+    shadowRadius: scale(28),
+    shadowOffset: { width: 0, height: verticalScale(12) },
+    elevation: 10,
   },
   shutterDisc: {
-    width: scale(58),
-    height: scale(58),
-    borderRadius: scale(29),
-    borderWidth: 4,
+    width: scale(56),
+    height: scale(56),
+    borderRadius: scale(28),
+    borderWidth: 3,
     borderColor: '#ffffff',
     backgroundColor: '#ee4c96',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#ee4c96',
+    shadowOpacity: 0.55,
+    shadowRadius: scale(14),
+    elevation: 6,
   },
+  shutterCopy: { justifyContent: 'center' },
   shutterTitle: {
-    width: scale(183),
     fontFamily: fonts.bodyBlack,
     fontSize: fontSize(14),
+    letterSpacing: 0.2,
     color: '#ffffff',
   },
   shutterSub: {
-    width: scale(183),
+    marginTop: verticalScale(2),
     fontFamily: fonts.body,
-    fontSize: fontSize(9),
-    color: '#bbaec0',
+    fontSize: fontSize(10),
+    color: '#bfb0c6',
+  },
+  fallbackBadge: {
+    width: scale(74),
+    height: scale(74),
+    borderRadius: scale(37),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(195,169,207,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(195,169,207,0.22)',
+    marginBottom: verticalScale(4),
   },
 }));

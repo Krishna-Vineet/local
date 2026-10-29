@@ -10,7 +10,6 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { cameraManager } from '../../../../packages/camera-core/src/index';
 import { printerManager } from '../../../../packages/printer-core/src/index';
@@ -61,7 +60,6 @@ interface Telemetry {
 export const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useAppTheme();
   const p = theme.palette;
-  const insets = useSafeAreaInsets();
   const { login, bootError } = useBooth();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
@@ -156,7 +154,9 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={[styles.root, { backgroundColor: p.background, paddingTop: insets.top }]}
+      // No top inset: the window is edge-to-edge (see `useEdgeToEdge` in
+      // App.tsx), so a top pad here only re-introduced the strip above the UI.
+      style={[styles.root, { backgroundColor: p.background }]}
     >
       <ScrollView
         contentContainerStyle={[styles.scroll, isLandscape ? styles.scrollLandscape : null]}

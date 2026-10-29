@@ -326,3 +326,61 @@ made here, not there. The only exception is the support modal, which is shared
 design and must be fixed in both. Every value in this section is traceable to a
 rule in `electron/src/ui/App.css`; if a future edit cannot name that rule, it is
 not parity, it is a new design decision and needs the user's sign-off.
+
+## 8. Correction history — round 4 (device screenshots)
+
+Three reports came back from the tablet with a screenshot each: the camera screen
+"is not good", the app still shows a strip of page background above the header,
+and the three start-screen photo cards "are just boxes".
+
+### 8.1 The top strip — it was the safe area, and the fix is not to consume it
+
+The header was padded by `insets.top` on top of a 6 px pad. The arithmetic looked
+right — the bar's *content* was being kept clear of the status bar — but the
+window is not edge-to-edge on every device, so the inset being "protected" was a
+real, visible system strip, and the result was a bar floating roughly 25 px below
+the top of the screen with a band of page colour above it.
+
+* `AppShell` no longer consumes the top inset at all: the header is `paddingTop 0`
+  with `height: clamp(58, 11vh, 74)`, so it owns y = 0 on every platform. The
+  bottom inset (home indicator) is still honoured.
+* `LoginScreen` and `WaitingScreen` had the same `paddingTop: insets.top`; both
+  dropped it.
+* New `useEdgeToEdge()` in `apps/booth/App.tsx` re-applies
+  `KioskModule.setImmersiveMode(true)` at boot and on every return to the
+  foreground (Android only). The strip was not only a layout bug: a status bar
+  that reappears after a swipe re-introduces both the bar and the inset, which is
+  how it kept coming back.
+
+### 8.2 Camera — the shutter pill was mis-sized, and the reel was empty
+
+| | |
+|---|---|
+| Reported | "This camera screen is not good." |
+| Cause | The shutter pill was a fixed 280 px wide row: a 58 px disc plus two *fixed* 183 px text columns inside 243 px of content, so the copy wrapped under the disc and the pill grew to ~175 px tall. At `rgba(15,10,20,.78)` over a bright live feed it also turned into a muddy blob. Separately the reel used `flexWrap` with `min-height: 72` cells, so four shots hugged the top of a 465 px column and left a dead rectangle underneath. |
+| Now | The pill is content-sized (`alignSelf: center` in a full-width dock at `bottom: 8%`), one copy column, `rgba(14,9,19,.90)` so white text holds on any frame, and the shutter disc carries the pink glow. The reel is built as explicit rows of two (`reelRows`), each row `flex: 1`, so N shots fill the column instead of floating at the top; portrait keeps the single strip under the viewfinder. Camera glyphs now come from the shared `Icon` set instead of hand-written SVG paths, and the "no feed" state is a ringed badge rather than a bare glyph. |
+
+### 8.3 Start screen — the frames hold photographs now
+
+Electron draws `.photo-one|two|three` as three flat CSS blocks. On a desktop page
+that reads as art direction; on a tablet, on a screen whose only job is to sell a
+photograph, it reads as three empty boxes.
+
+* The frames are polaroids: white card, 6 px padding, photo window, a caption
+  strip with the location / organisation / client name, soft shadow, and
+  Electron's exact three insets and rotations (`3%/30%/29%/3%` at −7°,
+  `23%/1%/7%/36%` at +7°, `35%/24%/2%/17%` at −1°) unchanged.
+* The photo inside comes from `event.samplePhotos` — the backend's
+  `recentSamplePhotos` already sends up to three recent shots of *this* event, and
+  the type has carried the field since the first snapshot.
+* With no photos yet (a brand-new event) each frame falls back to a gradient
+  panel with the brand heart — pink/rose, violet, peach for the three frames —
+  and an `onError` on the `Image` falls back the same way, so a dead URL cannot
+  leave a white hole. This is a deliberate, recorded departure from Electron:
+  the geometry is the desktop's, the contents are better than blank blocks.
+
+### 8.4 Still outstanding
+
+* The screenshot showed the live preview itself as a green test pattern. That is
+  the capture simulator, not the chrome — it renders only when no camera device
+  is attached, and it is labelled as a simulator in the HUD.

@@ -16,6 +16,8 @@ export interface NikonDeviceInfo {
   id: number
   name: string
   available: boolean
+  /** USB product ID reported by Nikon's device-enumeration structure. */
+  productId?: number
   version: string
 }
 
@@ -88,6 +90,12 @@ export class NikonAdapter extends EventEmitter {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: path.dirname(scriptPath),
       windowsHide: true,
+      env: {
+        ...process.env,
+        ...(process.env.HAPPYPIX_NIKON_SDK_DIR || process.env.NIKON_SDK_DIR
+          ? { HAPPYPIX_NIKON_SDK_DIR: process.env.HAPPYPIX_NIKON_SDK_DIR || process.env.NIKON_SDK_DIR }
+          : {}),
+      },
     })
 
     this.proc.stdout!.setEncoding('utf8')
@@ -97,6 +105,15 @@ export class NikonAdapter extends EventEmitter {
     this.proc.stderr!.on('data', (data: string) => {
       const trimmed = data.trim()
       if (trimmed) console.error('[NikonAdapter] stderr:', trimmed)
+    })
+
+    this.proc.on('error', (err) => {
+      const message = `Unable to launch Nikon PowerShell bridge: ${err.message}`
+      console.error('[NikonAdapter]', message)
+      this._ready = false
+      this._rejectAll(new Error(message))
+      this._stopWatch()
+      this.emit('error', new Error(message))
     })
 
     this.proc.on('exit', (code) => {
@@ -114,8 +131,13 @@ export class NikonAdapter extends EventEmitter {
       this.once('error', (e: Error) => { clearTimeout(tid); reject(e) })
     })
 
-    // Initialize SDK
-    await this._send('init')
+    // Initialize SDK and record which native package was actually loaded; this
+    // is especially useful when a camera-specific Nikon SDK is selected by env.
+    const sdk = await this._send<{ sdkDir?: string; sdkVersion?: string; processBits?: number }>('init')
+    console.info(
+      `[NikonAdapter] SDK loaded from ${sdk.sdkDir ?? 'default resources'} ` +
+      `(ControlServiceLayer ${sdk.sdkVersion ?? 'unknown'}, ${sdk.processBits ?? 'unknown'}-bit process)`,
+    )
     this._startWatch()
   }
 
@@ -143,9 +165,9 @@ export class NikonAdapter extends EventEmitter {
     return r.devices ?? []
   }
 
-  /** Connect to the first available Nikon camera. */
-  async connect(): Promise<{ connected: boolean; name: string; id: number }> {
-    return this._send('connect')
+  /** Connect to the first available Nikon camera, or a specific enumerated device ID. */
+  async connect(deviceId?: number): Promise<{ connected: boolean; name: string; id: number }> {
+    return this._send('connect', deviceId === undefined ? undefined : { deviceId })
   }
 
   /** Disconnect from camera. */
@@ -345,4 +367,3 @@ export class NikonAdapter extends EventEmitter {
 
 // Singleton instance
 export const nikonAdapter = new NikonAdapter()
-

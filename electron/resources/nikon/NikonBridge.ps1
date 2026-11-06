@@ -15,22 +15,47 @@ $ErrorActionPreference = 'Stop'
 
 # ── Determine resource directory ─────────────────────────────────────────────
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$dllPath   = Join-Path $scriptDir 'ControlServiceLayer.dll'
+# Allow a camera-specific Nikon SDK package to be selected without replacing the
+# SDK files that may be needed by another camera build. The directory must be
+# the SDK's BinaryFile/resource directory containing ControlServiceLayer.dll.
+$sdkDir = $scriptDir
+$sdkDirOverride = $env:HAPPYPIX_NIKON_SDK_DIR
+if ([string]::IsNullOrWhiteSpace($sdkDirOverride)) { $sdkDirOverride = $env:NIKON_SDK_DIR }
+if (-not [string]::IsNullOrWhiteSpace($sdkDirOverride)) {
+    try {
+        $sdkDir = (Resolve-Path -LiteralPath $sdkDirOverride -ErrorAction Stop).Path
+    } catch {
+        $err = @{ id = 0; ok = $false; error = "Nikon SDK directory does not exist: $sdkDirOverride" } | ConvertTo-Json -Compress
+        [Console]::Out.WriteLine($err)
+        exit 1
+    }
+}
+$dllPath = Join-Path $sdkDir 'ControlServiceLayer.dll'
 
-if (-not (Test-Path $dllPath)) {
-    $err = @{ id = 0; ok = $false; error = "ControlServiceLayer.dll not found at: $dllPath" } | ConvertTo-Json -Compress
-    Write-Host $err
+if (-not (Test-Path -LiteralPath $dllPath -PathType Leaf)) {
+    $err = @{ id = 0; ok = $false; error = "ControlServiceLayer.dll not found at: $dllPath. Set HAPPYPIX_NIKON_SDK_DIR to the Nikon SDK folder containing the DLL." } | ConvertTo-Json -Compress
+    [Console]::Out.WriteLine($err)
     exit 1
 }
 
-# Ensure config files are in place
+# Keep the vendor profiles synchronized with the selected SDK. Previously these
+# were copied only once, so cached profiles from a different Nikon SDK could
+# silently take precedence over the camera-specific package being loaded.
 $configDst = Join-Path $env:LOCALAPPDATA 'Nikon\NXTether'
-if (-not (Test-Path $configDst)) { New-Item -ItemType Directory -Force -Path $configDst | Out-Null }
+if (-not (Test-Path -LiteralPath $configDst)) { New-Item -ItemType Directory -Force -Path $configDst | Out-Null }
 foreach ($f in @('DC_PTP_Config.config','MaidLayer.config','RangeValue.config')) {
-    $src = Join-Path $scriptDir $f
+    $src = Join-Path $sdkDir $f
     $dst = Join-Path $configDst $f
-    if ((Test-Path $src) -and (-not (Test-Path $dst))) {
-        Copy-Item $src $dst -Force
+    if (Test-Path -LiteralPath $src -PathType Leaf) {
+        $needsCopy = -not (Test-Path -LiteralPath $dst -PathType Leaf)
+        if (-not $needsCopy) {
+            $needsCopy = (Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash -ne
+                         (Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash
+        }
+        if ($needsCopy) {
+            Copy-Item -LiteralPath $src -Destination ($dst + '.new') -Force
+            Move-Item -LiteralPath ($dst + '.new') -Destination $dst -Force
+        }
     }
 }
 
@@ -52,6 +77,9 @@ public static class NikonBridge {
 
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern IntPtr GetProcAddress(IntPtr hMod, string name);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool SetDllDirectory(string path);
 
     [DllImport("kernel32.dll")] static extern bool FreeLibrary(IntPtr h);
 
@@ -186,6 +214,8 @@ public static class NikonBridge {
 
     // ── State ──────────────────────────────────────────────────────────────
     static IntPtr hMod = IntPtr.Zero;
+    static string sdkDirectory = "";
+    static string sdkFileVersion = "unknown";
     static bool sdkInitialized = false;
     static bool deviceConnected = false;
     static uint connectedDeviceId = 0;
@@ -263,6 +293,31 @@ public static class NikonBridge {
         return (T)(object)Marshal.GetDelegateForFunctionPointer(ptr, typeof(T));
     }
 
+    static string FindModelModule(string fileName) {
+        try {
+            string direct = Path.Combine(sdkDirectory, fileName);
+            if (File.Exists(direct)) return direct;
+            string[] matches = Directory.GetFiles(sdkDirectory, fileName, SearchOption.AllDirectories);
+            return matches.Length > 0 ? matches[0] : "";
+        } catch { return ""; }
+    }
+
+    static bool HasD5600SdkAssets() {
+        if (FindModelModule("Type0016.md3").Length > 0) return true;
+        string[] profiles = { "DC_PTP_Config.config", "MaidLayer.config", "RangeValue.config" };
+        foreach (string name in profiles) {
+            try {
+                string path = Path.Combine(sdkDirectory, name);
+                if (!File.Exists(path)) continue;
+                string text = File.ReadAllText(path);
+                if (text.IndexOf("D5600", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    System.Text.RegularExpressions.Regex.IsMatch(text, @"<model:Type0016(?:>|\s)", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    return true;
+            } catch { }
+        }
+        return false;
+    }
+
     static string EscJson(string s) {
         return s == null ? "" : s.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\n","\\n").Replace("\r","");
     }
@@ -324,7 +379,9 @@ public static class NikonBridge {
             return Err(id, "InitializeSDK failed: " + res);
 
         sdkInitialized = true;
-        return Ok(id, "{\"initialized\":true}");
+        return Ok(id, "{\"initialized\":true,\"sdkDir\":\"" + EscJson(sdkDirectory)
+            + "\",\"sdkVersion\":\"" + EscJson(sdkFileVersion)
+            + "\",\"processBits\":" + (IntPtr.Size * 8) + "}");
     }
 
     static string CmdEnumDevices(int id) {
@@ -344,6 +401,7 @@ public static class NikonBridge {
             sb.Append("{\"id\":" + info.ID
                 + ",\"name\":\"" + EscJson(info.Name) + "\""
                 + ",\"available\":" + (info.Availability ? "true" : "false")
+                + ",\"productId\":" + info.ulConnectedPID
                 + ",\"version\":\"" + EscJson(info.Version) + "\"}");
         }
         sb.Append("]}");
@@ -358,7 +416,10 @@ public static class NikonBridge {
         var enumDevs = (NkMAIDEnumDevices)Marshal.PtrToStructure(pDeviceList, typeof(NkMAIDEnumDevices));
         if (enumDevs.ulElements == 0) return Err(id, "No Nikon camera detected via USB");
 
-        // Pick first available device
+        // Prefer the explicitly requested device ID; otherwise choose the first
+        // available camera as before.
+        int requestedId = ExtractInt(line, "\"deviceId\"");
+        bool hasRequestedId = line.IndexOf("\"deviceId\"", StringComparison.Ordinal) >= 0;
         int devSize = Marshal.SizeOf(typeof(NkMAIDDeviceInfo));
         NkMAIDDeviceInfo chosen = default(NkMAIDDeviceInfo);
         bool found = false;
@@ -366,13 +427,42 @@ public static class NikonBridge {
             var info = (NkMAIDDeviceInfo)Marshal.PtrToStructure(
                 new IntPtr(enumDevs.pDeviceData.ToInt64() + i * devSize),
                 typeof(NkMAIDDeviceInfo));
-            if (info.Availability) { chosen = info; found = true; break; }
+            if (info.Availability && (!hasRequestedId || info.ID == (uint)requestedId)) {
+                chosen = info;
+                found = true;
+                break;
+            }
         }
-        if (!found) return Err(id, "No available Nikon camera (all in use or powered off)");
+        if (!found) {
+            return Err(id, hasRequestedId
+                ? "Requested Nikon device ID is not available: " + requestedId
+                : "No available Nikon camera (all in use or powered off)");
+        }
+
+        bool isD5600 = chosen.Name.IndexOf("D5600", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (isD5600 && !HasD5600SdkAssets()) {
+            return Err(id, "Nikon D5600 was detected, but the selected SDK folder has no D5600 profile or Type0016.md3 module: "
+                + sdkDirectory + ". This app currently loads ControlServiceLayer.dll, so enumeration can succeed while opening the D5600 fails. Install/extract Nikon package S-SDKD5600-009BF-ALLIN and select a compatible SDK resource folder with HAPPYPIX_NIKON_SDK_DIR. If that package contains only the legacy Type0016.md3/NkdPTP files and no compatible ControlServiceLayer.dll, this bridge needs a legacy MAID adapter before it can use that package. Result 179 is left unmapped because the standard MAID result list does not define it.");
+        }
 
         int res = fnConnectDevice(chosen.ID, IntPtr.Zero);
-        if (res != kNkMAIDResult_NoError)
-            return Err(id, "ConnectDevice failed: " + res);
+        if (res != kNkMAIDResult_NoError) {
+            // Keep the vendor's result numeric (the published MAID headers do
+            // not define 179 as a standard MAID result) and include enough
+            // runtime context to distinguish SDK/model mismatch from USB use.
+            string modelModule = chosen.Name.IndexOf("D5600", StringComparison.OrdinalIgnoreCase) >= 0
+                ? FindModelModule("Type0016.md3") : "";
+            string d5600Hint = chosen.Name.IndexOf("D5600", StringComparison.OrdinalIgnoreCase) >= 0
+                ? "; D5600 Type0016 module=" + (modelModule.Length > 0 ? modelModule : "not found in SDK folder")
+                : "";
+            string message = "ConnectDevice failed: " + res
+                + " (camera=\"" + chosen.Name.Trim('\\0') + "\", id=" + chosen.ID
+                + ", productId=" + chosen.ulConnectedPID
+                + ", sdk=\"" + sdkDirectory + "\", ControlServiceLayer=" + sdkFileVersion
+                + d5600Hint
+                + "). Verify the Nikon SDK package matches this camera, close NX Tether/Camera Control Pro/Nikon Transfer and other camera apps, and reconnect the camera by USB.";
+            return Err(id, message);
+        }
 
         connectedDeviceId   = chosen.ID;
         connectedDeviceName = chosen.Name.Trim('\0');
@@ -558,7 +648,12 @@ public static class NikonBridge {
     }
 
     // ── Main command router ────────────────────────────────────────────────
-    public static void Run(string dllPath) {
+    public static void Run(string dllPath, string sdkDir) {
+        sdkDirectory = sdkDir ?? "";
+        try { sdkFileVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(dllPath).FileVersion ?? "unknown"; } catch { }
+        // Resolve Nikon's adjacent DLL dependencies from the selected SDK folder,
+        // not from an arbitrary global installation on the user's PATH.
+        SetDllDirectory(sdkDirectory);
         hMod = LoadLibrary(dllPath);
         if (hMod == IntPtr.Zero) {
             Console.WriteLine("{\"id\":0,\"ok\":false,\"error\":\"LoadLibrary failed: " + Marshal.GetLastWin32Error() + "\"}");
@@ -673,5 +768,4 @@ try {
     exit 1
 }
 
-[NikonBridge]::Run($dllPath)
-
+[NikonBridge]::Run($dllPath, $sdkDir)

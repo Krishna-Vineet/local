@@ -1,6 +1,6 @@
 # HappyPix Backend API
 
-The backend REST API for the HappyPix photo booth platform. Built with Node.js, Express, and MongoDB.
+The backend REST API for the HappyPix photo booth platform. Built with Node.js, Express, and MongoDB. Photo and asset storage uses the Cloudinary adapter (`utils/cloudinary.js`); legacy S3-named utility exports delegate to Cloudinary and are not an AWS S3 integration.
 
 ## Live Environment
 
@@ -26,9 +26,12 @@ Create a `.env` file based on `.env.example` and set your MongoDB URI and other 
 
 ```env
 PORT=5000
-MONGO_URI=mongodb://localhost:27017/happypix
+MONGODB_URI=mongodb://localhost:27017/happypix
 JWT_SECRET=your_secret_key
-FRONTEND_URL=https://happypixfrontend.vercel.app
+CLIENT_URL=https://happypixfrontend.vercel.app
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
 ```
 
 ### Running the server
@@ -70,6 +73,10 @@ line of JSON — use it first when a device write fails:
 
 `GET /api/health/schema` gives the same device report plus every path on the
 `Device` model, for when the above is not enough.
+
+### Photo storage configuration
+
+For hosted uploads, set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` from the server's environment. Never put the API secret in the booth app or commit a `.env` file. The backend utility has a local-disk fallback; serverless deployments must not assume that local files are durable. The currently used names and defaults are in [`.env.example`](.env.example).
 
 ## Seeding the Database
 

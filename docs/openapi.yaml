@@ -644,7 +644,7 @@ paths:
   /api/booth/sessions/upload-urls:
     post:
       tags: [Booth]
-      summary: Presigned S3 PUT URLs for a session
+      summary: Cloudinary signed upload parameters for a session
       security: [{ deviceAuth: [] }]
       requestBody:
         required: true
@@ -657,29 +657,37 @@ paths:
                 sessionId: { type: string }
                 files:
                   type: array
-                  maxItems: 40
+                  maxItems: 30
                   items:
                     type: object
                     properties:
-                      kind: { type: string, enum: [photo, composite] }
+                      type: { type: string, enum: [frame, composite] }
+                      index: { type: integer }
                       contentType: { type: string, example: image/jpeg }
       responses:
         '200':
-          description: Upload targets
+          description: Cloudinary upload targets when configured; otherwise empty urls and storageConfigured false
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  uploads:
+                  storageConfigured: { type: boolean }
+                  s3Configured:
+                    type: boolean
+                    description: Legacy compatibility alias; does not indicate use of AWS S3
+                  urls:
                     type: array
                     items:
                       type: object
                       properties:
-                        kind: { type: string }
-                        key: { type: string }
-                        url: { type: string, format: uri }
-                  expiresIn: { type: integer, example: 900 }
+                        type: { type: string, enum: [frame, composite] }
+                        index: { type: integer }
+                        key: { type: string, description: Cloudinary public ID/path }
+                        uploadUrl: { type: string, format: uri }
+                        publicUrl: { type: string, format: uri }
+                        contentType: { type: string }
+                        cloudinaryParams: { type: object }
 
   /api/booth/sessions/complete:
     post:
@@ -706,7 +714,7 @@ paths:
                 prints: { type: integer }
                 photos:
                   type: array
-                  maxItems: 40
+                  maxItems: 30
                   items:
                     oneOf:
                       - type: string
@@ -798,13 +806,13 @@ paths:
   /api/downloads/{id}/file/{kind}:
     get:
       tags: [Downloads]
-      summary: Redirect to a presigned file
+      summary: Resolve a guest download file
       security: []
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { name: kind, in: path, required: true, schema: { type: string, example: composite } }
       responses:
-        '302': { description: Redirect to S3 presigned URL }
+        '302': { description: Return or redirect to Cloudinary media URL after download-ID validation }
         '404': { $ref: '#/components/responses/NotFound' }
         '410': { description: Download expired }
 

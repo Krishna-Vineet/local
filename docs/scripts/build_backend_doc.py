@@ -416,7 +416,7 @@ def build():
     body.append(f'''
 <section class="doc" id="utils">
   <h2>5 · Utilities</h2>
-  <p class="lede">Five modules that hide the messy edges: S3, encryption and hashing, auditing, typed HTTP errors and
+  <p class="lede">Five modules that hide the messy edges: Cloudinary media, encryption and hashing, auditing, typed HTTP errors and
   Windows printing. If a route needs the outside world, it goes through one of these.</p>
   <div class="cards">{util_cards}</div>
 </section>''')
@@ -487,7 +487,7 @@ def build():
   <tr><td>No refund path</td><td><code>Payment.status</code> has no <code>refunded</code> state; a refund is manual and invisible to reporting.</td><td>Add the state plus a refund webhook before selling to any tenant that expects one.</td></tr>
   <tr><td>Photos are served at original size</td><td>No thumbnails or web-size variants; a gallery grid downloads full-resolution frames.</td><td>Generate a web variant at session completion; this is also the single biggest egress lever.</td></tr>
   <tr><td>Heartbeat audit volume</td><td>One audit row per booth beat — the highest write volume in the system.</td><td>Sample it, or move booth telemetry out of AuditLog.</td></tr>
-  <tr><td>S3 lifecycle rules unset</td><td>Frames live forever at Standard price.</td><td>Standard-IA at 30 days, Glacier IR at 180, expire at 730 (see the hosting doc).</td></tr>
+  <tr><td>Cloudinary retention/backup policy unverified</td><td>Media retention and recovery depend on the configured account plan; this repository does not establish backup settings.</td><td>Verify account retention/restore settings and maintain an independent encrypted archive if required.</td></tr>
   <tr><td>Two divergent Cashfree wrappers</td><td><code>paymentRoutes.js</code> and <code>boothRoutes.js</code> each build their own client.</td><td>Extract one gateway module before adding a third gateway.</td></tr>
   <tr><td><code>usageAccessRoutes.js</code> unmounted</td><td>Dead code that still imports models.</td><td>Delete it, or mount it deliberately.</td></tr>
   <tr><td><code>syncDeviceAssignments</code> writes <code>currentEventId</code></td><td>A non-schema field, silently dropped by strict mode; the real field is <code>assignedEventId</code>.</td><td>Fix the field name; the assignment already works via the schema path.</td></tr>

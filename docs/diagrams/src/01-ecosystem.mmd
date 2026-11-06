@@ -14,10 +14,10 @@ flowchart TB
   subgraph CLIENTS["Client applications"]
     C1["Website SPA<br/>React + Vite<br/>happypix.in"]
     C2["CRM console SPA<br/>React + Vite<br/>crm.happypix.in"]
-    C3["Electron booth<br/>Windows + macOS<br/>electron/"]
-    C4["Android booth<br/>client-app/"]
+    C3["Electron booth<br/>Windows / macOS / Linux<br/>Nikon SDK on Windows<br/>electron/"]
+    C4["React Native booth<br/>Android + iPad<br/>client-app/"]
     C5["Guest phone<br/>browser"]
-    C6["Print bridge<br/>printServer.ts"]
+    C6["LAN Print + Nikon Bridge<br/>printServer.ts :9123"]
   end
 
   subgraph EDGE["Vercel edge + serverless (bom1 / Mumbai)"]
@@ -39,15 +39,15 @@ flowchart TB
   end
 
   subgraph DATA["Data stores"]
-    D1[("MongoDB Atlas<br/>23 collections")]
-    D2[("AWS S3 bucket<br/>photos, logos, artwork")]
-    D3[("Local disk uploads/<br/>dev and S3 fallback")]
+    D1[("MongoDB Atlas<br/>25 collections")]
+    D2[("Cloudinary<br/>photos, logos, artwork")]
+    D3[("Local disk uploads/<br/>backend fallback")]
     D4[("Process caches<br/>gallery 15 s, printer 30 s")]
   end
 
   subgraph HW["Customer hardware at the venue"]
     H1["DNP dye-sub<br/>photo printer"]
-    H2["DSLR or USB<br/>camera"]
+    H2["Nikon / Canon / UVC<br/>camera"]
     H3["Touchscreen<br/>kiosk display"]
   end
 
@@ -61,6 +61,7 @@ flowchart TB
     X7["Together FLUX<br/>+ xAI<br/>image generation"]
     X8["remove.bg<br/>background removal"]
     X9["GitHub Releases<br/>installers and APKs"]
+    X10["Cloudinary<br/>media CDN"]
   end
 
   A1 --> C1
@@ -79,9 +80,11 @@ flowchart TB
   C5 -->|"HTTPS: /download/:id"| E3
   C3 -->|"USB / OS spooler"| C6
   C6 -->|"IPP, CUPS,<br/>PowerShell PrintDocument"| H1
-  C3 -->|"USB Video / AVFoundation"| H2
+  C3 -->|"Windows: Nikon Remote SDK over USB; host camera APIs"| H2
   C3 --> H3
-  C4 -->|"CameraX<br/>USB or network"| H2
+  C4 -->|"tablet camera / Android PTP USB OTG"| H2
+  C4 -->|"HTTP on trusted LAN: Nikon status / live view / capture"| C6
+  C6 -->|"Windows Nikon SDK bridge"| H2
   C4 -->|"IPP / raw socket"| H1
 
   E1 --> C1
@@ -111,10 +114,11 @@ flowchart TB
   S8 --> D1
   S9 --> D1
   S9 --> D3
-  E2 -->|"presigned PUT<br/>booth uploads directly"| D2
-  D2 -->|"presigned GET<br/>1 h gallery, 24 h download"| C5
-  D2 -->|"presigned GET"| C2
-  D3 --> D2
+  E2 -->|"Cloudinary signed upload params"| C4
+  C4 -->|"HTTPS media upload"| X10
+  E2 -->|"server-side upload / local fallback"| X10
+  X10 -->|"media URL"| E3
+  D3 --> E2
 
   S4 -->|"create order,<br/>poll status"| X1
   S4 -->|"create order,<br/>fetch QR"| X2

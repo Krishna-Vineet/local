@@ -61,7 +61,7 @@
     { key: 'request', label: 'HTTP / API call' },
     { key: 'auth',    label: 'Auth, token, permission' },
     { key: 'data',    label: 'MongoDB / data' },
-    { key: 'media',   label: 'S3 / photo media' },
+    { key: 'media',   label: 'Cloudinary / photo media' },
     { key: 'money',   label: 'Payment, price, plan' },
     { key: 'print',   label: 'Printing' },
     { key: 'async',   label: 'Async, webhook, TTL' },
@@ -78,7 +78,7 @@
     ['money', /\b(payment|payments|pay|paid|upi|razorpay|cashfree|gateway|order|amount|price|prices|pricing|coupon|coupons|discount|settle|settles|settled|settlement|payout|payouts|refund|refunds|wallet|revenue|invoice|plan|plans|credit|credits|subscription|subscriptions|quote|checkout)\b/i],
     ['auth', /\b(auth|authenticate|authentication|authorize|token|tokens|jwt|login|logout|signin|sign-in|sign in|session|sessions|password|credential|credentials|permission|permissions|role|roles|rbac|owner|revoke|revoked|api-key|api key|device token|otp|2fa|guard|guards)\b/i],
     ['data', /\b(mongo|mongodb|atlas|mongoose|db|database|collection|collections|query|queries|index|indexes|aggregate|aggregation|upsert|find|insert|update|delete|document|documents|schema|schemas|ttl index|cache|redis|write|writes|read|reads)\b/i],
-    ['media', /\b(s3|bucket|presign|presigned|upload|uploads|uploading|photo|photos|image|images|jpeg|png|webp|composite|composites|cdn|media|frame|frames|render|renders|thumbnail|thumbnails|video|gif|file|files|object storage)\b/i],
+    ['media', /\b(cloudinary|s3|bucket|signature|presign|presigned|upload|uploads|uploading|photo|photos|image|images|jpeg|png|webp|composite|composites|cdn|media|frame|frames|render|renders|thumbnail|thumbnails|video|gif|file|files|object storage)\b/i],
     ['async', /\b(webhook|webhooks|queue|queued|job|jobs|cron|schedule|scheduled|retry|retries|ttl|expire|expires|expiry|expired|notify|notification|notifications|email|sms|whatsapp|push|async|background|heartbeat|poll|polls|polling|websocket|sse|event bus|dlq)\b/i],
     ['request', /\b(http|https|rest|api|json|get|post|put|patch|delete|request|requests|response|call|call|endpoint|graphql|fetch|socket|grpc)\b/i]
   ];
@@ -156,7 +156,7 @@
     return node ? clean(node.textContent) : '';
   }
 
-  // "L_PHOTO_S3_0"  → "PHOTO S3" plus the node labels behind those ids;
+  // "L_PHOTO_S3_0"  → "PHOTO S3" plus the node labels behind those ids (legacy ID names may remain);
   // "id_entity-EVENT-1_entity-PAYMENT-2_0" → "EVENT PAYMENT".
   function edgeHint(dataId, nodes) {
     if (!dataId) return '';

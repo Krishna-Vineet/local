@@ -1,8 +1,9 @@
 # HappyPix — Hosting, Cost & Scaling Playbook
 
-> **Scope:** where every part of HappyPix runs today, what each part actually costs, where it should move as
+> **Scope:** the active hosting implementation and planning assumptions for what each part may cost, where it should move as
 > volume grows, and which situations would force a design change.
 > **Audience:** founder, whoever holds the cloud bill, and the engineer on call.
+> **Implementation note (2026-11-06, `d0ba133`):** the active photo-storage adapters use Cloudinary. The many AWS S3 prices, lifecycle recipes, region assumptions and break-even estimates below are legacy/planning scenarios, not the current deployed storage configuration. Rebuild cost, backup and privacy assumptions from the actual Cloudinary plan/account before using these numbers.
 > **Companion documents:** [`DEPLOYMENT_RELEASE.md`](DEPLOYMENT_RELEASE.md) (how a commit ships),
 > [`../business/SCALABILITY_PLAN.md`](../business/SCALABILITY_PLAN.md) (strategy and team plan),
 > [`ARCHITECTURE.md`](ARCHITECTURE.md) (components), [`DIAGRAMS.md`](DIAGRAMS.md) (topology pictures,
@@ -69,8 +70,8 @@ are build artefacts that are not "hosted" at all.
 | 2 | CRM console (`crm/`) | React + Vite SPA, org + platform workspaces | Vercel (static, CDN) | Global edge | Same Vercel team |
 | 3 | Main API (`backend/`) | Express 5, 12 routers, ~130 endpoints, exports app for serverless | Vercel Functions (Node 20) | `bom1` ⟨verify⟩ | Invocations + CPU-hours + GB-hours |
 | 4 | Website API (`website-backend/`) | Express 5: plan catalogue, subscription checkout, guest downloads, leads | Vercel Functions | `bom1` ⟨verify⟩ | Same Vercel team |
-| 5 | Database | MongoDB Atlas, 23 collections, single replica set | Atlas Dedicated M10 ⟨verify⟩ | `ap-south-1` ⟨verify⟩ | Per hour + storage + backups |
-| 6 | Photo storage | Private S3 bucket: `photos/…`, `happypix/<org>/logos/…`, template artwork | AWS S3 | `ap-south-1` ⟨verify⟩ | Per GB-month + requests + egress |
+| 5 | Database | MongoDB Atlas, 25 collections, single replica set | Atlas Dedicated M10 ⟨verify⟩ | `ap-south-1` ⟨verify⟩ | Per hour + storage + backups |
+| 6 | Photo storage | Cloudinary-backed uploads and delivery URLs; legacy records may include S3 URLs | Cloudinary | Account/region must be verified | Account plan, transformations and delivery usage |
 | 7 | Hourly expiry sweep | `GET/POST /api/cron/check-expirations`, secret-gated by `CRON_SECRET` | Vercel Cron (`backend/vercel.json`, `0 * * * *`) | Same as API | Included in function usage |
 | 8 | Booth apps | Electron (Windows/macOS) and Android (`client-app/`) | **Customer hardware** | On site | Zero cloud cost |
 | 9 | Print bridge | `electron/src/electron/printServer.ts`, CUPS `lp` / PowerShell `PrintDocument` | **Customer hardware** | On site | Zero cloud cost |
@@ -437,7 +438,7 @@ likely to arrive within a year.
 | # | Situation | Signal | Why the current design breaks | Change required | Effort |
 |---|---|---|---|---|---|
 | G1 | A device token leaks from a booth PC | Unusual device traffic or a support report | Tokens never expire and only rotate on re-pairing | Token expiry + rotation endpoint + per-device anomaly alerts | 1 week |
-| G2 | Upload abuse | Storage grows with no matching payments | Presigned PUTs are issued per session with no size cap per session | Enforce per-session object count and byte budget at presign time | 3 days |
+| G2 | Upload abuse | Storage grows with no matching payments | Cloudinary signed upload parameters are issued per session; enforce per-session byte budgets and confirm provider upload limits | Enforce per-session object count and byte budget at presign time | 3 days |
 | G3 | An admin session is stolen | Impossible logins or a suspicious audit trail | JWT lives 12 h; revocation is manual (`sessionVersion`) | Shorter TTL + refresh, device binding, step-up auth for destructive actions | 2 weeks |
 | G4 | Secret rotation is required | Offboarding or a leak | `ENCRYPTION_KEY` rotation would orphan every `enc:v1:` secret | Versioned encryption keys with dual-read, then re-encrypt | 1 week |
 
@@ -483,7 +484,7 @@ likely to arrive within a year.
 1. Pull three bills: Vercel, AWS, Atlas. Compare each to the previous month and to revenue.
 2. Check the four ratios: **egress GB per session**, **storage GB added per session**, **AI credits consumed vs charged**, **infra as % of revenue**.
 3. Look for a single line that grew more than 20 % without a matching customer growth.
-4. Confirm the lifecycle policy is still attached to the bucket (one `aws s3api get-bucket-lifecycle-configuration`).
+4. Confirm the configured media provider’s retention/backup policy. The AWS lifecycle command below applies only if a legacy/alternative S3 bucket is separately configured.
 5. Confirm `CRON_SECRET` still returns 200, and the plan catalogue is in sync (`ensurePlanCatalog` logs on boot).
 
 **What to instrument, not guess**
@@ -509,11 +510,11 @@ Every assumption in this document that depends on our own account rather than a 
 | # | Assumption | How to verify |
 |---|---|---|
 | 1 | Atlas tier is M10 and region is `ap-south-1` | Atlas → Cluster → Configuration |
-| 2 | S3 bucket region is `ap-south-1` | `aws s3api get-bucket-location --bucket <name>` |
+| 2 | Cloudinary account region/plan verified | Cloudinary account console; AWS bucket command only for a separately configured legacy bucket |
 | 3 | Vercel functions run in `bom1` | Vercel project → Settings → Functions → Region |
 | 4 | Number of paid Vercel seats | Vercel → Team → Members |
 | 5 | `CRON_SECRET` is set and the cron returns 200 | `curl -H "x-cron-secret: …" https://api.happypix.in/api/cron/check-expirations` |
-| 6 | S3 lifecycle policy exists | `aws s3api get-bucket-lifecycle-configuration --bucket <name>` |
+| 6 | Cloudinary retention/backup policy verified | Cloudinary account console; AWS lifecycle command only for a separately configured legacy bucket |
 | 7 | Guest download TTL is 24 h in production | `GUEST_DOWNLOAD_TTL_MS` in `backend/models/GuestDownload.js` |
 | 8 | Razorpay merchant rate (card and UPI) | Razorpay dashboard → Pricing, or the signed agreement |
 | 9 | DLT registration status for Indian SMS | Twilio / operator console |
@@ -526,5 +527,4 @@ Every assumption in this document that depends on our own account rather than a 
 
 ---
 
-*Last verified: 2026-10-25 against branch `main`. List prices checked the same week; re-verify
-before any budget or investor document cites them.*
+*Code/storage snapshot reviewed against `d0ba133` on 2026-11-06. AWS price inputs were last checked on 2026-10-25 and describe a legacy/planning S3 scenario only; re-verify provider prices and rebuild estimates before external use.*

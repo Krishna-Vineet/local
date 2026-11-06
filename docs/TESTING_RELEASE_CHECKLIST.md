@@ -2,7 +2,7 @@
 
 > **Scope:** what is tested today, how, what is knowingly untested, and the exact checklist that must
 > be completed before a release reaches a customer.
-> **Last verified:** 2026-10-23, branch `main`.
+> **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. This does not imply physical hardware verification. Automated verification was not fully repeatable in this documentation workspace because several package dependencies were absent; see §2.4.
 
 ---
 
@@ -142,6 +142,22 @@ Do not chase a coverage number. Cover money, isolation and data-loss paths first
 
 ---
 
+### 2.4 Documentation-session verification note
+
+The following is the result of an independent rerun against `d0ba133` in the documentation workspace,
+not a replacement for the author's earlier testing:
+
+- `website-backend`: `npm test` passed (5 tests).
+- `backend`: `npm test` ran 26 tests; 18 passed and 8 test files/cases could not load because
+  `mongoose` and `cloudinary` were not installed in the checkout. This is an environment/dependency
+  blocker, not a clean backend-suite pass.
+- `electron`: `npm test` could not start because `vitest` was not installed.
+- `client-app`: `npm run typecheck` could not start because `turbo` was not installed.
+- Real-camera/real-printer hardware tests were not run in this environment.
+
+Install each package's locked dependencies and rerun its scripts before release. The latest commit
+message (`sdk and final testing`) alone is not test evidence; retain CI output and the hardware rig log.
+
 ## 3. Manual functional test suites
 
 ### 3.1 Authentication and roles (30 min)
@@ -235,9 +251,9 @@ Do not chase a coverage number. Cover money, isolation and data-loss paths first
 | H1 | Gallery groups by session | One row per session |
 | H2 | Cover is the composite | Yes for multi-slot templates |
 | H3 | Open a session | All individual frames visible |
-| H4 | Download a photo | Presigned redirect; file opens |
+| H4 | Download a photo | Download ID is validated; media opens; test direct URL reachability separately from link expiry |
 | H5 | Wait 24 h (or force `expiresAt`) | Download returns 410 with a friendly page |
-| H6 | Delete a session | Gone from the gallery; S3 objects removed |
+| H6 | Delete a session | Gone from the gallery; Cloudinary asset deletion attempted and URL/key references checked |
 
 ### 3.9 Website and checkout (20 min)
 
@@ -310,18 +326,22 @@ Confirm: webhook received, `payments` record correct, receipt email sent, refund
 | # | Test | Pass criteria |
 |---|---|---|
 | C1 | Discovery | Model correct in the device panel |
-| C2 | Live view | ≥ 15 fps, acceptable latency |
+| C2 | Live view | Record measured frame rate and latency; no generic FPS guarantee |
 | C3 | Capture | Sharp, correctly exposed, saved to the session |
-| C4 | Battery | Reported, or `null` where unavailable (never a fake number) |
+| C4 | Battery | Confirm measured value or `null`; Android direct-PTP currently returns a fixed placeholder and must not be treated as measured telemetry |
 | C5 | Reconnect | Sleep/wake recovers without restarting the app |
 | C6 | Slot accuracy | Each captured frame lands in the intended slot |
 | C7 | Long session | 50 captures without memory growth or dropped frames |
+| C8 | Windows Nikon Remote SDK | Confirm SDK bridge starts, camera is detected, live view/capture/transfer work, supported settings read/write, and USB reconnect recovers; record camera+firmware |
+| C9 | Android direct USB PTP | Grant USB permission, capture and retrieve JPEG, verify image integrity and disconnect/reconnect; do not use fixed 85% battery as measurement |
+| C10 | Android/iPad Nikon LAN bridge | Verify same-LAN HTTP status, live-view start/frame/stop and capture via a Windows Electron host; on iPad also verify Local Network permission and ATS behavior |
+| C11 | Canon CCAPI | Record model/firmware, camera Wi-Fi mode, discovery, live view, capture and transfer on each target platform |
 
 ### 5.3 Photo delivery acceptance
 
 | # | Test | Pass criteria |
 |---|---|---|
-| D1 | Individuals uploaded | All N frames present in S3 |
+| D1 | Individuals uploaded | All N frames have reachable Cloudinary-backed URLs (or the explicitly configured fallback) |
 | D2 | Composite uploaded | Present with `isComposite: true` |
 | D3 | Gallery cover | Composite, not a single frame |
 | D4 | QR resolves | Same composite as the gallery |
@@ -466,13 +486,13 @@ Run before every release (30 minutes).
 |---|---|---|
 | S1 | No secrets in the diff | `git diff origin/main | grep -Ei 'AKIA|secret|password|BEGIN .*PRIVATE KEY'` |
 | S2 | Fail-closed boot | Remove `JWT_SECRET` locally → server must refuse to start |
-| S3 | Tenant isolation | Attempt Org A → Org B read (API) |
+| S3 | Tenant isolation and media access | Attempt Org A → Org B read via gallery/download APIs and verify URL/access policy |
 | S4 | Role denial | Org Admin → platform route → 403 |
 | S5 | Webhook forgery | POST with a bad signature → 400, no state change |
 | S6 | Expired download | Force `expiresAt` in the past → 410 |
 | S7 | Upload validation | Upload a 20 MB file → rejected |
 | S8 | Rate limits | 20 rapid logins → 429 with `Retry-After` |
-| S9 | Presigned URL lifetime | URL expires within the configured window |
+| S9 | Guest-link expiry vs media URL | GuestDownload link expires as configured; separately verify whether Cloudinary media URLs remain directly reachable and document the access policy |
 | S10 | No stack traces to clients | Trigger a 500 → generic error + correlation id |
 | S11 | Audit coverage | Perform a mutation → row present with actor + IP |
 | S12 | Dependency audit | `npm audit --omit=dev` — no critical unfixed |
@@ -490,8 +510,8 @@ Severity scale: **S1** data loss/security, **S2** blocks a core flow, **S3** deg
 | # | Sev | Issue | Workaround | Status |
 |---|---|---|---|---|
 | 1 | S2 | macOS CUPS often cannot report dye-sub media levels (`paperRemaining: null`) | Track media by print count; keep a spare roll; DNP Windows rig for full telemetry | By design — vendor limitation |
-| 2 | S2 | Canon USB tether on Windows/macOS unsupported (no EDSDK) | Use CCAPI over Wi-Fi, or a UVC webcam | Accepted limitation |
-| 3 | S2 | Nikon/Sony capture not shipped | Use Canon CCAPI or device camera | Roadmap |
+| 2 | S2 | Canon EDSDK USB tether is not integrated; Electron Canon CCAPI network path is separate | Use CCAPI over Wi-Fi, or a UVC webcam | Accepted limitation |
+| 3 | S2 | Nikon Electron Remote SDK is Windows-only; Android direct PTP is limited capture-only; Nikon mobile bridge requires a Windows host; Sony remains unintegrated | Use a supported tested path and complete SDK-specific test rows | Physical model support is unverified here |
 | 4 | S2 | iPad booth cannot print without a Print Bridge; AirPrint is a stub | Run the Electron print bridge on a PC in the same LAN | Roadmap — native AirPrint bridge, `IPAD_SUPPORT.md` IP-8 |
 | 4b | S3 | No kiosk lockdown on iPadOS (home button exits) | Guided Access or MDM Single App Mode | Operational — `IPAD_SUPPORT.md` §6 |
 | 5 | S3 | No automated E2E for booth flows | Manual suite §3.4/3.5 every release | Roadmap |

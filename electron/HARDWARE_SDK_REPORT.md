@@ -1,170 +1,167 @@
 # HappyPix Booth — Hardware SDK & Device Integration Report
 
-> Generated: 2026-10-23 · Branch `main`
-> Scope: Electron kiosk (`/electron`) + reference Android `client-app` packages
-> Purpose: What cameras/printers are supported, what capabilities exist, what telemetry is reported, and is it working on **Windows and macOS**?
+> **Implementation snapshot:** 2026-11-06, commit `d0ba133` (`sdk and final testing`) on the active
+> Arena branch. This report describes code present in that snapshot; it does not certify a camera or
+> printer model as physically tested. Enter real-device results in the verification checklist in
+> [`../docs/HARDWARE_PRINTING.md`](../docs/HARDWARE_PRINTING.md).
+> **Scope:** Electron kiosk, React Native camera-core, Android native PTP, photo storage adapters.
 
 ---
 
-## 1. Executive Summary — ✅ Complete for Windows + macOS
+## 1. Current implementation at a glance
 
-| Question | Answer |
-|---|---|
-| **Are SDKs complete for production?** | **Yes — OS-native SDKs are fully implemented on both platforms.** Electron no longer uses a Windows-only path. Every telemetry field now has a real implementation on both Windows (PowerShell + CyStat64.dll + WMI) and macOS (CUPS `lpstat`/`lpoptions`). No synthetic/fake telemetry is reported. |
-| **Can we print on Windows?** | ✅ `System.Drawing.PrintDocument` with `DefaultPageSettings.Landscape`, `PrinterResolution.Kind`, zero-margin, HighQualityBicubic interpolation, looped for `copies`, base64-EncodedCommand PS script, counter `printsTotal` on success. |
-| **Can we print on Mac?** | ✅ `lp -d <printer> -n <copies> -o orientation-requested=3|4 -o print-quality=3|4|5 -o fit-to-page` via CUPS. Works for DNP, Citizen, Canon Selphy exposed as CUPS queues. |
-| **Can we capture?** | ✅ **Nikon Remote SDK (v2.1.0, USB PTP)** fully integrated as primary DSLR/mirrorless camera provider (Live View, Shutter, Image Transfer, Settings, Auto-Reconnect) + Canon CCAPI (Wi-Fi) secondary + `navigator.mediaDevices.getUserMedia` (UVC/webcam) tertiary + synthetic fallback. |
-| **Telemetry working?** | ✅ Full: `paperRemaining`, `ribbonPercent`, `initialMediaCount`, `lifetimePrints`, `queueDepth`, `orientation`, `quality`, `paperSize`, `shutterCount`, `printsTotal`, `batteryPct`, `live`, `isDefault`, `status` on both OSes. |
-| **Is hardware configured?** | **Configured and reporting.** `hardwareSnapshot()` → heartbeat (20 s) includes `capturedAt`, `platform`, `release`, `arch`, `totalMemMb`, `camera`, `printer`, `kioskScreen`. `printServer` `:9123` bridges tablets → same queue. |
-
----
-
-## 2. Connected SDKs / Modules — Windows + Mac Parity
-
-### 2.1 Electron (`electron/src/electron/`)
-
-| File | SDK / API | Windows implementation | macOS implementation | Configured? |
-|---|---|---|---|---|
-| `main.ts` | Electron `BrowserWindow`, `ipcMain`, `screen`, `session`, `systemPreferences.media` | kiosk/fullscreen, external display target, `media` permission prompt, IPC bridge, Print Bridge lifecycle | same (no `screen` difference) | ✅ |
-| `hardware.ts` | Node `os`, `screen`, `exec`, `store` counters | `probePrinters()` via `Get-Printer` (fallback `wmic printer`), `queryWindowsPrinterDetails` via `Get-CimInstance Win32_Printer` + `Get-PrintJob` for queueDepth/isDefault/paperSize; `printViaWindowsPowerShell` sets Landscape + PrinterResolution + Margins + interpolation | `probePrinters()` via `lpstat -e` + `lpstat -p` (dedup), `queryCupsPrinterDetails` via `lpstat -o` + `lpoptions -p` for queueDepth/paperSize/orientation/quality; `printJob` via `lp` with orientation + quality flags | ✅ Both OSes |
-| `dnpTelemetry.ts` | `CyStat64.dll` → `resources/dnp/dnpStatus.ps1` / CUPS | Primary: `dnpStatus.ps1` → JSON `{connected,status,paperRemaining,ribbonPercent,initialMediaCount,lifetimePrints}` (10 s cache). Fallback: `queryWindowsSpoolerTelemetry` via `Get-CimInstance Win32_Printer` + `Get-PrintJob` (PrinterStatus, workOffline, jobs) → never reports fake success | `getCupsTelemetry`: resolves default via `lpstat -d` → `lpstat -p` status (idle/printing/enabled), `lpstat -o` queueDepth, `lpoptions -p` orientation/quality, `lpstat -l` paperRemaining parse; cache not needed (fast) | ✅ Dual-path |
-| `printServer.ts` | Node `http` CORS `*` on `0.0.0.0:9123` | `GET /api/status` → `{printers,dnp,defaultPrinter}` from `hardwareSnapshot`; `POST /api/print` 50 MB validates `bitmapDataUrl`, calls `printJob()` | same | ✅ |
-| `store.ts` | `app.getPath('userData')/booth-state.json` + `device-identity.json` | persists `printsTotal`, `shutterCount`, `installation` (deviceUuid/token survives logout, cleared only on `DEVICE_DELETED` 410) | same | ✅ |
-| `preload.cts` | `contextBridge` | exposes `booth:*` and `booth:nikon:*` (`getStatus`, `listDevices`, `connect`, `disconnect`, `startLiveView`, `stopLiveView`, `capture`, `readSettings`, `setISO`, `onLiveViewFrame`) | same | ✅ |
-| `cameraManager.ts` | Camera lifecycle orchestrator | Auto-discovers Nikon SDK USB, Canon CCAPI Wi-Fi fallback, manages live view stream & auto-reconnect on USB unplug | N/A (Windows primary) | ✅ |
-| `nikonAdapter.ts` | Nikon Remote SDK v2.x wrapper | Spawns `NikonBridge.ps1`, manages JSON IPC over stdin/stdout, device watch polling (3 s), battery telemetry | N/A (Windows SDK) | ✅ |
-| `liveViewService.ts` | Push-based Live View | Streams 24 FPS JPEG frames from Nikon SDK to Electron renderer over `nikon:liveview-frame` IPC | N/A | ✅ |
-| `captureService.ts` | Shutter trigger | Coordinates SDK shutter release with concurrency guard | N/A | ✅ |
-| `transferService.ts` | Photo transfer | Extracts captured JPEG from SDK save directory, converts to base64 dataUrl with temp cleanup | N/A | ✅ |
-| `settingsService.ts` | Camera settings | Reads/writes ISO, Exposure Mode, Shutter Speed, Aperture with human-readable label mapping | N/A | ✅ |
-
-**Native dependencies:** No native Node addon required. Windows uses inbox PowerShell + System.Drawing; macOS uses CUPS (`lp`, `lpstat`, `lpoptions`). DNP `CyStat64.dll` is optional — WMI/CUPS provide honest fallback.
-
-### 2.2 Android reference (`client-app/packages/*`) — parity check
-
-| Package | SDK | Electron parity |
+| Area | Implemented path | Platform limits / validation |
 |---|---|---|
-| `camera-core/CameraManager` (Canon CCAPI `http://<ip>:8080/ccapi`, `PhoneCameraProvider`, `Sony`, `PtpCameraProvider`) | REST probe `192.168.1.2`/mDNS, `getBattery()→high|low|depleted→90/20/5%`, `capture()`, `getLiveViewUrl()` | Electron uses `mediaDevices` + `reportCamera` (batteryPct via `getBattery()` if available, model via `MediaStreamTrack.label`, live flag, shutterCount). CCAPI HTTP would be additive — same network path possible. |
-| `printer-core/PrinterManager` (IPPProvider `/ipp/print` RFC 8011, DNPProvider bridge, AirPrint, Citizen) + `RenderEngine` Skia 300 DPI | IPP builder, `copies`+`paperSize` `4x6`, 50 MB guard, `setBridgeAddress` for `printServer` | Electron mirrors with OS spooler (Windows/CUPS) — correct for kiosk-attached dye-sub. IPP provider can be added later by reusing `IPPProvider` to talk to WiFi dye-subs without spooler. |
-| `kiosk-core`, `state-machine/boothMachine` | kiosk lock, XState | Electron `useIdleTimer` + `goToScreen` pause + `resetTimer` on interaction; same 20 s heartbeat. |
-| `ui/TemplateCanvas` Skia | Skia canvas, FILTER_CSS, ornaments, stickers | Electron `TemplateCanvas.tsx` + `renderCompositeDataUrl()` Canvas 2D with `crossOrigin='anonymous'`, FILTER_CSS warm/cool/bw/vintage/soft/party, ornament bubbles/hearts/stars/confetti, sponsor logos, footer — now uploads final composite + individuals to S3 (`compositeUrl` + `photos[].isComposite=true`). |
+| Nikon Remote SDK | Electron main process → `NikonAdapter` → `powershell.exe` + `resources/nikon/NikonBridge.ps1` → Nikon SDK DLLs | Windows only; camera must be attached by USB. The build packages `electron/resources` as extra resources. Physical model coverage is not claimed here. |
+| Nikon over LAN | RN `NikonBridgeProvider` calls the Electron Print Bridge on port `9123` (`/api/camera/status`, `/liveview`, `/capture`) | Tablet and Windows booth PC must share a LAN. Tablet bridge API currently covers status/live-view/capture; camera setting controls are Electron IPC only. iPad HTTP/ATS behavior must be checked on-device. |
+| Direct USB PTP | Android native `PtpUsbModule` enumerates a USB Host/OTG camera, sends PTP capture commands and retrieves the latest JPEG | Android only; capture path only. No direct-USB live view or setting controls are implemented. Battery value is a placeholder (85), not measured telemetry. |
+| Canon CCAPI | React Native `CanonCameraProvider`; Electron `canonCcapi` is a secondary network path | Wi-Fi / HTTP; exact model and firmware validation is required. |
+| Built-in / UVC | React Native phone camera; Electron `getUserMedia` | Host camera APIs; actual device availability and permissions vary by OS. |
+| Sony | `SonyCameraProvider` interface | Not a completed camera SDK integration. |
+| Photo storage | Cloudinary-backed adapters in backend and website-backend; local disk and data-URL fallbacks in backend upload utility | Requires Cloudinary credentials for hosted uploads. AWS-named S3 adapters remain compatibility aliases, not an active S3 transport. |
+
+**Do not conflate code presence with device certification.** TypeScript/Kotlin implementations and protocol
+handling can be present while a particular body, firmware, cable, or host still needs a physical test.
+The repository snapshot does not establish a Nikon supported-model list or prove measured battery,
+printer-media, or camera performance values.
 
 ---
 
-## 3. Cameras — What Is Supported
+## 2. Electron Nikon Remote SDK path
 
-### 3.1 Windows + macOS (Electron today)
+### 2.1 Source and process boundary
 
-- **Provider:** `navigator.mediaDevices.getUserMedia({ video: { width:{ideal:1920}, height:{ideal:1080}, facingMode:'user' } })` → `<video srcObject=stream>` live preview (mirrored), canvas `drawImage` capture `image/jpeg 0.92` → `CapturedPhoto { id, dataUrl }`, plus `syntheticPhoto()` gradient fallback so flow never blocks.
-- **Reporting:** `CameraScreen` calls `bridge.reportCamera({ connected:!!stream, working, model:track.label, batteryPct: navBattery?.level ?? null, error })` and `bridge.recordCapture()`.
-- **Telemetry in `hardwareSnapshot().camera`:**
-  ```
-  connected, working        // from reportCamera
-  provider                  // 'media-device' | 'canon-sdk-pending'
-  model                     // track.label e.g. "HD Webcam", "FaceTime HD Camera"
-  batteryPct                // from reportCamera.batteryPct/batteryLevel if available, else null (honest)
-  shutterCount              // persisted counters.shutterCount via recordCapture()
-  orientation, quality      // from reportCamera if provided
-  live                      // working flag
-  error                     // Waiting for camera discovery | getUserMedia error
-  ```
-- **Enhancement path (no break):** port Android `CanonCameraProvider` CCAPI HTTP (probe `192.168.1.2:8080/ccapi`, `GET devicestatus/battery`, `POST liveview`, `POST shutterbutton {af:true}`) into `hardware.ts` so same `cameraReport` can be fed over WiFi without native addon.
+- `src/electron/camera/nikonAdapter.ts` starts `powershell.exe` with
+  `resources/nikon/NikonBridge.ps1` as a child process. Commands and results use newline-delimited
+  JSON over stdin/stdout; the SDK stays out of the renderer process.
+- `resources/nikon/NikonBridge.ps1` loads `ControlServiceLayer.dll`, applies Nikon configuration files
+  when present, and hosts the Remote SDK calls. `electron-builder.json` copies the `resources` folder
+  into packaged applications.
+- `src/electron/camera/cameraManager.ts` initializes the Nikon SDK only when
+  `process.platform === 'win32'`. It then probes Canon CCAPI as a secondary network path.
+- Main/renderer operations are exposed through `cameraIpc.ts` and `preload.cts` using Nikon IPC
+  channels for status, device list, connection, live view, capture, camera settings and raw
+  capabilities.
+- `captureService.ts`, `liveViewService.ts`, `settingsService.ts`, and `transferService.ts` separate
+  capture, frames, camera controls and image transfer.
 
-### 3.2 Android reference
+### 2.2 Implemented controls (Windows Electron)
 
-Canon CCAPI REST (EOS R5/R6/R7/R8/R50/90D/G7X III…), Sony REST, PTP/MTP tether, phone `react-native-vision-camera`. Discovery via IP probe + mDNS `_canon-cc._tcp`. Same contracts would bind to Electron `reportCamera` if added later.
+The TypeScript/PowerShell integration has code paths for device listing and connect/disconnect,
+shutter capture and image transfer, live-view frames, battery capability reads, ISO, exposure mode,
+shutter speed, aperture, and generic capability read/write. The adapter has request timeouts and
+reconnect handling. These are implementation claims, not a guarantee that every control is supported
+by every Nikon model or that all values have been physically validated.
 
----
+### 2.3 Requirements and troubleshooting
 
-## 4. Printers — What Is Supported
+1. Use a supported Windows host with PowerShell 5.1+ and a Nikon camera connected by a data-capable
+   USB cable.
+2. Keep the Nikon SDK files and configuration files under `electron/resources/nikon`; the bridge
+   reports a startup error if `ControlServiceLayer.dll` is missing.
+3. Ensure Windows, the Nikon driver/SDK, and camera firmware permit the USB connection. Close any
+   other tethering application that may own the camera.
+4. Check Electron logs for `[CameraManager]`, `[NikonAdapter]`, and `[CameraIPC]` messages. A bridge
+   startup failure falls back to the secondary Canon probe or an unconnected state; it is not evidence
+   of a connected Nikon.
+5. Verify one live-view session, one captured JPEG, camera-setting read/write, reconnect after USB
+   removal, and camera model/firmware before event use.
 
-### 4.1 Windows (full implementation)
-
-| Aspect | Code | What it does |
-|---|---|---|
-| Discovery | `probePrinters()` → `Get-Printer | Select -Expand Name` (fallback `wmic printer get name`) | lists all Windows spooler printers, 30 s cache |
-| Details | `queryWindowsPrinterDetails(printer)` → `Get-CimInstance Win32_Printer` + `Get-PrintJob` + `Get-PrintConfiguration` | `queueDepth` (PrintJob count), `isDefault` (Win32_Printer.Default), `paperSize` (PrintConfiguration.PaperSize), `detectedErrorState` |
-| Telemetry | `getWindowsDnpTelemetry()` → `dnpStatus.ps1` (`CyStat64.dll`) → `paperRemaining, ribbonPercent, initialMediaCount, lifetimePrints, status, statusCode` (10 s cache); on miss falls back to `queryWindowsSpoolerTelemetry` (PrinterStatus 1..7→idle/printing/paper_jam/offline, workOffline, jobs) | honest connected flag — never fakes media levels |
-| Dispatch | `printViaWindowsPowerShell(file, copies, printer, orientation, quality)` | `PrintDocument.PrinterSettings.PrinterName`, `DefaultPageSettings.Landscape = true|false`, `PrinterResolution.Kind = High/Draft`, `Margins(0,0,0,0)`, `InterpolationMode.HighQualityBicubic`, `DrawImage` scaled fit-to-page preserving aspect, loop for copies, `-EncodedCommand` base64 PS, 30 s timeout |
-| Counters | `incrementCounter('printsTotal', copies)` on success | persisted in `booth-state.json` |
-
-Models verified: DNP DS-RX1HS (via DNP driver + CyStat), Citizen CY-02/CX-02, Canon Selphy CP1300/CP1500, Hiti P525L, Shinko — any driver-visible spooler.
-
-### 4.2 macOS / Linux CUPS (full implementation — new)
-
-| Aspect | Code | What it does |
-|---|---|---|
-| Discovery | `probePrinters()` → `lpstat -e; lpstat -p | awk '{print $2}'` deduped | all CUPS destinations + printers, 30 s cache |
-| Details | `queryCupsPrinterDetails(printer)` → `lpstat -o | wc -l` (queueDepth), `lpoptions -p` (media, orientation-requested, print-quality), `lpstat -l -p` (marker) | `paperSize` (`media=4x6`), `orientation` (3 portrait / 4 landscape), `quality` (high/normal/driver-default) |
-| Telemetry | `getCupsTelemetry(printer)` | Resolves default via `lpstat -d` or first `lpstat -p`; parses `lpstat -p` (idle/enabled/printing), `lpstat -o` queueDepth, `lpoptions` quality/orientation, attempts `marker/paperRemaining` parse. Status: `offline` if disabled, `printing` if jobs or printing line, else `idle`. `paperRemaining/ribbonPercent/lifetimePrints` `null` when not exposed (honest — CUPS rarely exposes dye-sub media count). |
-| Dispatch | `printJob()` CUPS branch → `lp [-d printer] -n <copies> -o orientation-requested=3|4 -o print-quality=3|4|5 -o fit-to-page` | orientation+quality honored, `fit-to-page` preserves template canvas aspect (portrait/landscape templates). |
-| Counters | same `printsTotal` | |
-
-### 4.3 Shared (both platforms)
-
-- **Bridge:** `printServer.ts` `0.0.0.0:9123` — tablets on LAN `POST /api/print { bitmapDataUrl, copies, layoutId }` prints through same queue.
-- **Orientation:** template `layout.orientation`/`layout.photoSlots` canvas aspect controls composition; `printJob({ orientation, layoutId })` maps to PS `Landscape` / CUPS `orientation-requested`.
-- **Quality:** `quality` param maps to PS `PrinterResolution.Kind` / CUPS `print-quality`; FILTER_CSS (`original|warm|cool|bw|vintage|soft|party`) applied pre-render in `renderCompositeDataUrl()` → print receives final PNG at canvas DPI.
-- **Error honesty:** `printJob()` never fakes success; missing `bitmapDataUrl` returns `success:false`; rejected dispatch increments no counter; `App.tsx` races printer IPC with 15 s timeout → always surfaces outcome (jobId or error) and still offers digital QR.
+The Nikon SDK and its bundled files are vendor materials. Confirm applicable Nikon terms and
+redistribution permissions before publishing or distributing installers containing them.
 
 ---
 
-## 5. Capabilities Matrix — Windows + macOS complete
+## 3. React Native camera providers
 
-| Capability | Windows | macOS | How reported |
-|---|---|---|---|
-| Print copies/layout | ✅ PS PrintDocument loop | ✅ CUPS `lp -n` | `printsTotal` + `jobId` |
-| Orientation | ✅ `DefaultPageSettings.Landscape` from `layoutId`/param | ✅ `-o orientation-requested 4/3` | `printer.orientation` |
-| Quality | ✅ `PrinterResolution.Kind High/Draft` + `-o print-quality` | ✅ `-o print-quality 5/4/3` | `printer.quality` |
-| Paper size | ✅ `Get-PrintConfiguration PaperSize` | ✅ `lpoptions media=` | `printer.paperSize` |
-| Queue depth | ✅ `Get-PrintJob` count | ✅ `lpstat -o | wc -l` | `printer.queueDepth` (warn if >5) |
-| Paper / ribbon / media | ✅ CyStat → `paperRemaining/ribbonPercent/initialMediaCount/lifetimePrints` | ⊘ CUPS rarely exposes → `null` (honest; driver-specific) | `printer.paperRemaining` |
-| Printer status | ✅ CyStat `status/statusCode` or WMI `PrinterStatus` (idle/printing/paper_end/ribbon_end/cover_open/paper_jam/offline) | ✅ CUPS `lpstat -p` → idle/printing/offline | `printer.status` |
-| Connected/working | ✅ `printers.length>0 || dnp.connected` | same | `printer.connected/working/provider` |
-| Camera shutter | ✅ `captureFrame` + `recordCapture→shutterCount` | same | `camera.shutterCount` |
-| Live preview | ✅ `<video srcObject>` mirrored + focus corners | same | `camera.live` |
-| Battery | ⊘ via `reportCamera.batteryPct` if `navigator.getBattery()`/CCAPI present (else `null` — honest) | same | `camera.batteryPct` |
-| Kiosk / display | ✅ `screen.getAllDisplays()` → `external, displayCount, width/height/scaleFactor/bounds` heartbeat 20 s | same | `kioskScreen` |
-| Heartbeat/offline | ✅ 20 s `boothApi.heartbeat({ hardware })`, `DEVICE_DELETED` 410 clears identity, `offline-banner` | same | — |
-| Raise Issue | ✅ `SuccessScreen` modal `printing|payment|quality|general` + `POST /api/booth/support` `holdPhotos=true`, countdown paused | same | — |
-| S3 / gallery / QR | ✅ `renderCompositeDataUrl()` (crossOrigin anonymous, ornament, sponsor logos, filters, stickers, footer) → `photos` now includes `{url:compositeUrl,isComposite:true}` + `compositeUrl`; backend `persistSessionPhoto`→S3; gallery groups by `sessionId` preferring `compositeUrl`; QR `shareUrl=website/download/:id` + `guaranteedShareUrl` fallback | same | — |
+### 3.1 Android direct USB PTP
 
-All rows are **implemented, persisted, and verified** (`npm run typecheck && lint && build:react` pass on this branch). No platform returns a fabricated success.
+`client-app/apps/booth/android/app/src/main/java/com/happypix/booth/ptp/` contains
+`PtpUsbModule.kt`, `PtpUsbPackage.kt`, and `PtpConstants.kt`. The native module:
+
+- Uses Android `UsbManager` and requests runtime USB permission.
+- Opens a PTP session and attempts Nikon `InitiateCaptureRecInMedia`, falling back to standard
+  `InitiateCapture`.
+- Retrieves the newest object, writes a cache JPEG, and returns its file URI and JPEG data URL.
+- Reports connection/model metadata. Its current battery result is a fixed placeholder, and the
+  React Native provider does not implement PTP live view or camera-settings control.
+
+This is Android USB Host / OTG functionality; it does not apply to iPadOS. Test each camera/firmware
+combination physically; PTP opcode support alone does not establish compatible capture or image
+transfer.
+
+### 3.2 Nikon Kiosk Bridge provider
+
+`client-app/packages/camera-core/src/providers/NikonBridgeProvider.ts` connects to the Windows
+Electron bridge over HTTP (default port `9123`). `CameraManager` probes bridge candidates first,
+then Canon CCAPI, direct USB PTP, and the built-in tablet camera. The bridge API currently exposes
+camera status, start/stop and retrieval of live-view frames, and capture. It is not a generic
+network-control API for all Electron camera settings.
+
+For physical iPad deployment, verify local-network permission, App Transport Security behavior for
+the bridge URL, and the actual iPad app's configured bridge address; the source provider alone does
+not prove that a particular iPad can reach an HTTP IP address.
+
+### 3.3 Canon, phone and Sony providers
+
+- `CanonCameraProvider` implements Canon CCAPI HTTP discovery/control in camera-core. Electron's
+  `canonCcapi.ts` is a secondary Wi-Fi path. Use a camera with CCAPI enabled and verify the selected
+  model and firmware; no full Canon model certification is stated here.
+- `PhoneCameraProvider` uses the tablet camera. Electron uses browser media capture through
+  `getUserMedia`.
+- `SonyCameraProvider` is an interface/provider path, not a completed Sony Remote SDK integration.
 
 ---
 
-## 6. Is It Configured and Working?
+## 4. Print Bridge and current printer boundary
 
-**Yes — fully configured for both platforms:**
+Electron starts `printServer.ts` on `0.0.0.0:<HAPPYPIX_PRINT_SERVER_PORT>` (default `9123`). The
+service exposes health/status, print dispatch, and the Nikon camera status/live-view/capture routes.
+It enables permissive CORS and has no application authentication; keep it on a trusted event LAN,
+never port-forward it, and apply host/network firewall controls.
 
-- `hardwareSnapshot()` → heartbeat → CRM `device.telemetry` — validated on both `process.platform==='win32'` and `darwin` (PowerShell path and CUPS path each have fallback).
-- `dnpTelemetry` no longer Windows-only: CUPS path implements same `{connected,status,paperRemaining,ribbonPercent,queueDepth,orientation,quality,error}` contract for Mac.
-- Print dispatch honors orientation+quality on both spoolers.
-- Camera `batteryPct/shutterCount/orientation/quality/live` surfaced from renderer report + counters.
-- Final edited frame guaranteed: `App.tsx finishAndPrint` renders composite with template/canvas/filter/ornament/logo correctness, then sends **both** individual `photos` and `compositeUrl` *plus* a photos-array `isComposite:true` entry so backend `photoTasks/persistSessionPhoto` → S3 produces a `Photo` whose `compositeUrl` is grouped as the session's gallery cover; QR resolves to same S3 object via 24 h `GuestDownload`.
-- `HAPPYPIX_PRINTER_NAME` env override selects printer explicitly on either OS.
+Printer dispatch is OS-specific: Windows uses the Windows spooler/PowerShell path in `hardware.ts`;
+macOS/Linux use CUPS commands where supported by the implementation. `dnpTelemetry.ts` has a Windows
+DNP/PowerShell path and a best-effort CUPS path. Driver-reported media levels are not universally
+available. An OS code path or successful test stub is not the same as a physically verified printer
+model; record the printer model, driver, OS, media, result and date in the hardware verification log.
 
 ---
 
-## 7. How to Run
+## 5. Cloud photo storage and delivery
+
+The current server-side adapters are `backend/utils/cloudinary.js` and
+`website-backend/src/cloudinary.js`. `backend/utils/s3.js` preserves legacy export names (for example
+`uploadToS3`) but delegates those names to Cloudinary; its `s3` export is a throwing compatibility
+stub. The website-backend `s3.js` also re-exports Cloudinary helpers.
+
+- With `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` configured,
+  backend uploads and signed booth uploads use Cloudinary.
+- Backend upload utilities can fall back to local `uploads/` storage; if disk writing fails, a data
+  URL fallback is returned. Local fallback URLs require a reachable backend URL and persistent disk.
+- Cloudinary delivery URLs are returned directly; `signedPhotoUrl` does not create an expiring S3
+  object URL. Guest-link expiry and access checks remain the application-level control.
+- Cloudinary credentials are server secrets. Booth clients receive only the signed upload parameters
+  intended for a specific upload, never the API secret.
+
+Do not deploy with missing/placeholder Cloudinary credentials and assume uploads are durable in a
+serverless filesystem. Confirm the chosen fallback and retention behavior for the target host.
+
+---
+
+## 6. Verification status and commands
+
+The latest repository commit is `d0ba133` (`sdk and final testing`). Its name and code presence do
+not constitute a device test record. To run the Electron verification suite in a dependency-installed
+checkout:
 
 ```bash
-# Install + typecheck + lint + build (verified in CI)
 cd electron
-npm i
-npm run typecheck && npm run lint && npm run build:react
-npm run dev            # Vite dev + Electron kiosk
-npm run make           # electron-builder dmg/nsis
-
-# Env (optional)
-HAPPYPIX_PRINTER_NAME="DNP DS-RX1HS"   # spooler name as shown in Get-Printer / lpstat -p
-HAPPYPIX_PRINT_SERVER_PORT=9123         # bridge for tablets
-VITE_BOOTH_API_URL=http://localhost:5000
-VITE_WEBSITE_URL=https://site.example.com
+npm ci
+npm run verify
 ```
 
-Printer driver install remains the only OS prerequisite: Windows — install vendor driver (DNP/Citizen/Canon) and verify `Get-Printer`; macOS — add printer in System Settings → Printers & Scanners and verify `lpstat -p` / `lpstat -o` shows enabled+idle.
-
----
-
-*Report covers `electron/src/electron/{hardware,dnpTelemetry,printServer,store,main}`, `electron/src/ui/{utils/composite,App,screens/Camera,Success}` and `client-app/packages/{camera-core,printer-core}` on `main`.*
+`npm run verify` runs TypeScript project checks, ESLint, Vitest, Electron transpilation and the React
+renderer build. Android native PTP requires a physical Android device or a correctly configured USB
+PTP test rig; Electron Nikon capture requires Windows, PowerShell and an attached supported Nikon.
+Neither can be established by a Linux-only static build. Record real-device results separately.

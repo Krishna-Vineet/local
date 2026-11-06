@@ -6,19 +6,16 @@ def util(name, file, purpose, exports, *, notes=None):
 
 
 UTILS = [
-    util("s3", "utils/s3.js",
-         "One place that knows how to talk to the bucket: upload, delete, sign, presign and parse keys. Every other "
-         "module imports this instead of building its own S3 client.",
-         [("s3", "A shared S3Client built from AWS_REGION + credentials, reused across warm invocations."),
-          ("uploadToS3({buffer, mimetype, folder, originalname})", "Multipart upload; returns {url, key}."),
-          ("deleteFromS3(key)", "Best-effort delete; logs and continues so a missing object never fails a request."),
-          ("s3KeyFromUrl(url)", "Turns an S3 URL back into a key, tolerating both path styles and URL-encoded keys."),
-          ("upload", "A configured multer instance: memoryStorage, 10 MB limit, image MIME + extension allowlist."),
-          ("signedPhotoUrl(rawUrl, {expiresInSec, downloadName})", "Signs a private object for 1 hour by default; "
-                                                                    "passes data: URLs and local /uploads paths through untouched."),
-          ("getPresignedUploadUrl({key, contentType, expiresInSec})", "Presigned PUT for a booth, 900 s by default.")],
-         notes=["If S3 is not configured the helpers degrade to local /uploads paths, which is why the booth can run "
-                "fully offline against a laptop."]),
+    util("Cloudinary storage", "utils/cloudinary.js (legacy aliases in utils/s3.js)",
+         "Cloudinary-backed media upload, signed booth upload parameters, deletion and URL parsing. Legacy S3-named exports delegate here; the s3 client export is a throwing compatibility stub.",
+         [("uploadToCloudinary({buffer, mimetype, folder, originalname})", "Uploads using Cloudinary when configured; backend utility has a local-disk/data-URL fallback."),
+          ("getCloudinaryUploadSignature({folder, timestamp})", "Server-side signed direct-upload parameters; API secret stays in the backend."),
+          ("deleteFromCloudinary(publicId)", "Attempts to delete a Cloudinary asset; local fallback deletion is also supported."),
+          ("s3KeyFromUrl(url)", "Extracts a Cloudinary public ID or legacy URL path; legacy export name retained."),
+          ("signedPhotoUrl(rawUrl, {downloadName})", "Returns a Cloudinary URL directly and adds attachment delivery behavior when requested; it does not issue an expiring S3 URL."),
+          ("upload", "Multer memoryStorage, 10 MB limit, image MIME allowlist.")],
+         notes=["Requires CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET for hosted media.",
+                "Local disk fallback is not durable on many serverless hosts; configure hosted media for production."]),
 
     util("crypto", "utils/crypto.js",
          "Secrets at rest and booth-token hashing.",
@@ -122,14 +119,11 @@ SERVICES = [
      "notes": ["The id is the credential: no session, no token, no email. 144 bits of entropy is what makes that safe."]},
 
     {"name": "photoUrlService", "file": "services/photoUrlService.js",
-     "purpose": "Turns a stored Photo into something a browser can actually load from a private bucket.",
-     "exports": [("signedPhotoUrl(photo, {expiresInSec})", "Prefers compositeUrl, falls back to url, signs S3 keys, "
-                                                          "passes through data: and local paths, and always also returns a "
-                                                          "/api/org/asset-proxy fallback."),
+     "purpose": "Resolves stored media URLs for gallery and guest downloads using the Cloudinary URL adapter.",
+     "exports": [("signedPhotoUrl(photo, {expiresInSec})", "Prefers compositeUrl, falls back to url, passes through data/local/Cloudinary URLs; legacy S3-key parsing remains."),
                  ("signedUrlFor(rawUrl, s3Key, options)", "Lower-level helper for one URL.")],
-     "depends": "utils/s3",
-     "notes": ["Every gallery image carries both a signed URL and a proxy URL, because a signed URL can expire while "
-               "the page is open."]},
+     "depends": "utils/cloudinary (legacy utils/s3 aliases)",
+     "notes": ["Cloudinary URLs are returned directly and may outlive the application GuestDownload TTL; account-level access controls are separate."]},
 
     {"name": "planService", "file": "services/planService.js",
      "purpose": "The plan catalogue, pricing ladder, discounts, limits and status — the single authority on what a "

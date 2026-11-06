@@ -40,14 +40,14 @@ SERVER_CHAIN = [
        runs_on="All JSON requests",
        behaviour="express.json({limit:'50mb', verify}) stores req.rawBody. The 50 MB ceiling exists because older "
                  "booths post base64 frames inline.",
-       order=5, rejects=[("413", "Payload too large — the booth should use presigned S3 uploads instead.")]),
+       order=5, rejects=[("413", "Payload too large — the booth should use the configured Cloudinary signed-upload flow instead.")]),
 
     mw("cookieParser", "server.js:159", "parsing",
        "Reads the HttpOnly hp_admin_token cookie so the CRM needs no JavaScript-visible token.",
        runs_on="All requests", behaviour="Attaches req.cookies.", order=6),
 
     mw("/uploads static", "server.js:162", "static",
-       "Serves local files (fallback storage and AI cutouts) when S3 is not in use.",
+       "Serves local files for fallback storage and AI cutouts; Cloudinary is the current hosted-media adapter.",
        runs_on="Paths under /uploads",
        behaviour="express.static on <cwd>/uploads. No auth: the files it serves are non-sensitive by construction.",
        order=7),

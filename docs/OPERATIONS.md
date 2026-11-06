@@ -2,7 +2,7 @@
 
 > **Audience:** on-call engineer, support lead, operations manager.
 > **Assumes:** you may be reading this at 2 am with a venue full of guests.
-> **Last verified:** 2026-10-23, branch `main`.
+> **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. This does not imply physical hardware verification.
 
 ---
 
@@ -73,7 +73,7 @@ infrastructure in [`SCALABILITY_PLAN.md`](../business/SCALABILITY_PLAN.md) stage
 | API latency | Vercel analytics | Vercel → Observability |
 | Database health | Atlas metrics | Atlas → Metrics (connections, ops, disk) |
 | Slow queries | Atlas profiler | Atlas → Performance Advisor |
-| Storage errors | Application logs (`STORAGE_UNAVAILABLE`) | Vercel logs |
+| Media storage errors | Application logs (`STORAGE_UNAVAILABLE`) | Vercel logs |
 | Payment health | Provider dashboards + `payments` | Razorpay/Cashfree |
 | Device fleet | `devices.lastSeenAt` + telemetry | CRM → Events & Devices |
 | Audit anomalies | `auditlogs` | CRM → Audit & Logs |
@@ -88,7 +88,7 @@ infrastructure in [`SCALABILITY_PLAN.md`](../business/SCALABILITY_PLAN.md) stage
 | p95 latency | > 1.5 s for 10 min | S2 | Check DB connections + region |
 | DB connections | > 80 % of limit | S2 | Check for connection leaks |
 | Payment failures | > 5 in 10 min | S1 | Check gateway status |
-| S3 errors | > 1 % of uploads | S2 | Check bucket policy/quota |
+| Cloudinary errors | > 1 % of uploads | S2 | Check account credentials, quota, provider status and local fallback behavior |
 | Auth failures | > 50/min from one IP | S3 | Consider blocking |
 | Devices offline | > 20 % of fleet | S2 | Check API; then field contact |
 | Disk (Atlas) | > 80 % | S3 | Plan upgrade |
@@ -169,14 +169,20 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST \
 
 ## 4. Backup and disaster recovery
 
+> **Storage update:** the application code at commit `d0ba133` uses Cloudinary for photos/assets.
+> Older S3-specific rows/commands in historical planning sections are not active procedures unless
+> an organization separately configures AWS. Cloudinary media backup/restore is account-dependent;
+> this repository does not prove that such a backup is enabled or tested.
+
+
 ### 4.1 What is backed up
 
 | Data | Method | Frequency | Retention | Restore tested |
 |---|---|---|---|---|
 | MongoDB (all collections) | Atlas continuous backup (PITR) | Continuous | 7 days (target) | Monthly |
-| MongoDB (logical) | `mongodump` → encrypted S3 | Daily | 35 days | Monthly |
-| S3 photos/composites | Bucket versioning (recommended) + cross-region replication (target) | Continuous | Per retention policy | Quarterly |
-| S3 template assets | Versioning | Per change | Indefinite | Quarterly |
+| MongoDB (logical) | Encrypted external backup target (must be configured independently) | Daily target | 35 days target | Not established by this code snapshot |
+| Cloudinary photos/composites | Cloudinary account retention/backup policy; confirm backup/versioning configuration | Provider-dependent | Confirm account policy | Not established by this code snapshot |
+| Cloudinary template assets | Cloudinary account retention/backup policy; export/backup process must be defined | Provider-dependent | Confirm account policy | Not established by this code snapshot |
 | Source code | GitHub | Per push | Indefinite | n/a |
 | Secrets | Password manager + provider | Per change | Indefinite | Quarterly audit |
 | Booth local cache | Device disk (not a system of record) | — | — | n/a |
@@ -190,8 +196,8 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST \
 | Collection corruption | < 5 min | 2 h | PITR / logical dump restore |
 | Full database loss | < 5 min | 4 h | Atlas snapshot restore + DNS/connection swap |
 | Region outage | < 15 min | 8 h | Restore in a secondary region (target) |
-| S3 object deletion | 0 (versioned) | 30 min | Restore object version |
-| S3 bucket compromise | < 24 h | 24–72 h | Rehydrate from replication/backup + incident |
+| Cloudinary asset deletion | Unknown until account backup/versioning is configured | Set by account policy | Restore/export only if account policy permits |
+| Cloudinary account compromise | Rotate/disable affected credentials promptly | Account-dependent | Provider incident process and independent backups |
 | Ransomware on booth PC | n/a | Reimage in 2 h | Reinstall app + re-pair |
 
 ### 4.3 Restore procedure (database)
@@ -215,24 +221,20 @@ mongosh "mongodb+srv://<new-cluster>/happypix" --eval '
 ### 4.4 Restore procedure (a single collection)
 
 ```bash
-# From a nightly logical dump
-aws s3 cp s3://happypix-backups/mongo/2026-10-22/photos.archive.gz .
+# Example only: retrieve from the separately configured encrypted backup target.
+# The AWS command below is a legacy example, not evidence that an AWS backup bucket is configured.
+aws s3 cp s3://<configured-backup-bucket>/mongo/<date>/photos.archive.gz .
 mongorestore --uri "$MONGODB_URI" --archive=photos.archive.gz --nsInclude='happypix.photos' --drop
 ```
 
 `--drop` replaces the collection — confirm you are restoring the *right* collection before running it.
 
-### 4.5 Restore procedure (S3 objects)
+### 4.5 Restore procedure (Cloudinary assets)
 
-```bash
-# Versioned object restore
-aws s3api list-object-versions --bucket happypix-production-assets \
-  --prefix "org/…/sessions/sess_x/" --query 'Versions[?IsLatest==`false`]'
-
-aws s3api copy-object --bucket happypix-production-assets \
-  --copy-source "happypix-production-assets/<key>?versionId=<vid>" \
-  --key "<key>"
-```
+No Cloudinary asset-restore command or backup configuration is established by the repository. Before
+production, verify the account plan’s backup/versioning/restore capabilities and test them in the
+Cloudinary console. If recovery is not provided by the account, export originals and maintain an
+independent encrypted archive. Do not run the legacy AWS S3 restore commands for current media.
 
 ### 4.6 Disaster recovery drill (quarterly, 3 hours)
 
@@ -240,7 +242,7 @@ aws s3api copy-object --bucket happypix-production-assets \
 |---|---|
 | 1. Restore yesterday's DB to a scratch cluster | Counts match production within tolerance |
 | 2. Point a local app at the scratch cluster | Login + gallery + one download work |
-| 3. Restore one deleted S3 object version | Object readable |
+| 3. Restore one deleted Cloudinary asset using the configured account recovery path | Object readable; otherwise document the recovery gap |
 | 4. Promote a previous Vercel deployment on a preview project | Rollback path confirmed |
 | 5. Time the whole exercise | Recorded, compared to RTO |
 | 6. Write a short report with gaps | Filed in the handover register |
@@ -312,7 +314,7 @@ Is a live event in progress?
 |---|---|---|---|---|
 | S1 | Data breach, payment integrity, or total outage | Bucket public, all payments failing, DB unreachable | Immediate, all hands | Every 30 min |
 | S2 | Major function down or many tenants affected | Booth pairing failing, downloads broken, API 5xx | 15 min | Every 1 h |
-| S3 | Degraded / single tenant | One org cannot print, dashboard slow | 4 business hours | Daily |
+| Cloudinary | Degraded / single tenant | Upload or gallery/download media unavailable | 4 business hours | Daily |
 | S4 | Minor | Cosmetic misalignment | Next release | — |
 
 ### 6.2 Escalation path
@@ -464,7 +466,7 @@ curl -fsS https://api.happypix.in/api/health
 1. Confirm the request in writing and verify the requester's authority.
 2. Export nothing unnecessary; confirm the exact session/event scope.
 3. Delete in the CRM (session) or via support tooling (event/tenant).
-4. Verify S3 objects are gone.
+4. Verify the Cloudinary asset/public ID was deleted and the database URL references were removed; confirm any backups per policy.
 5. Record the request in the data-subject log.
 6. Reply with what was deleted and when; state the backup roll-off window.
 ```
@@ -542,7 +544,7 @@ Then: re-pair if the app wipes on downgrade; run one test session.
 | RTO (deployment rollback) | ≤ 5 min | High — verified |
 | RTO (booth re-provision) | ≤ 2 h | High — documented |
 | Backup retention | 35 days | High |
-| S3 durability | 99.999999999 % | Provider SLA |
+| Cloudinary durability/availability | Verify the applicable account plan/SLA | Not asserted by this repository |
 
 ### 9.2 Drill log
 
@@ -550,7 +552,7 @@ Then: re-pair if the app wipes on downgrade; run one test session.
 |---|---|---|---|---|
 | ⟨date⟩ | DB restore to scratch cluster | ⟨pass/fail⟩ | ⟨…⟩ | ⟨…⟩ |
 | ⟨date⟩ | Vercel rollback | ⟨pass/fail⟩ | ⟨…⟩ | ⟨…⟩ |
-| ⟨date⟩ | S3 object version restore | ⟨pass/fail⟩ | ⟨…⟩ | ⟨…⟩ |
+| ⟨date⟩ | Cloudinary asset restore/recovery test | ⟨pass/fail/not configured⟩ | ⟨…⟩ | ⟨…⟩ |
 | ⟨date⟩ | Booth re-pair after device delete | ⟨pass/fail⟩ | ⟨…⟩ | ⟨…⟩ |
 
 **A drill that has never been run is not a recovery plan.** Fill this table in before an enterprise
@@ -565,7 +567,7 @@ customer asks for it.
 | Service | Metric to watch | Action threshold |
 |---|---|---|
 | MongoDB Atlas | Storage, connections, tier | > 70 % of tier → plan upgrade |
-| AWS S3 | Storage GB, GET/PUT requests | Unexpected +30 % → check lifecycle rules |
+| Cloudinary | Storage/transform/delivery usage | Unexpected +30 % → review account usage, plan limits and delivery patterns |
 | Vercel | Function invocations, bandwidth | Nearing plan limit → optimise or upgrade |
 | Razorpay/Cashfree | MDR + failures | Failure rate > 3 % → investigate |
 | Groq/Together | Tokens/images per org | Org over quota → enforce credits |
@@ -573,7 +575,7 @@ customer asks for it.
 
 ### 10.2 Cost guardrails
 
-* S3 lifecycle rules move older session objects to cheaper tiers.
+* Cloudinary media retention/backup/lifecycle settings are account-dependent and must be verified; old S3 lifecycle guidance is not the active storage configuration.
 * Guest downloads expire in 24 h, which caps storage growth from delivery copies.
 * AI credits are per-plan and enforced server-side (`AI_QUOTA_EXCEEDED`).
 * Logs are retained 30 days, not indefinitely.
@@ -585,7 +587,7 @@ customer asks for it.
 |---|---|---|
 | MongoDB Atlas | Full outage | PITR + documented restore; secondary region planned |
 | Vercel | Site + API down | Code is portable; Cloudflare/Render as fallback |
-| AWS S3 | Uploads/downloads fail | Retry queue; photos remain on booth local cache |
+| Cloudinary | Uploads/downloads fail | Check provider status/credentials; retry queue and local booth cache may help, but verify cache retention |
 | Razorpay | Booth payments fail | Cashfree as alternate rail; wallet mode |
 | Groq/Together | AI templates unavailable | Manual designer still works |
 | SendGrid | Emails fail | In-app notifications; support can resend |

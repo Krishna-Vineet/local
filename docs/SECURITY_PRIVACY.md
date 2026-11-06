@@ -3,7 +3,7 @@
 > **Status:** engineering policy. Sections marked ⚖️ require review by qualified counsel before being
 > relied upon externally. This document is **not** legal advice and is not a substitute for the
 > published Privacy Policy and Terms of Service.
-> **Last verified:** 2026-10-23, branch `main`.
+> **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. This does not imply physical hardware verification.
 
 ---
 
@@ -27,6 +27,13 @@
 
 ## 1. Security model
 
+> **Current media-storage caveat (commit `d0ba133`):** backend and website-backend adapters use
+> Cloudinary. Legacy S3-named helpers/fields are compatibility names. Cloudinary delivery URLs are
+> returned directly; the application’s 24-hour guest-download ID expiry is not the same as expiring
+> or revoking the media URL. Do not describe photos as private S3-style objects. Verify Cloudinary access controls and establish an independent recovery policy.
+
+
+
 ### 1.1 Assets, in order of sensitivity
 
 | Rank | Asset | Why it matters |
@@ -36,7 +43,7 @@
 | 3 | Customer (tenant) business data: clients, events, pricing | Commercial harm, contract breach |
 | 4 | User accounts and session tokens | Account takeover → everything above |
 | 5 | Device tokens | Can create sessions and uploads against a tenant |
-| 6 | Infrastructure secrets (DB URI, JWT, S3 keys) | Total compromise if leaked |
+| 6 | Infrastructure secrets (DB URI, JWT, Cloudinary API secret and payment keys) | Total compromise if leaked |
 | 7 | Telemetry and logs | Reconnaissance value |
 
 ### 1.2 Threat model (realistic, not theatrical)
@@ -74,7 +81,7 @@
 |---|---|---|---|
 | `JWT_SECRET` | backend | 90 days or on suspicion | All user sessions invalidated |
 | `MONGODB_URI` | backend, website-backend | On credential rotation | Full data access |
-| `AWS_ACCESS_KEY_ID` / `SECRET` | backend, website-backend | 90 days | Bucket read/write |
+| `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | backend, website-backend | 90 days or after suspected exposure | Media upload/delete; API secret must remain server-side |
 | `RAZORPAY_KEY_ID` / `SECRET` | backend, website-backend | On suspicion | Payment operations |
 | `RAZORPAY_WEBHOOK_SECRET` | backend | On suspicion | Webhook forgery |
 | `CASHFREE_APP_ID` / `SECRET` | backend | On suspicion | Payment operations |
@@ -96,7 +103,7 @@
 3. **Never send** a server secret to a browser. `VITE_*` values are public by definition.
 4. **Per-tenant gateway keys** are encrypted at rest (AES via `utils/crypto.js`) and never returned
    in API responses (mask on read).
-5. **Least-privilege IAM**: the S3 user may only touch the application bucket, not account-wide.
+5. **Least privilege**: restrict provider credentials and access to the required Cloudinary account/environment; keep the API secret server-side.
 6. **Separate secrets per environment** — a leaked staging key must not open production.
 7. **Two-person rule** for production key replacement during an incident (where staffing allows).
 
@@ -129,7 +136,7 @@
 | Tier | Who | Access | Controls |
 |---|---|---|---|
 | Platform Owner | Founder(s) | CRM Owner + provider dashboards | MFA on provider accounts |
-| Engineering | Engineers | GitHub, Vercel, Atlas, S3 (read/write in staging, break-glass in prod) | Least privilege, audit trail |
+| Engineering | Engineers | GitHub, Vercel, Atlas, Cloudinary (staging; production access by approval) | Least privilege, audit trail |
 | Support | Support staff | CRM Support Manager, no infrastructure | Read-only, no data export |
 | Finance | Finance | Razorpay dashboard, reporting exports | No photo access |
 | Contractors | Per engagement | Time-boxed scoped access | Removed at contract end; verified in offboarding checklist |
@@ -205,7 +212,7 @@ Enforced three times: navigation, router, API (`requirePerm`). Denials are audit
 | Sub-processor | Data shared | Location | Purpose |
 |---|---|---|---|
 | MongoDB Atlas | All application data | Region configured (prefer India) | Database |
-| AWS S3 | Photos, composites, assets | Bucket region | Storage |
+| Cloudinary | Photos, composites, assets | Account region/plan | Storage and delivery; URL access behavior must be reviewed |
 | Razorpay | Name, email, phone, amount | India | Payments |
 | Cashfree | Name, phone, amount | India | Payments (alternate) |
 | SendGrid | Email address, name | US/EU | Transactional email |
@@ -258,7 +265,7 @@ Guests (data subjects), tenant staff, and tenant admins acting on their organiza
 
 | Request | Process | SLA |
 |---|---|---|
-| Guest photo deletion | Operator deletes the session in the CRM gallery, or support deletes by `sessionId`/`downloadId`; S3 objects removed | 7 days |
+| Guest photo deletion | Operator deletes the session in the CRM gallery, or support deletes by `sessionId`/`downloadId`; Cloudinary assets removed through the storage adapter where a public ID is available | 7 days |
 | Account deletion | Owner/Admin deactivates, then support performs hard delete after the retention check | 30 days |
 | Organization deletion | Contract-end process: export → delete photos → delete tenant records (payments retained per law) | 30 days |
 
@@ -301,20 +308,26 @@ date completed. Retain for 24 months as proof of compliance.
 photoVisibleInGallery(photo, settings):
   if settings.requireGuestConsent and not photo.guestConsent → hidden
   if session marked deleted → hidden
-  else → visible to the owning tenant (never public)
+  else → visible to an authorized owning-tenant user
 ```
 
-Photos are **never** public. Every read goes through a presigned URL with a short lifetime.
+The gallery API applies tenant and consent checks. That application-level authorization does not
+make a stored Cloudinary delivery URL private: anyone who obtains a directly reachable media URL may
+be able to open it independently, depending on the account's access configuration. Verify that
+behavior against the production Cloudinary account before promising photo confidentiality.
 
-### 6.3 Public exposure surface (the only one)
+### 6.3 Guest download exposure surface
 
-The guest download page. Controls:
+The guest download page is protected by application controls:
 
 * 144-bit random `downloadId` (not sequential, not guessable);
 * 24-hour TTL enforced in the database **and** checked in the handler;
 * rate limiting per IP;
-* no directory listing, no search, no indexable URLs (`noindex` on the download page);
+* no directory listing, no search, no indexable download pages (`noindex`);
 * view/download counters to detect abnormal access.
+
+These controls expire the application download link; they do not necessarily revoke a Cloudinary
+media URL that has already been returned to a client.
 
 ### 6.4 Watermarking and screenshots
 
@@ -327,7 +340,7 @@ would be dishonest.
 ```
 CRM delete session
   → Photo documents removed (or flagged deleted)
-  → S3 objects removed for url + compositeUrl + s3Key
+  → Cloudinary deletion attempted for the URL/public ID fields where extractable; verify actual provider deletion and legacy refs
   → GuestDownload record expires (TTL) or is removed
   → AuditLog entry written
 ```
@@ -346,7 +359,7 @@ an issue is open (`holdPhotos: true`).
 | Browser ↔ Vercel | TLS 1.2+ (HSTS) |
 | Booth ↔ API | TLS 1.2+ |
 | API ↔ Atlas | TLS required by the connection string |
-| API ↔ S3 | HTTPS (SDK default) |
+| API ↔ Cloudinary | HTTPS (Cloudinary SDK) |
 | Tablet ↔ print bridge (`:9123`) | **Plain HTTP on LAN** — accepted risk, documented |
 
 ### 7.2 At rest
@@ -354,7 +367,7 @@ an issue is open (`holdPhotos: true`).
 | Store | Control |
 |---|---|
 | Atlas | Encryption at rest (provider-managed) |
-| S3 | SSE-S3 (or SSE-KMS with a customer-managed key for enterprise) |
+| Cloudinary | Provider/account encryption and backup controls are account-dependent; verify configured settings and do not assume S3 SSE/KMS controls apply |
 | Booth local cache | OS disk encryption recommended on kiosk PCs (BitLocker/FileVault) |
 | Per-tenant gateway secrets | Application-level AES encryption before storage |
 | Device tokens | SHA-256 hash only |
@@ -365,21 +378,21 @@ an issue is open (`holdPhotos: true`).
 
 | Path | Validation |
 |---|---|
-| Presigned PUT | Content-type restricted; size limited (15 MB); key namespaced by tenant |
+| Cloudinary signed direct upload | Signature generated server-side; route limits/validation apply; validate tenant/session mapping |
 | Direct data URL | Body limit 10 MB; decoded and re-encoded server-side where applicable |
 | Template assets | Image type check; no SVG with scripts; no executable content |
 | Support attachments (if enabled) | Type/size allowlist; stored private |
 
-**Never** trust a client-provided URL for storage. Session completion validates that the object key
-belongs to the tenant/session before recording it.
+Session completion accepts media references from booth clients and the persistence utility can process data URLs, Cloudinary URLs, and other remote URLs. Treat URL ownership and tenant/session association as an authorization boundary: validate it at the route before recording or deleting media; do not assume an arbitrary URL is private just because it is stored in a tenant record.
 
-### 7.4 The S3 bucket
+### 7.4 Cloudinary media access and account controls
 
-* Block Public Access: **ON**.
-* Bucket policy: only the application IAM user, only this bucket.
-* CORS restricted to the known origins.
-* Versioning: optional (cost vs recoverability) — recommended on for templates.
-* Lifecycle rules per the data-retention schedule.
+The current storage adapter persists Cloudinary delivery URLs, which are not equivalent to private S3
+objects protected by expiring presigned GETs. Application guest-download IDs expire after their TTL,
+but that does not necessarily revoke a previously obtained Cloudinary URL. Review the Cloudinary
+account’s access mode, backups/versioning, retention and deletion controls against the photo privacy
+requirements before production. Keep API secrets out of clients and logs; use only server-generated
+signed upload parameters for direct booth uploads.
 
 ---
 
@@ -417,7 +430,7 @@ audit log.
 | 5xx rate | > 2 % for 5 min | Chat + on-call |
 | Auth failures | > 50/min from one IP | Chat |
 | Payment failures | > 5 in 10 min | Chat + finance |
-| S3 errors | > 1 % | Chat |
+| Cloudinary errors | > 1 % | Chat |
 | Device offline | > 20 % of fleet | Chat |
 | DB connection saturation | > 80 % | Chat + on-call |
 
@@ -490,9 +503,9 @@ good-faith researchers who avoid privacy violations, data destruction and servic
 
 | Sev | Definition | Examples | Response |
 |---|---|---|---|
-| **S1** | Data breach, payment compromise, total outage | Photo bucket public, DB leaked, all payments failing | Immediate, all hands, notify within 24 h |
+| **S1** | Data breach, payment compromise, total outage | Photo media access misconfigured, DB leaked, all payments failing | Immediate, all hands, notify within 24 h |
 | **S2** | Major feature down, tenant blocked | Booth pairing failing, downloads broken for all | 30 min |
-| **S3** | Degraded or single-tenant issue | One org cannot print, slow dashboard | 4 h business hours |
+| **S3** | Degraded or single-tenant issue | Upload or photo delivery fails | 4 h business hours |
 | **S4** | Minor / cosmetic | Misaligned footer on one template | Next release |
 
 ### 10.2 Process
@@ -514,7 +527,7 @@ tenant. Containment beats root-cause analysis.
 - [ ] Incident lead named; channel opened
 - [ ] Affected systems identified
 - [ ] Credentials rotated if exposure is suspected
-- [ ] Public surface contained (bucket policy, route disabled, deployment rolled back)
+- [ ] Public surface contained (provider access controls, route disabled, deployment rolled back)
 - [ ] Extent estimated: which tenants, which data, how many records
 - [ ] Legal/owner informed
 - [ ] Evidence preserved (logs, snapshots) before cleanup
@@ -557,7 +570,7 @@ Notification content: what happened, when, what data, what we did, what the cust
 | Revoke Vercel access | Vercel team | Same day |
 | Revoke Atlas access | Atlas org | Same day |
 | Rotate shared secrets the person had access to | Vercel + providers | Within 24 h |
-| Remove from AWS IAM (if applicable) | AWS | Same day |
+| Rotate/revoke Cloudinary API credentials (if applicable) | Cloudinary console | Same day |
 | Recover hardware (laptop, phone, YubiKey) | — | Last day |
 | Confirm device tokens the person knew are not reused | — | If applicable |
 

@@ -2,7 +2,7 @@
 
 > **Audience:** anyone who needs to run, modify or review this codebase.
 > **Assumes:** macOS, Linux or Windows with a POSIX-ish shell (Git Bash/WSL works on Windows).
-> **Last verified:** 2026-10-23, branch `main`.
+> **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. This does not imply physical hardware verification.
 
 ---
 
@@ -36,7 +36,7 @@ local/
 ├── electron/           Electron Windows/macOS kiosk
 ├── docs/               Engineering & operations documentation
 ├── business/           Scalability plan + financial workbooks
-└── HAPPYPIX_V2_MASTER_DOCUMENTATION.md    Deep technical handbook
+└── docs/HAPPYPIX_V2_MASTER_DOCUMENTATION.md    Deep technical handbook
 ```
 
 There is **no root `package.json`**. Each app is installed and run independently. This is
@@ -59,7 +59,7 @@ backend/
 │   ├── supportRoutes.js   /api/support   — guest issue tickets
 │   ├── eventRoutes.js, couponRoutes.js, deviceRoutes.js, settingRoutes.js
 │   └── usageAccessRoutes.js
-├── models/                23 Mongoose schemas (see BACKEND_API_DATABASE.md)
+├── models/                25 Mongoose schemas (see BACKEND_API_DATABASE.md)
 ├── services/
 │   ├── planService.js          plan catalogue, billing prices, computed status
 │   ├── boothSnapshotService.js snapshot build + revision hash
@@ -67,13 +67,13 @@ backend/
 │   ├── guestDownloadService.js 24 h download creation
 │   ├── gallerySettingsService.js org gallery visibility rules
 │   ├── DeliveryService.js      share delivery records
-│   ├── photoUrlService.js      presigned/direct URL resolution
+│   ├── photoUrlService.js      Cloudinary/direct URL resolution
 │   ├── eventService.js         event lifecycle helpers
 │   ├── CronService.js          scheduled maintenance
 │   ├── backgroundRemovalService.js
 │   └── ai/                     PromptClassifier, TemplateGenerationService, providers
 ├── middleware/            auth.js (authenticate/requirePerm) · deviceAuth.js
-├── utils/                 s3.js · crypto.js · auditLogger.js · httpError.js · printHelper.js
+├── utils/                 cloudinary.js · s3.js (legacy adapter) · crypto · auditLogger · httpError · printHelper
 ├── scripts/               seed + maintenance (payment config, TTL index, artwork restore)
 ├── tests/                 node:test suites
 └── uploads/               local-only fallback storage (git-ignored in production)
@@ -123,7 +123,8 @@ electron/src/
 │   ├── preload.cts           contextBridge → window.booth (the only renderer API)
 │   ├── hardware.ts           printer discovery, print dispatch, hardwareSnapshot()
 │   ├── dnpTelemetry.ts       CyStat64.dll (Win) + CUPS (macOS) telemetry
-│   ├── printServer.ts        LAN print bridge on :9123 for tablets
+│   ├── printServer.ts        LAN print + Nikon bridge on :9123 for tablets
+│   ├── camera/               Nikon SDK adapter, IPC, capture, live view, settings, transfer
 │   ├── store.ts              installation identity + counters (JSON on disk)
 │   ├── pathResolver.ts, util.ts
 │   └── tsconfig.json         separate compile target (CommonJS)
@@ -193,7 +194,7 @@ committed `Podfile`; do not commit the workspace. The full iPad status and open 
 | Docker | disposable MongoDB for integration tests |
 | `mongosh` | inspecting Atlas collections |
 | Postman/Insomnia | exercising endpoints by hand |
-| AWS CLI | checking bucket policy and CORS |
+| Cloudinary account console | checking media credentials, account region/plan and retention/access settings |
 
 ### 2.5 Dependency pins that matter
 
@@ -278,10 +279,9 @@ marked **secret** are server-only and must never be exposed to a Vite bundle.
 | `PORT` | no (5000) | `5000` | Server port |
 | `MONGODB_URI` | **yes** | `mongodb+srv://user:pass@cluster.mongodb.net/happypix` | App refuses to boot without it |
 | `JWT_SECRET` | **yes** | 64-byte hex | Generate with `crypto.randomBytes(64).toString('hex')` |
-| `AWS_ACCESS_KEY_ID` | for S3 | `AKIA…` | Secret — IAM user with bucket-scoped policy |
-| `AWS_SECRET_ACCESS_KEY` | for S3 | — | Secret |
-| `AWS_REGION` | for S3 | `ap-southeast-2` | Must match bucket region |
-| `S3_BUCKET_NAME` | for S3 | `happypix-production-assets` | Bucket must exist before boot |
+| `CLOUDINARY_CLOUD_NAME` | hosted media storage | Cloudinary account name | Public identifier, not secret |
+| `CLOUDINARY_API_KEY` | hosted media storage | — | Server-side credential |
+| `CLOUDINARY_API_SECRET` | hosted media storage | — | Secret; never expose to a client bundle |
 | `RAZORPAY_KEY_ID` | **yes** | `rzp_test_…` | `rzp_live_…` in production; boot logs the mode |
 | `RAZORPAY_KEY_SECRET` | **yes** | — | Secret |
 | `CASHFREE_APP_ID` | optional | — | Alternate UPI rail |
@@ -329,7 +329,18 @@ marked **secret** are server-only and must never be exposed to a Vite bundle.
 | `CRM_URL` | **yes** | Post-checkout redirect |
 | `ALLOWED_ORIGINS` | optional | Comma-separated extras (preview URLs) |
 | `WEBSITE_INTERNAL_SECRET` | **yes** | Shared secret for `POST /api/internal/downloads` |
-| `AWS_*`, `S3_BUCKET_NAME` | for private buckets | Only needed to sign photo URLs |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | hosted photo delivery | Website-backend Cloudinary adapter credentials; never expose the secret |
+
+### Camera SDK setup notes
+
+- Electron Nikon Remote SDK runs on Windows only through `electron/resources/nikon/NikonBridge.ps1`.
+  Keep the SDK resource files in place for development/packaging and confirm vendor terms before
+  distributing. The Android/iPad tablet provider reaches a Windows Electron Kiosk Bridge over the
+  event LAN; iPad local-network/ATS behavior needs physical validation.
+- Android direct USB PTP uses `PtpUsbModule` and OTG; its current path captures/transfers a JPEG only.
+  It does not implement live view/settings, and its battery value is a placeholder.
+- Canon CCAPI uses HTTP on the camera LAN; test the exact body and firmware. Sony remains a provider
+  seam, not a complete SDK integration.
 
 ### 4.5 `client-app/apps/booth/.env`
 
@@ -356,8 +367,9 @@ A minimal, working-per-app set. **No real credentials.**
 PORT=5000
 MONGODB_URI=mongodb://127.0.0.1:27017/happypix
 JWT_SECRET=replace_with_64_hex_chars
-AWS_REGION=ap-southeast-2
-S3_BUCKET_NAME=happypix-dev-assets
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
 RAZORPAY_KEY_ID=rzp_test_xxxxxxxxxxxx
 RAZORPAY_KEY_SECRET=replace_me
 CLIENT_URL=http://localhost:5173
@@ -562,8 +574,8 @@ certificates or provisioning profiles. Certificates, TestFlight and the archive 
 
 | Branch | Purpose |
 |---|---|
-| `main` | Deployable; protected |
-| `main` | Current active development branch |
+| `main` | Repository default/deployable branch; protected |
+| `arena/097e52ae-local` | Active documentation branch for this snapshot |
 | `feat/<slug>` | Feature work, branched from `main` |
 | `fix/<slug>` | Bug fixes |
 | `chore/<slug>` | Tooling, deps, docs |
@@ -571,7 +583,6 @@ certificates or provisioning profiles. Certificates, TestFlight and the archive 
 ### 8.2 Commit messages (Conventional Commits)
 
 ```
-feat(electron): raise issue after success + send final frame to S3
 fix(backend): keep compositeUrl when session retries complete
 docs(business): add unit economics workbook
 chore(deps): bump sharp to 0.35.3
@@ -665,7 +676,7 @@ Rules:
 ### 9.6 Security hygiene
 
 * No secrets in client bundles, logs, or error messages.
-* Presigned URLs are short-lived; never log them.
+* Treat media URLs as sensitive data; Cloudinary delivery URLs may not expire, so never log them or assume guest-link expiry revokes them.
 * Validate and clamp every numeric input (copies, amounts, slot counts).
 * Escape user-supplied strings rendered into HTML/email.
 

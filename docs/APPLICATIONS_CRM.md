@@ -3,7 +3,7 @@
 > **Covers:** public website, website backend, CRM (platform + organization), Android booth,
 > Electron booth, shared components and offline behaviour.
 > **Companions:** [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`HARDWARE_PRINTING.md`](HARDWARE_PRINTING.md) · [`USER_ADMIN_GUIDE.md`](USER_ADMIN_GUIDE.md)
-> **Last verified:** 2026-10-23, branch `main`.
+> **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. This does not imply physical hardware verification.
 
 ---
 
@@ -114,7 +114,7 @@ heartbeats.
 | Pricing | `src/pricing.js` | Mirrors `planService.js`: billing prices, discounts, GST |
 | Models | `src/models.js` | Read/write models over the shared database |
 | Provisioning | `src/activate.js` | Creates org, user, subscription after verified payment |
-| Storage | `src/s3.js` | Presigned GET for private buckets |
+| Storage | `src/cloudinary.js` (`src/s3.js` compatibility re-export) | Cloudinary-backed media URLs; not AWS S3 presigning |
 
 **Shared-database rule:** `MONGODB_URI` must be the same database as `backend/`. A mismatch produces
 subscriptions the CRM cannot see — the most common deployment mistake. Startup logs the database
@@ -214,7 +214,7 @@ connected/status/paper/ribbon/queue). It is the first place an operator looks wh
 * Grouped **one row per session**, cover = `compositeUrl || url`.
 * Filters: event, date range, search by session id.
 * Click → full-size viewer with individual frames of the same session.
-* Download → presigned redirect (never a public URL).
+* Download → resolve the media after validating the application download ID; the returned Cloudinary URL may be directly reachable depending on account access settings.
 * Bulk actions are limited by design (delete requires confirmation + audit).
 
 > This grouping is why the booth must upload the final composite. A 3-slot template with only raw
@@ -337,7 +337,7 @@ rather than rendering an empty shell.
 | `@happypix/types` | Shared DTOs, layout types, pricing types |
 | `@happypix/api` | Typed client: auth, bootstrap, heartbeat, quote, payments, sessions |
 | `@happypix/state-machine` | XState `boothMachine` — the only place flow logic lives |
-| `@happypix/camera-core` | `CameraManager` + Canon CCAPI / Phone / Sony / PTP providers |
+| `@happypix/camera-core` | `CameraManager` + Nikon LAN bridge / Canon CCAPI / Phone / Android PTP / Sony provider seam |
 | `@happypix/printer-core` | `PrinterManager`, `RenderEngine` (Skia), IPP / DNP providers |
 | `@happypix/kiosk-core` | Kotlin native module: lock task mode, device owner |
 | `@happypix/ui` | Screens, `TemplateCanvas`, controls, theme, pricing helpers |
@@ -392,7 +392,9 @@ the machine, so a timeout cannot leave a half-paid session in limbo.
 | Module | Platform | Notes |
 |---|---|---|
 | VisionCamera | Android **and iPadOS** | Device camera; front camera preferred for a booth |
-| Canon CCAPI | Android, iPad (same TS provider) | HTTP REST over Wi-Fi, no native SDK; untested on iPad |
+| Canon CCAPI | Android, iPad (shared TS provider) | HTTP REST over Wi-Fi; validate model/firmware and physical iPad networking |
+| Nikon Kiosk Bridge | Android and iPad provider code | HTTP to Windows Electron on port 9123; status/live view/capture endpoints; settings not exposed to tablet |
+| Direct USB PTP | Android only | USB Host/OTG capture and JPEG transfer; no live view/settings; fixed placeholder battery value |
 | IPP printer | Android | Raw IPP over TCP 631; the request body is not RFC-complete, so real printers reject it |
 | Print Bridge (DNP) | Android, iPad | Posts the composite to the Electron app's `:9123` server on the same LAN — **the only working iPad print path** |
 | AirPrint | iPad | `AirPrintProvider` is a stub; a native `UIPrintInteractionController` bridge is still to be written |
@@ -539,7 +541,7 @@ deliberate trade-off: do not expose port 9123 to the internet.
 
 1. Render the final composite from the selected frames, layout, filter, ornaments and branding.
 2. Request print (with a 15 s timeout race) — never block the guest forever.
-3. Upload individuals **and** the composite to S3.
+3. Upload individuals **and** the composite using the configured Cloudinary-backed storage path (legacy S3 names are adapter compatibility).
 4. `POST /api/booth/sessions/complete` with `photos: [...individuals, { url: compositeUrl, isComposite: true }]`
    **and** top-level `compositeUrl`.
 5. Render the QR from `shareUrl` (fall back to a locally built URL if the response is late).
@@ -613,7 +615,7 @@ Suggested bases: `46` → 30, `57` → 50, `68` → 60, `810` → 80, `812` → 
 
 * Org logo, tagline, up to 15 sponsor logos.
 * Rendered in the reserved 15% footer, never overlapped by photos.
-* Logos are fetched through `asset-proxy` (or presigned) so canvas export is not tainted.
+* Logos are fetched through `asset-proxy` or supported media URL so canvas export is not tainted.
 
 ### 9.5 Configuration surfaces
 
@@ -693,7 +695,7 @@ Suggested bases: `46` → 30, `57` → 50, `68` → 60, `810` → 80, `812` → 
 | Capture | — | — | — | ✅ | ✅ |
 | Composite + filters | Sharp (server path) | preview | — | Skia | Canvas 2D |
 | Printing | — | telemetry | — | IPP/DNP | Spooler/CUPS |
-| S3 upload | sessions/complete | gallery | preview | ✅ | ✅ |
+| Cloudinary-backed upload | sessions/complete | gallery | preview | Implemented path | Validate configured deployment |
 | Guest QR | guestdownloads | — | ✅ portal | ✅ | ✅ |
 | Issue raising | supporttickets | guest support | — | ✅ | ✅ |
 | AI templates | ai services | ✅ | — | — | — |

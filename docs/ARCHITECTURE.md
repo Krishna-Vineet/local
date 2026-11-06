@@ -2,7 +2,7 @@
 
 > **Audience:** engineers, architects, investors doing technical diligence, new senior hires.
 > **Companions:** [`BACKEND_API_DATABASE.md`](BACKEND_API_DATABASE.md) · [`APPLICATIONS_CRM.md`](APPLICATIONS_CRM.md) · [`HARDWARE_PRINTING.md`](HARDWARE_PRINTING.md)
-> **Last verified:** 2026-10-23, branch `main`.
+> **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. This does not imply physical hardware verification.
 
 ---
 
@@ -46,9 +46,9 @@
         └──────────────┬──────────────┴──────────────┬───────────────┘
                        │                             │
               ┌────────▼─────────┐          ┌────────▼──────────┐
-              │  MongoDB Atlas   │          │   AWS S3 (ap-*)   │
+              │  MongoDB Atlas   │          │   Cloudinary CDN   │
               │  single database │          │ photos · assets   │
-              │  23 collections  │          │ presigned URLs    │
+              │  25 collections  │          │ Cloudinary media URLs │
               └──────────────────┘          └───────────────────┘
                        ▲
                        │ heartbeat 2 min · snapshot on revision change
@@ -72,7 +72,7 @@
 | Browser ↔ API | CRM/website JS | Node API | JWT bearer (8 h), CORS allowlist, rate limits |
 | Booth ↔ API | Booth device | Node API | Device token (hashed at rest), revocable, per-device |
 | Renderer ↔ OS (Electron) | React renderer | Main process | `contextIsolation: true`, `nodeIntegration: false`, narrow preload IPC |
-| Guest ↔ download | Anonymous browser | Website backend | 144-bit unguessable `downloadId`, 24 h TTL, presigned redirect |
+| Guest ↔ download | Anonymous browser | Website backend | 144-bit unguessable `downloadId`, 24 h TTL and application checks; current Cloudinary media URLs are not expiring S3 URLs |
 | Payment provider ↔ API | Razorpay/Cashfree | Node API | Raw-body HMAC signature verification, idempotent order IDs |
 
 ### 1.3 Tenancy model
@@ -107,7 +107,7 @@ constrains by `organizationId` in the same query.
 | Booth snapshot | `services/boothSnapshotService.js` — normalises templates → device pixel coords + `revision` hash |
 | Booth session API | `routes/boothRoutes.js` — login, bootstrap, heartbeat, quote, payments, upload URLs, session complete, consent, support |
 | Payments | `routes/paymentRoutes.js` — order create, verify, both webhooks, free/prepaid completion |
-| Photo + delivery | `routes/boothRoutes.js` → `persistSessionPhoto`, `services/guestDownloadService.js`, `utils/s3.js` |
+| Photo + delivery | `routes/boothRoutes.js` → `persistSessionPhoto`, `services/guestDownloadService.js`, Cloudinary storage utility (legacy S3 aliases) |
 | Gallery & sharing | `routes/crm/org.js` gallery, `routes/photoShareRoutes.js`, `models/PhotoShare.js` |
 | Support | `models/SupportTicket.js` (guest), `PlatformSupportRequest.js` (org → platform) |
 | AI templates | `services/ai/*` — prompt classification, design JSON, FLUX backgrounds |
@@ -126,7 +126,7 @@ starve booth heartbeats. Shares the **same MongoDB** for `subscriptionplans`, `o
 | Public plan catalogue + live discounts | `GET /api/plans` |
 | Subscription checkout | `POST /api/checkout/order`, `POST /api/checkout/verify` |
 | Guest download page data | `GET /api/downloads/:id` |
-| Guest file stream (presigned) | `GET /api/downloads/:id/file/:kind` |
+| Guest file resolution (download-ID validated) | `GET /api/downloads/:id/file/:kind` |
 | Server-to-server download creation | `POST /api/internal/downloads` (shared secret) |
 | Sales leads from contact form | `POST /api/leads` |
 | Health | `GET /health` |
@@ -145,7 +145,7 @@ single permission matrix in `src/lib/roles.js`. The in-browser mock backend
 | Process model | RN bridge, native modules (Kotlin) | RN bridge, no custom native modules yet | Renderer (React) + main (Node) with IPC |
 | State | XState finite machine (`boothMachine.ts`) | Same code | React context + reducer, idle timers |
 | Compositing | Skia (`RenderEngine`, `SkiaRenderAdapter`) | Same code | Canvas 2D (`utils/composite.ts`) |
-| Camera | VisionCamera + Canon CCAPI + PTP seam | VisionCamera (front camera), CCAPI untested | `getUserMedia` + `reportCamera` telemetry |
+| Camera | VisionCamera + Canon CCAPI + Nikon LAN bridge + Android USB PTP capture | VisionCamera; Nikon via LAN bridge provider, network validation required | `getUserMedia` + Windows Nikon SDK bridge / Canon CCAPI secondary path |
 | Printing | IPP / DNP Print Bridge / OS | **Print Bridge only**; AirPrint is a stub | PowerShell `System.Drawing` (Win), `lp` (macOS) |
 | Kiosk lock | Lock Task Mode (device owner) | Guided Access / Single App Mode (MDM) | BrowserWindow `kiosk: true` |
 | Offline | AsyncStorage snapshot + `offlineSyncService` | Same code | `services/cache.ts` + device store JSON |
@@ -165,9 +165,9 @@ The 18 iPad-specific findings, the build steps and the lockdown recipe live in
 | CRM/website → main API | HTTPS JSON | JWT bearer | REST |
 | Website → website backend | HTTPS JSON | none (public) | REST |
 | Booth → main API | HTTPS JSON | `Authorization: Bearer <deviceToken>` | REST |
-| Main API → S3 | HTTPS (SDK) | IAM user / instance role | PUT, presigned GET |
+| Main API → Cloudinary | HTTPS | Server-side Cloudinary credentials; booth gets scoped upload signature | upload / delivery URLs |
 | Razorpay/Cashfree → API | HTTPS JSON | HMAC signature | Webhook |
-| Gallery → API | HTTPS | JWT | REST (redirects to presigned S3) |
+| Gallery → API | HTTPS | JWT for CRM routes; guest download ID for guests | REST; media delivered through Cloudinary URL |
 | Tablet on LAN → Electron print bridge | HTTP | none (LAN-scoped) | `POST /api/print` on `:9123` |
 | App → printer | Spooler / CUPS / IPP:631 | OS | driver-managed |
 
@@ -224,13 +224,13 @@ printed on an unpaid order, and cannot be double-charged because order creation 
 ### 3.4 Session completion and delivery
 
 ```
-POST /booth/sessions/upload-urls     → presigned S3 PUT URLs (individuals + composite)
-     booth uploads bytes to S3
+POST /booth/sessions/upload-urls     → signed Cloudinary upload parameters (when configured)
+     booth uploads bytes to Cloudinary or submits session data for backend persistence
 POST /booth/sessions/complete
      body: { photos: [url | {url, isComposite}], compositeUrl, ... }
         │
         ├─► photoTasks: create/update Photo docs (url, compositeUrl, sessionId, eventId, deviceId)
-        ├─► persistSessionPhoto → S3 object (data URLs fall back to server-side upload)
+        ├─► persistSessionPhoto → Cloudinary upload when configured (local/data-URL fallback paths exist)
         ├─► guestDownloadService.create → GuestDownload { downloadId, expiresAt: +24 h }
         ├─► digital token / PhotoShare (if enabled)
         └─► response { shareUrl, downloadId, expiresAt }
@@ -239,7 +239,7 @@ POST /booth/sessions/complete
 Booth renders QR → https://<website>/download/<downloadId>
         │
         ▼
-Guest opens page → website-backend → presigned GET → 302 to S3
+Guest opens page → website-backend validates the GuestDownload → Cloudinary media URL
 ```
 
 **Composite-first gallery rule:** the CRM gallery groups rows by `sessionId` and displays
@@ -410,7 +410,7 @@ IDLE
   → CUSTOMISE (filters: original/warm/cool/bw/vintage/soft/party; stickers; ornaments)
   → COMPOSITE (300 DPI render, branding footer)
   → PRINT ("Print it") + DETAILS (phone/email opt-in)
-  → UPLOAD individuals + composite → S3
+  → UPLOAD individuals + composite → Cloudinary-backed storage
   → SUCCESS (print status, QR, ticket/issue button, timer paused while modal open)
   → IDLE (session reset, counters incremented)
 ```
@@ -434,7 +434,7 @@ selectedPhotos[i] (dataURL)
         │
         ▼
   compositeDataUrl (PNG/JPEG)  ──┬──► print (spooler / CUPS)
-                                 └──► S3 upload (compositeUrl)
+                                 └──► Cloudinary-backed upload (compositeUrl)
 ```
 
 ### 6.6 Printing
@@ -453,7 +453,7 @@ selectedPhotos[i] (dataURL)
 |---|---|
 | Identity | `downloadId` = 144-bit base64url random (unguessable) |
 | TTL | `expiresAt = now + 24 h`; MongoDB TTL index deletes the doc |
-| Access | `GET /api/downloads/:id` → metadata; `/file/:kind` → presigned S3 GET |
+| Access | `GET /api/downloads/:id` → metadata; `/file/:kind` → Cloudinary URL (application download ID is TTL-limited) |
 | Abuse control | `downloadLimiter` per IP; `viewCount`/`downloadCount` tracked |
 | QR | `shareUrl` from session-complete response, with `guaranteedShareUrl` fallback if the response is late |
 | Privacy | No login, no email required; guest can opt in to contact details |
@@ -487,7 +487,7 @@ Prompt ("elegant mehendi night, 3 photos, gold")
    → TemplateGenerationService → strict Design JSON (palette, typography, treatment, asset prompts)
    → IP sanitiser strips trademarked characters
    → TogetherImageProvider (FLUX) → 1024×1024 base64
-   → CRM preview (IndexedDB) → user saves → S3 + orgaitemplates
+   → CRM preview (IndexedDB) → user saves → configured Cloudinary upload + org templates
 ```
 
 Geometry is immutable by AI. Only the designer can change slot coordinates, and only the platform
@@ -499,8 +499,8 @@ can publish a global template. This prevents an LLM from producing an unprintabl
 
 | Data | Written by | Lives in | Retention |
 |---|---|---|---|
-| Individual captures | Booth | S3 + `photos` | Until org deletion; gallery visibility governed by settings |
-| Composite | Booth | S3 + `photos.compositeUrl` | Same as captures |
+| Individual captures | Booth | Cloudinary URL + `photos` | Until org deletion; gallery visibility governed by settings |
+| Composite | Booth | Cloudinary URL + `photos.compositeUrl` | Same as captures |
 | GuestDownload record | Session complete | `guestdownloads` | **24 h** (TTL index) |
 | Guest download counter | Public page | `guestdownloads` | With the record |
 | Booth telemetry | Heartbeat | `devices.telemetry` (latest only) | Overwritten each beat |
@@ -587,14 +587,14 @@ every shift change and would leave orphaned permissions.
 | # | Limitation | Impact | Mitigation / plan |
 |---|---|---|---|
 | 1 | **Canon EDSDK not bundled in Electron** | A USB-tethered Canon on a PC kiosk falls back to UVC (`getUserMedia`) rather than full remote control | Use CCAPI over Wi-Fi (works today), or add EDSDK behind a vendor agreement — seam exists in `hardware.ts` |
-| 2 | **Sony / Nikon native transports pending** | Those bodies are unsupported on Android | Interfaces and opcodes are mapped; transport work is scoped in the roadmap |
+| 2 | **Camera SDK coverage is platform-specific** | Nikon Remote SDK runs in Windows Electron; Android direct PTP capture is limited, iPad needs the LAN bridge | Direct Android PTP has no live view/settings; Sony remains a provider seam; test exact bodies |
 | 3 | **CUPS does not expose dye-sub media counts** | macOS cannot report `paperRemaining` for some drivers | Field returns `null` (honest); operator gets a low-media prompt by print count threshold |
 | 4 | **No automated E2E for booths** | Regressions caught by unit/contract tests + manual QA | Detox (Android) and Playwright-for-Electron planned; see TESTING doc |
 | 5 | **iPad build not shipped** | The Xcode target and iPad configuration exist and the session flow runs, but printing, kiosk lockdown, app icons and TestFlight signing are open | Tracked finding-by-finding in [`IPAD_SUPPORT.md`](IPAD_SUPPORT.md) §5 and §10 |
 | 6 | **Video booth / GIF mode** | Add-on exists in the price catalogue but is not implemented in the booth | Scoped as a post-launch feature; do not sell the add-on yet |
 | 7 | **Single Mongo cluster, one region** | Regional latency and blast radius | Atlas replica set + automated backup today; multi-region read preference is in the scalability plan |
 | 8 | **Cron jobs run in-process** | A crash mid-job delays retries | Idempotent jobs + heartbeat-driven retries; moving to a queue is stage-2 of the scale plan |
-| 9 | **`s3` assets served directly in some legacy paths** | Mixed presigned/direct URLs in older template records | New code always presigns; migration script is in `backend/scripts/` |
+| 9 | **Legacy S3 names remain in schemas and adapter exports** | Older records may contain S3-style fields/URLs; current adapter delegates to Cloudinary | Treat `s3Key` and `utils/s3.js` as compatibility naming; verify and migrate stored URLs deliberately |
 | 10 | **Email/SMS OTP depends on provider quota** | Login lockout risk if SendGrid/Twilio fails | Password login is primary; OTP is for reset only, with rate limits and support fallback |
 
 ---
@@ -646,11 +646,11 @@ entries or two download records.
 Health endpoint returns `503`. The backend boots but fails requests with a structured error rather
 than hanging. Booths keep operating offline; CRM shows a retryable error state.
 
-### 10.7 Media loss (S3 object deleted)
+### 10.7 Media loss (Cloudinary asset unavailable)
 
-Presigned URL generation returns 404; the guest page shows "this photo is no longer available" and
-offers a support link. The `Photo` document is not deleted, so the org can re-upload from local
-booth cache where it still exists.
+Current photo URLs are Cloudinary-backed; application download-link expiry does not expire the media
+URL itself. If an asset is deleted or unavailable, verify its Cloudinary public ID/URL and the source
+booth cache before promising recovery. The `Photo` record may remain even if the media object is gone.
 
 ---
 

@@ -5,6 +5,7 @@
 > **Generated file:** do not edit by hand. The source of truth is `docs/diagrams/src/*.mmd`;
 > regenerate with `python3 docs/scripts/build_diagrams.py`.
 >
+> **Implementation snapshot:** reviewed against commit `d0ba133` (2026-11-06). Current diagrams show Cloudinary-backed media and platform-specific Nikon paths; the `05 · Future architecture` family is explicitly a target state.
 > **Rendering:** every definition is Mermaid. GitHub renders them natively. For a styled, searchable
 > viewer open [`docs/diagrams/index.html`](diagrams/index.html) in a browser.
 
@@ -16,7 +17,7 @@
 |---|---|---|---|
 | 1 | [Complete HappyPix ecosystem — every component and how it connects](#d1-1) | `flowchart` | Solid arrows are request/response over HTTPS or local IPC. An edge label names the protocol or the purpose of the call. |
 | 2 | [Trust boundaries, credentials and data ownership](#d1-2) | `flowchart` | This is the security view of the same system: who holds which credential, and which data crosses which boundary. |
-| 3 | [ER overview — 23 collections and their foreign keys](#d2-1) | `erDiagram` | Read this first, then open the five detail diagrams. Cardinality is as enforced by the code, not as declared: MongoDB has no real… |
+| 3 | [ER overview — 25 collections and their foreign keys](#d2-1) | `erDiagram` | Read this first, then open the five detail diagrams. Cardinality is as enforced by the code, not as declared: MongoDB has no real… |
 | 4 | [ER detail — identity, tenancy, subscription and configuration](#d2-2) | `erDiagram` | The tenant root is ORGANIZATION. Every organisation-scoped document carries organizationId and every query is pinned to… |
 | 5 | [ER detail — events, booths, templates and coupons](#d2-3) | `erDiagram` | EVENT is the unit of booth work; DEVICE.assignedEventId is the single pointer that decides which event a booth is shooting.… |
 | 6 | [ER detail — money: payments, subscriptions, coupons and payouts](#d2-4) | `erDiagram` | There is no single "revenue" collection. Payment rows are per booth transaction; Subscription rows are per platform plan… |
@@ -24,16 +25,16 @@
 | 8 | [ER detail — support, leads and the audit trail](#d2-6) | `erDiagram` | Three different support models exist and none of them is a duplicate: SUPPORT_TICKET is a guest or client ticket raised from a… |
 | 9 | [DFD level 0 — context diagram](#d3-0) | `flowchart` | One process, the whole product. Every arrow is a real data flow that crosses the system boundary; none of them is a "management"… |
 | 10 | [DFD level 1 — the nine processes of the platform](#d3-1) | `flowchart` | This level is the map of the backend: every mounted router belongs to exactly one of these processes. |
-| 11 | [DFD level 2 — process 1.0 booth session](#d3-2) | `flowchart` | The important detail is that the heavy media work happens on the booth, not the server: the API only issues presigned URLs and… |
+| 11 | [DFD level 2 — process 1.0 booth session](#d3-2) | `flowchart` | With Cloudinary configured, the API issues signed upload parameters and the booth uploads directly; server-persisted and local… |
 | 12 | [DFD level 2 — process 2.0 payment and settlement](#d3-3) | `flowchart` | The server is the price authority: the booth asks for a quote, and any amount that does not match the resolved price chain is… |
-| 13 | [DFD level 2 — process 3.0 digital delivery](#d3-4) | `flowchart` | Security detail: the guest never receives an S3 URL. They receive an unguessable 144-bit download id, and the API signs… |
+| 13 | [DFD level 2 — process 3.0 digital delivery](#d3-4) | `flowchart` | The guest receives an unguessable 144-bit application download id. Current Cloudinary media URLs may remain directly accessible… |
 | 14 | [DFD level 2 — process 4.0 gallery publishing](#d3-5) | `flowchart` | Publication is a three-way AND: platform gallery policy, guest consent (only if required), and the photo belonging to the… |
 | 15 | [DFD level 2 — process 5.0 event and device management](#d3-6) | `flowchart` | Every write here either consumes a plan limit or invalidates a booth snapshot. The revision bump is what makes a change reach the… |
 | 16 | [DFD level 2 — process 6.0 tenant onboarding, plans and limits](#d3-7) | `flowchart` | Limits live in exactly one place (services/planService.js). A plan edit in the platform console propagates allowedDevices and… |
 | 17 | [DFD level 2 — process 7.0 templates and AI design](#d3-8) | `flowchart` | AI generation is metered: 5 credits per template generation, 1 credit per background removal. Credits are decremented only after… |
 | 18 | [DFD level 2 — process 8.0 support handling](#d3-9) | `flowchart` | Two lanes: guest tickets are handled by the organisation; org tickets are handled by HappyPix. A denied platform request can be… |
 | 19 | [HLD — the system as four layers plus one control plane](#d4-1) | `flowchart` | The rule that keeps this maintainable: no presentation code contains business rules, and no route contains pricing, permission or… |
-| 20 | [HLD — deployment topology, regions and failure domains](#d4-2) | `flowchart` | Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an S3 outage… |
+| 20 | [HLD — deployment topology, regions and failure domains](#d4-2) | `flowchart` | Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an… |
 | 21 | [LLD — the exact request pipeline and middleware order](#d4-3) | `flowchart` | Order is load-bearing. The origin check runs before any body parsing, and the Mongo gate runs after static assets so /uploads… |
 | 22 | [LLD — backend module dependency graph](#d4-4) | `flowchart` | Arrows point from caller to callee. Nothing in services/ or utils/ imports a route, which is why the same logic can be reached… |
 | 23 | [LLD sequence — device pairing, snapshot and revision sync](#d4-5) | `sequenceDiagram` | The device token is returned exactly once and stored only as a hash. Every later call proves identity with it, and the booth only… |
@@ -72,7 +73,7 @@ default Mermaid theme, where connectors stay neutral; open `docs/diagrams/index.
 | Blue | HTTP / API call | the label, or an endpoint-shaped node (`/api/booth/...`) |
 | Red | Auth, token, permission | `token`, `login`, `session`, `permission`, `role` |
 | Green | MongoDB / data | `MongoDB`, `collection`, `query`, `index`, `TTL index` |
-| Amber | S3 / photo media | `S3`, `upload`, `presign`, `photo`, `composite` |
+| Amber | Cloudinary / photo media | `Cloudinary`, `upload`, `signature`, `photo`, `composite` |
 | Purple | Payment, price, plan | `payment`, `order`, `coupon`, `price`, `settlement` |
 | Orange | Printing | `print`, `spool`, `IPP`, `DNP`, `paper` |
 | Cyan | Async, webhook, TTL | `webhook`, `cron`, `retry`, `poll`, `expiry` |
@@ -111,10 +112,10 @@ flowchart TB
   subgraph CLIENTS["Client applications"]
     C1["Website SPA<br/>React + Vite<br/>happypix.in"]
     C2["CRM console SPA<br/>React + Vite<br/>crm.happypix.in"]
-    C3["Electron booth<br/>Windows + macOS<br/>electron/"]
-    C4["Android booth<br/>client-app/"]
+    C3["Electron booth<br/>Windows / macOS / Linux<br/>Nikon SDK on Windows<br/>electron/"]
+    C4["React Native booth<br/>Android + iPad<br/>client-app/"]
     C5["Guest phone<br/>browser"]
-    C6["Print bridge<br/>printServer.ts"]
+    C6["LAN Print + Nikon Bridge<br/>printServer.ts :9123"]
   end
 
   subgraph EDGE["Vercel edge + serverless (bom1 / Mumbai)"]
@@ -136,15 +137,15 @@ flowchart TB
   end
 
   subgraph DATA["Data stores"]
-    D1[("MongoDB Atlas<br/>23 collections")]
-    D2[("AWS S3 bucket<br/>photos, logos, artwork")]
-    D3[("Local disk uploads/<br/>dev and S3 fallback")]
+    D1[("MongoDB Atlas<br/>25 collections")]
+    D2[("Cloudinary<br/>photos, logos, artwork")]
+    D3[("Local disk uploads/<br/>backend fallback")]
     D4[("Process caches<br/>gallery 15 s, printer 30 s")]
   end
 
   subgraph HW["Customer hardware at the venue"]
     H1["DNP dye-sub<br/>photo printer"]
-    H2["DSLR or USB<br/>camera"]
+    H2["Nikon / Canon / UVC<br/>camera"]
     H3["Touchscreen<br/>kiosk display"]
   end
 
@@ -158,6 +159,7 @@ flowchart TB
     X7["Together FLUX<br/>+ xAI<br/>image generation"]
     X8["remove.bg<br/>background removal"]
     X9["GitHub Releases<br/>installers and APKs"]
+    X10["Cloudinary<br/>media CDN"]
   end
 
   A1 --> C1
@@ -176,9 +178,11 @@ flowchart TB
   C5 -->|"HTTPS: /download/:id"| E3
   C3 -->|"USB / OS spooler"| C6
   C6 -->|"IPP, CUPS,<br/>PowerShell PrintDocument"| H1
-  C3 -->|"USB Video / AVFoundation"| H2
+  C3 -->|"Windows: Nikon Remote SDK over USB; host camera APIs"| H2
   C3 --> H3
-  C4 -->|"CameraX<br/>USB or network"| H2
+  C4 -->|"tablet camera / Android PTP USB OTG"| H2
+  C4 -->|"HTTP on trusted LAN: Nikon status / live view / capture"| C6
+  C6 -->|"Windows Nikon SDK bridge"| H2
   C4 -->|"IPP / raw socket"| H1
 
   E1 --> C1
@@ -208,10 +212,11 @@ flowchart TB
   S8 --> D1
   S9 --> D1
   S9 --> D3
-  E2 -->|"presigned PUT<br/>booth uploads directly"| D2
-  D2 -->|"presigned GET<br/>1 h gallery, 24 h download"| C5
-  D2 -->|"presigned GET"| C2
-  D3 --> D2
+  E2 -->|"Cloudinary signed upload params"| C4
+  C4 -->|"HTTPS media upload"| X10
+  E2 -->|"server-side upload / local fallback"| X10
+  X10 -->|"media URL"| E3
+  D3 --> E2
 
   S4 -->|"create order,<br/>poll status"| X1
   S4 -->|"create order,<br/>fetch QR"| X2
@@ -313,13 +318,13 @@ flowchart LR
 
 ## 2 · Database (ER)
 
-*The 23 Mongoose collections and their foreign keys.*
+*The 25 Mongoose collections and their foreign keys.*
 
 <sub>Source: `docs/diagrams/src/02-er.mmd` · 6 diagrams</sub>
 
 <a id="d2-1"></a>
 
-### D2-1 — ER overview — 23 collections and their foreign keys
+### D2-1 — ER overview — 25 collections and their foreign keys
 
 > Read this first, then open the five detail diagrams. Cardinality is as enforced by the code, not as declared: MongoDB has no real FK constraints, so every arrow is enforced by an application check.
 >
@@ -720,7 +725,7 @@ erDiagram
 
 > Four collections carry a MongoDB TTL index on expiresAt: PHOTO_SHARE, GUEST_DOWNLOAD, DIGITAL_TOKEN (and the index is declared, not cron-driven). Data disappears without any application write, so every reader must also check expiry explicitly.
 >
-> PHOTO has no TTL — photo rows are permanent by design (a legacy TTL index on createdAt is actively dropped at boot). Its URL points at a private bucket, so readers must sign.
+> PHOTO has no TTL — photo rows are permanent by design (a legacy TTL index on createdAt is actively dropped at boot). Its URL may point to a Cloudinary delivery URL; guest-link expiry does not revoke that media URL.
 
 ```mermaid
 erDiagram
@@ -728,7 +733,7 @@ erDiagram
     objectId _id PK
     objectId organizationId FK "nullable for legacy captures"
     string s3Key
-    string url "private bucket URL"
+    string url "Cloudinary / legacy media URL"
     string compositeUrl "final print strip"
     objectId eventId FK
     objectId deviceId FK
@@ -932,7 +937,7 @@ flowchart LR
   E7["Cashfree"]
   E8["SendGrid /<br/>Twilio / WhatsApp"]
   E9["Groq / Together /<br/>xAI / remove.bg"]
-  D1[("AWS S3<br/>photo objects")]
+  D1[("Cloudinary<br/>photo media")]
 
   E1 -->|"photo selection, consent,<br/>print request, payment"| P0
   P0 -->|"print, QR code, download link"| E1
@@ -952,8 +957,8 @@ flowchart LR
   P0 -->|"OTP, receipts"| E8
   P0 -->|"prompts, images"| E9
   E9 -->|"design assets"| P0
-  P0 -->|"presigned upload"| D1
-  D1 -->|"presigned download"| E1
+  P0 -->|"signed Cloudinary upload parameters"| D1
+  D1 -->|"Cloudinary media URL"| E1
 ```
 
 <a id="d3-1"></a>
@@ -996,7 +1001,7 @@ flowchart TB
   D11[("D11 support tickets")]
   D12[("D12 audit log")]
   D13[("D13 settings and<br/>org defaults")]
-  D14[("D14 S3 objects")]
+  D14[("D14 Cloudinary media")]
 
   E2 -->|"pairing, heartbeat,<br/>session payload"| P1
   P1 -->|"snapshot, revision,<br/>quote, upload URLs"| E2
@@ -1014,7 +1019,7 @@ flowchart TB
   P3 -->|"link, QR, file"| E1
   P3 -->|"email, SMS, WhatsApp"| E6
   P4 --> D3
-  P4 -->|"signed image URLs,<br/>session feed"| E3
+  P4 -->|"Cloudinary media URLs,<br/>session feed"| E3
   E3 -->|"event, device, price,<br/>coupon changes"| P5
   P5 --> D1
   P5 --> D2
@@ -1048,7 +1053,7 @@ flowchart TB
 
 ### D3-2 — DFD level 2 — process 1.0 booth session
 
-> The important detail is that the heavy media work happens on the booth, not the server: the API only issues presigned URLs and writes thin Photo rows.
+> With Cloudinary configured, the API issues signed upload parameters and the booth uploads directly; server-persisted and local fallback paths also exist.
 
 ```mermaid
 flowchart LR
@@ -1057,7 +1062,7 @@ flowchart LR
   P11(("1.1<br/>Pair device"))
   P12(("1.2<br/>Serve config<br/>snapshot"))
   P13(("1.3<br/>Heartbeat and<br/>revision check"))
-  P14(("1.4<br/>Issue presigned<br/>upload URLs"))
+  P14(("1.4<br/>Issue signed<br/>Cloudinary upload params"))
   P15(("1.5<br/>Persist session<br/>records"))
   P16(("1.6<br/>Capture and compose<br/>on device"))
   P17(("1.7<br/>Record consent"))
@@ -1066,7 +1071,7 @@ flowchart LR
   D3[("D3 photos")]
   D6[("D6 organizations")]
   D13[("D13 settings<br/>and defaults")]
-  D14[("D14 S3 objects")]
+  D14[("D14 Cloudinary media")]
   D12[("D12 audit log")]
 
   E1 -->|"email, password,<br/>deviceUuid"| P11
@@ -1082,9 +1087,9 @@ flowchart LR
   P13 --> D1
   P13 -->|"hardware counters"| D1
   E1 -->|"sessionId,<br/>file list"| P14
-  P14 -->|"30 presigned PUT URLs"| E1
+  P14 -->|"Cloudinary upload URL + signed parameters"| E1
   P14 --> D14
-  E1 -->|"files upload<br/>directly to S3"| D14
+  E1 -->|"files upload<br/>to Cloudinary"| D14
   E2 -->|"frames and filters"| P16
   P16 -->|"composited strip"| E1
   E1 -->|"photo keys, composite,<br/>sessionId"| P15
@@ -1153,7 +1158,7 @@ flowchart TB
 
 ### D3-4 — DFD level 2 — process 3.0 digital delivery
 
-> Security detail: the guest never receives an S3 URL. They receive an unguessable 144-bit download id, and the API signs short-lived URLs only after checking expiry.
+> The guest receives an unguessable 144-bit application download id. Current Cloudinary media URLs may remain directly accessible beyond the application link TTL; verify account access settings.
 
 ```mermaid
 flowchart LR
@@ -1162,12 +1167,12 @@ flowchart LR
   E3["Email / SMS /<br/>WhatsApp"]
   P31(("3.1<br/>Create guest<br/>download"))
   P32(("3.2<br/>Resolve download<br/>page"))
-  P33(("3.3<br/>Sign and stream<br/>file"))
+  P33(("3.3<br/>Resolve and stream<br/>file"))
   P34(("3.4<br/>Create share<br/>token"))
   P35(("3.5<br/>Deliver over<br/>a channel"))
   D10[("D10 guest downloads,<br/>shares, tokens")]
   D3[("D3 photos")]
-  D14[("D14 S3 objects")]
+  D14[("D14 Cloudinary media")]
   D15[("D15 delivery records")]
 
   E2 -->|"session photos,<br/>composite"| P31
@@ -1175,11 +1180,11 @@ flowchart LR
   P31 --> D10
   E2 -->|"QR code of<br/>/download/:id"| E1
   E1 -->|"GET /downloads/:id"| P32
-  P32 -->|"composite and frame<br/>signed URLs, TTL left"| E1
+  P32 -->|"composite and frame<br/>media URLs, TTL left"| E1
   P32 --> D10
   P32 --> P33
   E1 -->|"GET file kind"| P33
-  P33 -->|"presigned GET"| D14
+  P33 -->|"Cloudinary media URL"| D14
   P33 -->|"stream or redirect"| E1
   P33 --> D10
   E1 -->|"create share"| P34
@@ -1212,7 +1217,7 @@ flowchart TB
   P45(("4.5<br/>Sign and serve<br/>image"))
   D13[("D13 global setting<br/>row")]
   D3[("D3 photos")]
-  D14[("D14 S3 objects")]
+  D14[("D14 Cloudinary media")]
   D16[("D16 in-process<br/>15 s cache")]
 
   E1 -->|"galleryEnabled,<br/>requireGuestConsent"| P41
@@ -1225,7 +1230,7 @@ flowchart TB
   P43 -->|"visible photo set"| P44
   P44 -->|"one row per session,<br/>composite preferred"| E2
   E2 -->|"GET /api/org/gallery"| P43
-  P44 -->|"signed URLs"| P45
+  P44 -->|"Cloudinary media URLs"| P45
   P45 --> D14
   P45 -->|"image bytes"| E2
   P44 -->|"galleryPhotoIds"| E3
@@ -1350,7 +1355,7 @@ flowchart LR
   D9[("D9 templates,<br/>layouts, org AI templates")]
   D6[("D6 organizations<br/>aiCredits")]
   D13[("D13 template<br/>prices")]
-  D14[("D14 S3 assets")]
+  D14[("D14 Cloudinary assets")]
   D12[("D12 audit log")]
 
   E1 -->|"GET layouts"| P71
@@ -1460,15 +1465,15 @@ flowchart TB
     S3["couponService<br/>discount rules"]
     S4["gallerySettingsService<br/>policy + visibility"]
     S5["guestDownloadService<br/>24 h links"]
-    S6["photoUrlService<br/>S3 signing"]
+    S6["photoUrlService<br/>Cloudinary URL delivery"]
     S7["DeliveryService<br/>email, SMS, WhatsApp"]
     S8["TemplateGenerationService<br/>AI design"]
     S9["eventService<br/>status and views"]
   end
 
   subgraph L4["4 · Data layer"]
-    M[("MongoDB Atlas<br/>23 Mongoose models")]
-    O[("AWS S3<br/>private bucket")]
+    M[("MongoDB Atlas<br/>25 Mongoose models")]
+    O[("Cloudinary<br/>media storage")]
     K[("In-process caches<br/>gallery 15 s, printer 30 s")]
   end
 
@@ -1518,7 +1523,7 @@ flowchart TB
 
 ### D4-2 — HLD — deployment topology, regions and failure domains
 
-> Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an S3 outage only breaks images and uploads, and a gateway outage blocks checkout but not capture and printing.
+> Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an Cloudinary outage only breaks images and uploads, and a gateway outage blocks checkout but not capture and printing.
 
 ```mermaid
 flowchart TB
@@ -1542,9 +1547,9 @@ flowchart TB
     V4["website-backend project<br/>plans, checkout, downloads, leads"]
   end
 
-  subgraph AWS["AWS · ap-south-1"]
-    A1[("S3 bucket — private<br/>photos/, happypix/org/logos/")]
-    A2["S3 lifecycle rules<br/>NOT CONFIGURED YET"]
+  subgraph MEDIA["Cloudinary · account region/plan to verify"]
+    A1[("Cloudinary media<br/>photos, logos, artwork")]
+    A2["Access, retention and backup<br/>account configuration to verify"]
   end
 
   subgraph ATLAS["MongoDB Atlas · ap-south-1"]
@@ -1585,7 +1590,7 @@ flowchart TB
   V3 --> T5
   T1 -->|"webhook"| V3
   T2 -->|"webhook"| V3
-  V1 -->|"presigned GET<br/>direct from browser"| A1
+  V1 -->|"Cloudinary media URL<br/>direct delivery"| A1
 ```
 
 <a id="d4-3"></a>
@@ -1793,7 +1798,6 @@ sequenceDiagram
   participant BO as Booth app
   participant API as Main API
   participant DB as MongoDB
-  participant S3 as S3
 
   OP->>BO: enter org email, password, device name
   BO->>API: POST /api/booth/login
@@ -1847,7 +1851,7 @@ sequenceDiagram
   participant API as Main API
   participant GW as Razorpay / Cashfree
   participant DB as MongoDB
-  participant S3 as S3
+  participant C as Cloudinary media
 
   G->>BO: choose template and print count
   BO->>API: POST /api/booth/checkout/quote
@@ -1881,16 +1885,16 @@ sequenceDiagram
     API->>DB: Coupon usedCount + 1
   end
   BO->>API: POST /api/booth/sessions/upload-urls
-  API-->>BO: presigned PUT URLs, 900 s
-  BO->>S3: PUT frames and composite directly
+  API-->>BO: Cloudinary signed upload parameters
+  BO->>C: upload frames and composite directly
   BO->>API: POST /api/booth/sessions/complete
   API->>DB: Photo.create per file, compositeUrl on all rows
   API->>DB: GuestDownload.create 24 h TTL
   API-->>BO: shareUrl, downloadId, galleryPhotoIds
   BO->>G: print strip, show QR of the download page
   G->>API: GET /api/downloads/:id
-  API->>S3: presign composite and frames
-  API-->>G: signed URLs, expiresAt
+  API->>C: resolve media URLs after download-ID check
+  API-->>G: Cloudinary media URLs, application link expiresAt
 ```
 
 <a id="d4-7"></a>
@@ -1970,7 +1974,7 @@ flowchart TB
   S11 --> S12["Photo selection<br/>filter and retake"]
   S12 --> S13["Customize<br/>stickers, text, layout"]
   S13 --> S14["Checkout<br/>quote, QR, countdown"]
-  S14 -->|"paid or free"| S15["Upload<br/>presigned PUT to S3"]
+  S14 -->|"paid or free"| S15["Upload<br/>to Cloudinary-backed storage"]
   S15 -->|"session complete"| S16["Print<br/>copies per payment"]
   S16 --> S17["Success<br/>download QR,<br/>raise-issue action"]
   S17 -->|"issue raised"| S18["POST /api/booth/support<br/>ticket created"]

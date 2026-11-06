@@ -27,18 +27,18 @@ FLOWS = [
             ("Booth", "Polls GET /api/booth/payments/:id every ~3 s.",
              "The gateway is queried directly; on success the row becomes paid and the coupon is counted once."),
             ("Booth", "Prints locally, then asks for upload targets: POST /api/booth/sessions/upload-urls.",
-             "Up to 30 presigned PUT URLs — the heavy bytes never touch the API."),
-            ("Booth", "PUTs frames + composite straight to S3, then POST /api/booth/sessions/complete.",
+             "Up to 30 Cloudinary upload targets when configured; heavy bytes upload directly and fallback paths remain."),
+            ("Booth", "Uploads frames + composite through the configured Cloudinary flow, then POST /api/booth/sessions/complete.",
              "One Photo row per file, composite attached to every row, guest consent recorded, GuestDownload created "
              "(24 h) and a shareUrl returned."),
             ("Guest", "Success screen shows the QR → /download/<id>.",
-             "GET /api/downloads/:id signs S3 URLs; the page streams the composite and frames."),
+             "GET /api/downloads/:id validates the GuestDownload ID and returns Cloudinary or legacy media URLs; URL access may outlive the application link."),
             ("Guest", "Optionally sends it to WhatsApp / email / SMS.",
              "POST /api/share/deliver → DeliveryService → provider, one DeliveryRecord."),
             ("Guest", "Raises an issue after a successful session.",
              "POST /api/booth/support → SupportTicket with holdPhotos=true, visible to the organisation instantly."),
             ("Organisation", "Sees the session in the gallery and the money in revenue.",
-             "GET /api/org/gallery (signed URLs), GET /api/org/revenue (matrix + transactions)."),
+             "GET /api/org/gallery (tenant- and policy-checked Cloudinary media URLs), GET /api/org/revenue (matrix + transactions)."),
             ("Organisation", "Withdraws the wallet balance.",
              "POST /api/org/wallet/withdraw → Withdrawal(processing), settled manually by HappyPix."),
             ("HappyPix", "Hourly cron expires plans and purges stale uploads.",
@@ -73,7 +73,7 @@ FLOWS = [
   B5 --> A5
   G6 --> A6
   A3 --> PG[(Razorpay / Cashfree)]
-  A4 --> S3[(S3 bucket)]
+  A4 --> S3[(Cloudinary media storage)]
   A5 --> DB[(MongoDB Atlas)]
   A1 --> DB""",
     },
@@ -171,49 +171,48 @@ FLOWS = [
             ("Booth", "Composites the strip locally before asking for upload targets.",
              "The composite is a real file, not a URL to be built later."),
             ("Booth", "POST /api/booth/sessions/upload-urls {sessionId, files[{type:'frame'|'composite', index}]}",
-             "Presigned PUTs (900 s) with deterministic keys: "
+             "Cloudinary upload signatures and generated public IDs in the organization/event folder: "
              "photos/<orgId>/<eventId>/<sessionId>-<type>[-index]-<ts>-<rand>.<ext>."),
-            ("Booth", "PUTs every file to S3 in parallel.",
+            ("Booth", "Uploads every file to Cloudinary in parallel when credentials are configured.",
              "No API bandwidth used; a 30 MB session costs one API call."),
             ("Booth", "POST /api/booth/sessions/complete {sessionId, photos[], composite, guestConsent, digitalCopy}",
-             "Each input is normalised: object {key,url}, plain URL, S3 key or data URL (persisted to S3 when possible)."),
+             "Each input is normalised: object {key,url}, plain URL, Cloudinary public ID or legacy media key or data URL (persisted to Cloudinary when configured)."),
             ("API", "Writes one Photo per file, copying compositeUrl onto every row.",
              "Any single row can therefore serve the gallery and the download."),
             ("API", "Applies the global gallery policy and consent.",
-             "galleryPhotoIds lists what is published; the rest is stored but private."),
+             "galleryPhotoIds lists what is published in the application; this policy does not change direct media-URL access configured by the provider."),
             ("API", "Creates a GuestDownload (24 h) and returns shareUrl.",
              "downloadUrl is returned even if the download row fails — the success screen always has a QR."),
             ("Guest", "Opens /download/<id>.",
-             "GET /api/downloads/:id → signed S3 URLs; /:id/file/composite streams the print."),
+             "GET /api/downloads/:id validates the time-limited download ID and returns media URLs; the URL itself may remain reachable after expiry."),
         ],
         "diagram": """sequenceDiagram
   autonumber
   participant B as Booth
   participant A as API
-  participant S as S3
+  participant S as Cloudinary media
   participant D as MongoDB
   B->>A: POST /sessions/upload-urls
-  A-->>B: presigned PUTs (frame[], composite)
-  B->>S: PUT each frame
-  B->>S: PUT composite
+  A-->>B: Cloudinary signed upload parameters (frame[], composite)
+  B->>S: upload each frame
+  B->>S: upload composite
   B->>A: POST /sessions/complete
   A->>D: Photo rows (one per file)
   A->>D: compositeUrl copied to every row
   A->>D: gallery policy + consent applied
   A->>D: GuestDownload (24 h)
   A-->>B: shareUrl + downloadId + galleryPhotoIds
-  Note over A,S: if S3 is unset, data URLs are stored inline (25 MB cap)<br/>and signed URL helpers pass them through unchanged""",
+  Note over A,S: if Cloudinary is unconfigured, the backend may use local disk or inline data URLs<br/>and guest-link expiry does not revoke a public media URL""",
     },
     {
         "id": "f4",
         "title": "Gallery, download and sharing — who may see what",
-        "summary": "Three surfaces, three policies, one predicate (photoVisibleInGallery).",
+        "summary": "Three application surfaces, three policies; provider-level media URL access is separate from gallery visibility.",
         "steps": [
             ("Organisation", "GET /api/org/gallery → rows grouped by session, composite preferred.",
-             "photoUrlService returns BOTH a signed S3 URL (1 h) and an asset-proxy URL, because a page can outlive "
-             "the signature."),
+             "photoUrlService returns Cloudinary media URLs and proxy URLs; Cloudinary URL access is governed separately from application link expiry."),
             ("Organisation", "GET /api/org/gallery/photo/:id/view?kind=composite",
-             "Streams bytes with server credentials, or redirects to a signed URL."),
+             "Streams local/data media or resolves a Cloudinary/external media URL."),
             ("Guest", "GET /api/downloads/:id (24 h, 300 req / 15 min)",
              "TTL row + explicit expiry check; viewCount increments."),
             ("Guest", "POST /api/share/generate → token → /share/<token> (default 7 days)",
@@ -230,12 +229,12 @@ FLOWS = [
   C -->|false| HIDDEN
   C -->|true| VIS[Visible in gallery]
   POL -->|no consent needed| VIS
-  VIS --> GAL[/api/org/gallery<br/>signed URL + proxy/]
+  VIS --> GAL[/api/org/gallery<br/>Cloudinary URL + proxy/]
   VIS --> DL[/api/downloads/:id<br/>24 hours/]
   VIS --> SH[/api/share/:token<br/>7 days default/]
   DL --> FILES[/api/downloads/:id/file/:kind/]
   SH --> DEL[/api/share/deliver/] --> REC[(DeliveryRecord)]
-  HIDDEN --> NONE[Not reachable from any public link]""",
+  HIDDEN --> NONE[Not listed by app; direct media access depends on provider]""",
     },
     {
         "id": "f5",
@@ -446,7 +445,7 @@ REQUEST_LIFECYCLE = """flowchart TD
   PUBRL --> H2
   H2 --> SVC[service layer]
   SVC --> MOD[(Mongoose models)]
-  SVC --> EXT[external: S3, gateways, mail, SMS, AI]
+  SVC --> EXT[external: Cloudinary, gateways, mail, SMS, AI]
   H2 --> ERR{threw?}
   ERR -->|HttpError| OUT[status + code + message]
   ERR -->|other| E500[500 masked message, real error logged]
@@ -478,7 +477,7 @@ DEPENDENCY_MAP = """flowchart LR
     S10[CronService]
   end
   subgraph utils [Utils]
-    U1[s3]
+    U1[cloudinary (legacy s3 aliases)]
     U2[crypto]
     U3[auditLogger]
     U4[printHelper]
@@ -525,7 +524,7 @@ DEPENDENCY_MAP = """flowchart LR
   S5 --> M5
   S7 --> M1
   S10 --> M1
-  U1 --> EXT[(S3)]
+  U1 --> EXT[(Cloudinary)]
   S8 --> EXT2[(Twilio / SendGrid / WhatsApp)]
   S9 --> EXT3[(Groq / Together / xAI)]"""
 
@@ -565,7 +564,7 @@ ENV_VARS = [
     ("CASHFREE_WEBHOOK_URL", "optional", "Sent to Cashfree when creating an order."),
     ("PLATFORM_FALLBACK_UPI", "optional", "Last-resort payee VPA (default payments@happypix.in) when neither the event nor the org has one."),
     ("ENCRYPTION_KEY", "recommended", "AES-256-GCM key for stored gateway secrets; falls back to JWT_SECRET. Losing it makes stored secrets unreadable."),
-    ("AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION / S3_BUCKET_NAME", "recommended", "Without them uploads go to local /uploads and presigned URLs are unavailable."),
+    ("CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET", "recommended for hosted media", "Without them backend upload utilities can fall back to local /uploads or inline data; local storage may be ephemeral on serverless hosts."),
     ("SENDGRID_API_KEY / EMAIL_FROM_ADDRESS", "recommended", "OTP, ticket replies, delivery emails."),
     ("TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_SENDER_ID", "optional", "SMS delivery."),
     ("WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_API_TOKEN", "optional", "WhatsApp Cloud API delivery."),

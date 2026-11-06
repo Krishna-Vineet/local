@@ -3,10 +3,13 @@
 > **Scope:** the React Native booth (`client-app/apps/booth`) running on **iPadOS** instead of Android.
 > What already works, what differs, what is broken or missing, and the exact fix for each finding.
 > **Audience:** whoever builds and ships the iPad app, and whoever supports a booth in the field.
+> **Implementation context reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. Android native USB PTP is not available on iPad; Nikon camera access uses the Windows Electron LAN bridge provider, which requires real-device validation (including iPad local-network and HTTP/ATS behavior).
 > **Companions:** [`APPLICATIONS_CRM.md`](APPLICATIONS_CRM.md) §7 (the booth screens),
 > [`HARDWARE_PRINTING.md`](HARDWARE_PRINTING.md) (printers and media),
 > [`DEPLOYMENT_RELEASE.md`](DEPLOYMENT_RELEASE.md) (signing and release),
 > [`TESTING_RELEASE_CHECKLIST.md`](TESTING_RELEASE_CHECKLIST.md) (QA gates).
+
+**Implementation update:** Android direct USB PTP capture has been added, but it is Android-only; Nikon over iPad uses a Windows Electron bridge over the LAN and must be validated on physical iPadOS.
 
 **Verdict in one line:** the iPad target exists, is configured for iPad, and the whole guest session
 (session → quote → UPI → capture → compose → upload → QR) runs on it through the same API. The parts
@@ -38,7 +41,8 @@ safe-area layout and above all **physical printing** — plus the App Store pack
 | Orientation | ✅ rotates | ✅ all four, incl. `~ipad` | layout is written for landscape 1024 × 768 |
 | Responsive scaling | ✅ | ✅ | `packages/ui/src/utils/responsive.ts` normalises to a landscape basis |
 | Camera (built-in) | ✅ VisionCamera | ✅ VisionCamera | front camera preferred, which is what a booth needs |
-| Camera (Canon Wi-Fi) | ✅ CCAPI | ⚠️ code is platform-neutral, **untested** | LAN probing needs the Local Network permission (finding IP-3) |
+| Camera (Canon Wi-Fi) | CCAPI provider implemented | Shared provider code; physical iPad test required | LAN probing needs the Local Network permission (finding IP-3) |
+| Nikon USB PTP | Android USB-OTG capture module | Not supported directly | iPad provider can call a Windows Electron bridge over LAN; validate ATS/local-network behavior and capture on device |
 | Printing | ✅ IPP / DNP bridge / OS spooler | ❌ **no working path yet** | AirPrint is a stub; see §7 |
 | Kiosk lockdown | ✅ Lock Task Mode | ❌ no native module | Guided Access / MDM or a Swift module; see §6 |
 | Screen stays awake | ✅ `keepScreenOn` (native) | ❌ no-op | finding IP-2 |
@@ -156,7 +160,7 @@ The flow is identical to Android and to the Electron kiosk, because all three sp
 | 8 | Capture | `CaptureScreen` | VisionCamera, front camera preferred, 3–10 shots |
 | 9 | Pick photos | `PhotoSelectionScreen` | |
 | 10 | Customise | `CustomizeScreen` | Skia compositing, filters, stickers |
-| 11 | **Print + upload** | `BoothProvider.finishAndPrint` | compose → print (❌ see §7) → presigned S3 upload → `sessions/complete` |
+| 11 | **Print + upload** | `BoothProvider.finishAndPrint` | compose → print (❌ see §7) → Cloudinary-backed upload/signature flow (when configured) → `sessions/complete` |
 | 12 | Success | `OrderSuccessScreen` | QR to `/download/<id>`, issue-after-success |
 
 Steps 1–10 and 12 are iPad-ready today. Step 11 prints only if a Reachable printer path exists (§7).
@@ -172,7 +176,7 @@ not about code taste.
 |---|---|---|---|
 | IP-1 | **High** | No kiosk lockdown on iOS; `KioskModule` silently returns on any non-Android platform, so a guest can press the home button and walk away with the iPad showing Settings. | `packages/kiosk-core/src/KioskModule.ts` |
 | IP-2 | **High** | `keepScreenOn()` calls a native module that does not exist on iOS — no effect. The iPad auto-locks mid-event. | `KioskModule.ts:60` |
-| IP-3 | **High** | No `NSLocalNetworkUsageDescription`. iOS 14+ blocks LAN access (print bridge, Canon CCAPI at `192.168.1.2`, IPP printers) without it — and the app probes those addresses on the very first login screen. | `ios/booth/Info.plist` |
+| IP-3 | **High** | No `NSLocalNetworkUsageDescription`. iOS 14+ blocks LAN access (print bridge, Canon CCAPI, the Electron bridge, IPP printers) without it — and the app probes those addresses on the very first login screen. | `ios/booth/Info.plist` |
 | IP-4 | **High** | No `UIRequiresFullScreen`, so iPad Split View / Slide Over is allowed. `responsive.ts` assumes a landscape basis, so a Slide Over window (~320 pt) scales everything to ~0.31× — unreadable. | `Info.plist` + `responsive.ts` |
 | IP-5 | Medium | `ScreenContainer` imports `SafeAreaView` from core `react-native` (L6). Core `SafeAreaView` does apply iOS insets, but it is deprecated in RN 0.86, only pads the view it wraps, and does **not** re-read insets reliably on rotation — and our screens are landscape-only with an overlay layout, so the bottom home-indicator band can end up under primary buttons. `react-native-safe-area-context@5.5.2` is already a dependency and `SafeAreaProvider` is already mounted (`App.tsx:3`), but `useSafeAreaInsets` is used nowhere in `packages/ui`. | `packages/ui/src/components/ScreenContainer.tsx:6,150`; `apps/booth/App.tsx:3` |
 | IP-6 | **High** (distribution) | `AppIcon.appiconset/Contents.json` declares 9 slots with **no image filenames**, and the iPad sizes (76×76, 152×152, 167×167) plus the 1024 marketing icon are absent. An archive will be rejected or ship with the blank icon. | `ios/booth/Images.xcassets/AppIcon.appiconset/` |

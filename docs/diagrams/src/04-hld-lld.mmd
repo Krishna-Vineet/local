@@ -22,15 +22,15 @@ flowchart TB
     S3["couponService<br/>discount rules"]
     S4["gallerySettingsService<br/>policy + visibility"]
     S5["guestDownloadService<br/>24 h links"]
-    S6["photoUrlService<br/>S3 signing"]
+    S6["photoUrlService<br/>Cloudinary URL delivery"]
     S7["DeliveryService<br/>email, SMS, WhatsApp"]
     S8["TemplateGenerationService<br/>AI design"]
     S9["eventService<br/>status and views"]
   end
 
   subgraph L4["4 · Data layer"]
-    M[("MongoDB Atlas<br/>23 Mongoose models")]
-    O[("AWS S3<br/>private bucket")]
+    M[("MongoDB Atlas<br/>25 Mongoose models")]
+    O[("Cloudinary<br/>media storage")]
     K[("In-process caches<br/>gallery 15 s, printer 30 s")]
   end
 
@@ -76,7 +76,7 @@ flowchart TB
   P5 --> M
 
 %%@ d4-2 :: HLD — deployment topology, regions and failure domains
-%%@ note: Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an S3 outage only breaks images and uploads, and a gateway outage blocks checkout but not capture and printing.
+%%@ note: Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an Cloudinary outage only breaks images and uploads, and a gateway outage blocks checkout but not capture and printing.
 flowchart TB
   subgraph USER["Customer and guest networks"]
     U1["Booth PC<br/>Electron + printer"]
@@ -98,9 +98,9 @@ flowchart TB
     V4["website-backend project<br/>plans, checkout, downloads, leads"]
   end
 
-  subgraph AWS["AWS · ap-south-1"]
-    A1[("S3 bucket — private<br/>photos/, happypix/org/logos/")]
-    A2["S3 lifecycle rules<br/>NOT CONFIGURED YET"]
+  subgraph MEDIA["Cloudinary · account region/plan to verify"]
+    A1[("Cloudinary media<br/>photos, logos, artwork")]
+    A2["Access, retention and backup<br/>account configuration to verify"]
   end
 
   subgraph ATLAS["MongoDB Atlas · ap-south-1"]
@@ -141,7 +141,7 @@ flowchart TB
   V3 --> T5
   T1 -->|"webhook"| V3
   T2 -->|"webhook"| V3
-  V1 -->|"presigned GET<br/>direct from browser"| A1
+  V1 -->|"Cloudinary media URL<br/>direct delivery"| A1
 
 %%@ d4-3 :: LLD — the exact request pipeline and middleware order
 %%@ note: Order is load-bearing. The origin check runs before any body parsing, and the Mongo gate runs after static assets so /uploads keeps working during a database incident.
@@ -330,7 +330,6 @@ sequenceDiagram
   participant BO as Booth app
   participant API as Main API
   participant DB as MongoDB
-  participant S3 as S3
 
   OP->>BO: enter org email, password, device name
   BO->>API: POST /api/booth/login
@@ -378,7 +377,7 @@ sequenceDiagram
   participant API as Main API
   participant GW as Razorpay / Cashfree
   participant DB as MongoDB
-  participant S3 as S3
+  participant C as Cloudinary media
 
   G->>BO: choose template and print count
   BO->>API: POST /api/booth/checkout/quote
@@ -412,16 +411,16 @@ sequenceDiagram
     API->>DB: Coupon usedCount + 1
   end
   BO->>API: POST /api/booth/sessions/upload-urls
-  API-->>BO: presigned PUT URLs, 900 s
-  BO->>S3: PUT frames and composite directly
+  API-->>BO: Cloudinary signed upload parameters
+  BO->>C: upload frames and composite directly
   BO->>API: POST /api/booth/sessions/complete
   API->>DB: Photo.create per file, compositeUrl on all rows
   API->>DB: GuestDownload.create 24 h TTL
   API-->>BO: shareUrl, downloadId, galleryPhotoIds
   BO->>G: print strip, show QR of the download page
   G->>API: GET /api/downloads/:id
-  API->>S3: presign composite and frames
-  API-->>G: signed URLs, expiresAt
+  API->>C: resolve media URLs after download-ID check
+  API-->>G: Cloudinary media URLs, application link expiresAt
 
 %%@ d4-7 :: LLD sequence — sign-in, session revocation and organisation lifecycle
 %%@ note: The sessionVersion integer is the whole revocation mechanism: bumping it on the user or across the organisation invalidates every previously issued token without a session store.
@@ -489,7 +488,7 @@ flowchart TB
   S11 --> S12["Photo selection<br/>filter and retake"]
   S12 --> S13["Customize<br/>stickers, text, layout"]
   S13 --> S14["Checkout<br/>quote, QR, countdown"]
-  S14 -->|"paid or free"| S15["Upload<br/>presigned PUT to S3"]
+  S14 -->|"paid or free"| S15["Upload<br/>to Cloudinary-backed storage"]
   S15 -->|"session complete"| S16["Print<br/>copies per payment"]
   S16 --> S17["Success<br/>download QR,<br/>raise-issue action"]
   S17 -->|"issue raised"| S18["POST /api/booth/support<br/>ticket created"]

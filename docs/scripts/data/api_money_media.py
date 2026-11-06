@@ -125,7 +125,7 @@ PAYMENTS = router(
         ep("GET", "/download/:token",
            "Resolve a DigitalToken into photo URLs for the download page, and report whether mobile printing is allowed.",
            auth="public",
-           res=[("photoUrls", "string[]", "stored URLs (private — the page must sign or proxy them)"),
+           res=[("photoUrls", "string[]", "stored media URLs; direct reachability depends on provider access settings and DigitalToken expiry does not revoke them"),
                 ("compositeUrl", "string | null", "final print image"),
                 ("expiresAt", "string", "TTL boundary"), ("downloadCount", "number", "including this hit"),
                 ("enableMobilePrinting", "boolean", "organisation setting")],
@@ -151,12 +151,12 @@ DOWNLOADS = router(
     auth="public, rate limited",
     endpoints=[
         ep("GET", "/:id",
-           "Download metadata for the guest page: signed composite and frame URLs, event and organisation names, "
+           "Download metadata for the guest page: Cloudinary or inline composite and frame URLs, event and organisation names, "
            "time remaining.",
            auth="public", rl="300 requests / 15 min / IP",
            res=[("downloadId", "string", "the id in the URL"),
-                ("compositeUrl", "string | null", "signed or inline final print"),
-                ("photoUrls", "string[]", "signed or inline frames"),
+                ("compositeUrl", "string | null", "Cloudinary URL or inline final print"),
+                ("photoUrls", "string[]", "Cloudinary URLs or inline frames"),
                 ("eventName", "string", "denormalised at session time"),
                 ("organizationName", "string", "denormalised at session time"),
                 ("createdAt", "string", "ISO"), ("expiresAt", "string", "ISO"),
@@ -169,7 +169,7 @@ DOWNLOADS = router(
         ep("GET", "/:id/file/:kind",
            "Stream or redirect one file. `kind` is 'composite' for the final print or a numeric frame index.",
            auth="public", rl="300 requests / 15 min / IP",
-           res=[("image/*", "binary | 302", "inline data URL decoded, local uploads served, otherwise redirect to a signed S3 URL")],
+           res=[("image/*", "binary | 302", "inline data URL decoded, local uploads served, otherwise redirect to or return a Cloudinary media URL")],
            errors=[("404 NOT_FOUND", "kind not part of this download"),
                    ("410 DOWNLOAD_EXPIRED", "link expired"),
                    ("415 UNSUPPORTED_MEDIA_TYPE", "stored data URL is malformed")],

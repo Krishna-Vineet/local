@@ -3,9 +3,20 @@
 > **For:** booth operators, organization admins, platform staff.
 > **Assumes no technical background** beyond using a browser and a touchscreen.
 > **Print this.** The first three pages are the ones you want in the booth bag.
-> **Last updated:** 2026-10-23.
+> **Updated against implementation snapshot:** 2026-11-06, commit `d0ba133` (`arena/097e52ae-local`).
 
 ---
+
+## Camera connection quick reference
+
+- **Tablet camera:** uses the built-in device camera.
+- **Canon:** connect the camera and booth to the venue Wi-Fi, enable CCAPI, and use the camera's actual IP.
+- **Nikon on Android:** direct USB-OTG PTP can trigger capture and retrieve a JPEG; it does not provide PTP live view/settings.
+- **Nikon on a tablet over Wi-Fi:** run the Electron booth on a Windows PC with the Nikon USB camera attached; connect the tablet and PC to the same trusted LAN and configure the PC's address. The bridge uses port `9123` and is unauthenticated, so never expose it to the public internet.
+- **Nikon on iPad:** use the Windows bridge provider; iPad local-network permission and HTTP/ATS must be checked on the actual device.
+
+The Android PTP battery display is a placeholder, not a real camera battery reading. See the engineering
+hardware guide before treating a camera as event-ready.
 
 ## Table of contents
 
@@ -422,7 +433,7 @@ expire; do not paste them into public channels.
 
 ### 10.4 Deleting
 
-Deleting a session removes the photos from the gallery and from storage. This cannot be undone.
+Deleting a session removes the photos from the gallery and attempts to delete the associated Cloudinary assets; verify the media is no longer reachable before treating deletion as complete. This cannot be undone from the CRM.
 Use it when:
 
 * a guest asks to be removed;
@@ -432,8 +443,10 @@ Use it when:
 ### 10.5 Consent and privacy
 
 If your organization requires guest consent for gallery visibility, set it in the platform gallery
-settings. Photos are never public — only your organization can see them, and every download link is
-temporary.
+settings. Gallery access is tenant- and consent-checked by the application. Guest download links are
+temporary, but Cloudinary media URLs may remain directly reachable after a link expires; the provider
+account's access settings determine that behavior. Do not promise that a photo URL is private or
+revoked unless this has been verified for your production account.
 
 ---
 
@@ -576,7 +589,7 @@ reading.
 | Prices differ from the CRM | The booth has not refreshed. Wait 2 minutes; if it persists, unassign/reassign the device |
 | Wrong templates on the booth | Confirm the templates were added to **this** event, not just the library |
 | Camera not detected | Reconnect Wi-Fi/USB; verify the camera app mode; restart the booth app |
-| "Waiting for camera discovery" | The camera is unreachable — check its IP and that CCAPI is enabled |
+| "Waiting for camera discovery" | For Canon CCAPI, check its IP, Wi-Fi mode and CCAPI setting. For Nikon, check USB/OTG on Android or the Windows Electron bridge on the same LAN (port 9123). The iPad does not support direct USB PTP. |
 
 ### 14.2 Print problems
 

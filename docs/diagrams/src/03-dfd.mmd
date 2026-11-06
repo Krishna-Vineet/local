@@ -12,7 +12,7 @@ flowchart LR
   E7["Cashfree"]
   E8["SendGrid /<br/>Twilio / WhatsApp"]
   E9["Groq / Together /<br/>xAI / remove.bg"]
-  D1[("AWS S3<br/>photo objects")]
+  D1[("Cloudinary<br/>photo media")]
 
   E1 -->|"photo selection, consent,<br/>print request, payment"| P0
   P0 -->|"print, QR code, download link"| E1
@@ -32,8 +32,8 @@ flowchart LR
   P0 -->|"OTP, receipts"| E8
   P0 -->|"prompts, images"| E9
   E9 -->|"design assets"| P0
-  P0 -->|"presigned upload"| D1
-  D1 -->|"presigned download"| E1
+  P0 -->|"signed Cloudinary upload parameters"| D1
+  D1 -->|"Cloudinary media URL"| E1
 
 %%@ d3-1 :: DFD level 1 — the nine processes of the platform
 %%@ note: This level is the map of the backend: every mounted router belongs to exactly one of these processes.
@@ -69,7 +69,7 @@ flowchart TB
   D11[("D11 support tickets")]
   D12[("D12 audit log")]
   D13[("D13 settings and<br/>org defaults")]
-  D14[("D14 S3 objects")]
+  D14[("D14 Cloudinary media")]
 
   E2 -->|"pairing, heartbeat,<br/>session payload"| P1
   P1 -->|"snapshot, revision,<br/>quote, upload URLs"| E2
@@ -87,7 +87,7 @@ flowchart TB
   P3 -->|"link, QR, file"| E1
   P3 -->|"email, SMS, WhatsApp"| E6
   P4 --> D3
-  P4 -->|"signed image URLs,<br/>session feed"| E3
+  P4 -->|"Cloudinary media URLs,<br/>session feed"| E3
   E3 -->|"event, device, price,<br/>coupon changes"| P5
   P5 --> D1
   P5 --> D2
@@ -117,14 +117,14 @@ flowchart TB
   D7 --> P2
 
 %%@ d3-2 :: DFD level 2 — process 1.0 booth session
-%%@ note: The important detail is that the heavy media work happens on the booth, not the server: the API only issues presigned URLs and writes thin Photo rows.
+%%@ note: With Cloudinary configured, the API issues signed upload parameters and the booth uploads directly; server-persisted and local fallback paths also exist.
 flowchart LR
   E1["Booth app"]
   E2["Guest"]
   P11(("1.1<br/>Pair device"))
   P12(("1.2<br/>Serve config<br/>snapshot"))
   P13(("1.3<br/>Heartbeat and<br/>revision check"))
-  P14(("1.4<br/>Issue presigned<br/>upload URLs"))
+  P14(("1.4<br/>Issue signed<br/>Cloudinary upload params"))
   P15(("1.5<br/>Persist session<br/>records"))
   P16(("1.6<br/>Capture and compose<br/>on device"))
   P17(("1.7<br/>Record consent"))
@@ -133,7 +133,7 @@ flowchart LR
   D3[("D3 photos")]
   D6[("D6 organizations")]
   D13[("D13 settings<br/>and defaults")]
-  D14[("D14 S3 objects")]
+  D14[("D14 Cloudinary media")]
   D12[("D12 audit log")]
 
   E1 -->|"email, password,<br/>deviceUuid"| P11
@@ -149,9 +149,9 @@ flowchart LR
   P13 --> D1
   P13 -->|"hardware counters"| D1
   E1 -->|"sessionId,<br/>file list"| P14
-  P14 -->|"30 presigned PUT URLs"| E1
+  P14 -->|"Cloudinary upload URL + signed parameters"| E1
   P14 --> D14
-  E1 -->|"files upload<br/>directly to S3"| D14
+  E1 -->|"files upload<br/>to Cloudinary"| D14
   E2 -->|"frames and filters"| P16
   P16 -->|"composited strip"| E1
   E1 -->|"photo keys, composite,<br/>sessionId"| P15
@@ -210,19 +210,19 @@ flowchart TB
   P23 --> D13
 
 %%@ d3-4 :: DFD level 2 — process 3.0 digital delivery
-%%@ note: Security detail: the guest never receives an S3 URL. They receive an unguessable 144-bit download id, and the API signs short-lived URLs only after checking expiry.
+%%@ note: The guest receives an unguessable 144-bit application download id. Current Cloudinary media URLs may remain directly accessible beyond the application link TTL; verify account access settings.
 flowchart LR
   E1["Guest phone"]
   E2["Booth success screen"]
   E3["Email / SMS /<br/>WhatsApp"]
   P31(("3.1<br/>Create guest<br/>download"))
   P32(("3.2<br/>Resolve download<br/>page"))
-  P33(("3.3<br/>Sign and stream<br/>file"))
+  P33(("3.3<br/>Resolve and stream<br/>file"))
   P34(("3.4<br/>Create share<br/>token"))
   P35(("3.5<br/>Deliver over<br/>a channel"))
   D10[("D10 guest downloads,<br/>shares, tokens")]
   D3[("D3 photos")]
-  D14[("D14 S3 objects")]
+  D14[("D14 Cloudinary media")]
   D15[("D15 delivery records")]
 
   E2 -->|"session photos,<br/>composite"| P31
@@ -230,11 +230,11 @@ flowchart LR
   P31 --> D10
   E2 -->|"QR code of<br/>/download/:id"| E1
   E1 -->|"GET /downloads/:id"| P32
-  P32 -->|"composite and frame<br/>signed URLs, TTL left"| E1
+  P32 -->|"composite and frame<br/>media URLs, TTL left"| E1
   P32 --> D10
   P32 --> P33
   E1 -->|"GET file kind"| P33
-  P33 -->|"presigned GET"| D14
+  P33 -->|"Cloudinary media URL"| D14
   P33 -->|"stream or redirect"| E1
   P33 --> D10
   E1 -->|"create share"| P34
@@ -261,7 +261,7 @@ flowchart TB
   P45(("4.5<br/>Sign and serve<br/>image"))
   D13[("D13 global setting<br/>row")]
   D3[("D3 photos")]
-  D14[("D14 S3 objects")]
+  D14[("D14 Cloudinary media")]
   D16[("D16 in-process<br/>15 s cache")]
 
   E1 -->|"galleryEnabled,<br/>requireGuestConsent"| P41
@@ -274,7 +274,7 @@ flowchart TB
   P43 -->|"visible photo set"| P44
   P44 -->|"one row per session,<br/>composite preferred"| E2
   E2 -->|"GET /api/org/gallery"| P43
-  P44 -->|"signed URLs"| P45
+  P44 -->|"Cloudinary media URLs"| P45
   P45 --> D14
   P45 -->|"image bytes"| E2
   P44 -->|"galleryPhotoIds"| E3
@@ -381,7 +381,7 @@ flowchart LR
   D9[("D9 templates,<br/>layouts, org AI templates")]
   D6[("D6 organizations<br/>aiCredits")]
   D13[("D13 template<br/>prices")]
-  D14[("D14 S3 assets")]
+  D14[("D14 Cloudinary assets")]
   D12[("D12 audit log")]
 
   E1 -->|"GET layouts"| P71

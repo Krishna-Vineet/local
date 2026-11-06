@@ -2,8 +2,8 @@
 
 > **Scope:** what cameras and printers HappyPix supports, how they are driven, what is verified
 > versus merely implemented, and how to recover from failures at a live event.
-> **Companion:** [`../electron/HARDWARE_SDK_REPORT.md`](../electron/HARDWARE_SDK_REPORT.md) (Windows/macOS SDK parity detail).
-> **Last verified:** 2026-10-23, branch `main`.
+> **Companion:** [`../electron/HARDWARE_SDK_REPORT.md`](../electron/HARDWARE_SDK_REPORT.md) (current camera SDK and storage implementation).
+> **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. Hardware verification remains per model and must be recorded below.
 
 ---
 
@@ -77,45 +77,33 @@ Design constraints that shaped this layer:
 
 ### 2.1 Summary matrix
 
-| Camera | Connection | Android booth | iPad booth | Electron (Windows) | Electron (macOS) | Status |
-|---|---|---|---|---|---|---|
-| Device / tablet camera | built-in | ✅ VisionCamera | ✅ VisionCamera (front preferred) | — | — | ✅ Verified on Android, ✅ runs on iPad |
-| USB webcam (any UVC) | USB | ⚠️ via RN UVC lib | ⚠️ unverified on iPad | ✅ `getUserMedia` | ✅ `getUserMedia` | ☑️ OS-verified |
-| Canon EOS R50 | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS R100 | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS R10 / R7 / R8 | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS R5 / R6 / R6 II | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS 90D / 80D | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon PowerShot G7X III | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon EOS M50 II | Wi-Fi CCAPI | ✅ | ⚠️ same code, untested | ⚠️ seam | ⚠️ seam | ⚠️ Implemented (CCAPI) |
-| Canon DSLR over USB | USB (EDSDK) | ✖ | ✖ (no USB host without EDSDK + adapter) | ⚠️ not wired | ⚠️ not wired | ✖ EDSDK not bundled |
-| Nikon DSLR / Z series | USB PTP | ⚠️ transport pending | ⚠️ transport pending | ⚠️ transport pending | ⚠️ transport pending | ⚠️ Opcodes mapped |
-| Sony Alpha (A7/A6xxx) | USB (Sony SDK) | ⚠️ stub | ⚠️ stub | ⚠️ stub | ⚠️ stub | ⚠️ Awaiting SDK licence |
-| A second iPhone/iPad used as a remote camera | — | ✖ | ✖ | — | — | ✖ Not a supported topology — one device runs both the camera and the session |
+| Camera path | Android booth | iPad booth | Electron (Windows) | Electron (macOS/Linux) | Implementation boundary |
+|---|---|---|---|---|---|
+| Built-in tablet camera | Implemented | Implemented | — | — | RN `PhoneCameraProvider` / VisionCamera; validate permissions and device behavior |
+| Electron host camera / UVC | — | — | Implemented via `getUserMedia` | Implemented via `getUserMedia` | Actual camera availability depends on OS, driver and permissions |
+| Canon CCAPI over Wi-Fi | `CanonCameraProvider` implemented | shared provider code; physical iPad validation required | secondary `canonCcapi` path | secondary `canonCcapi` path | CCAPI must be enabled; verify each model/firmware; not a certification list |
+| Nikon USB Remote SDK | Not a local RN SDK path | Not a local RN SDK path | Electron main-process PowerShell bridge implemented | Not implemented by the Nikon Remote SDK path | See companion report; Windows + vendor SDK files + USB; physical model testing required |
+| Nikon USB PTP direct | Android USB Host / OTG module implemented; capture and JPEG retrieval | Not supported by this native module | — | — | No direct-PTP live view or camera settings in RN provider; fixed placeholder battery value |
+| Nikon over LAN via Kiosk Bridge | Implemented provider calling Windows Electron bridge | Provider code exists; iPad network/ATS must be validated | Hosts bridge endpoints when Electron is running | No Nikon SDK host | Status, live view and capture endpoints; camera-setting IPC is not exposed to tablets |
+| Sony Alpha | Provider seam only | Provider seam only | Not implemented | Not implemented | No completed Sony Remote SDK integration |
 
-> **Read this carefully.** "Implemented (CCAPI)" means the code issues the correct Canon CCAPI
-> requests and handles the documented responses. It does **not** mean every listed body has been
-> physically validated. Verify your exact model before an event — see §2.3.
+These rows describe implementation in source, not a guarantee that a listed camera model has passed
+an event-ready physical test. Record the exact model, firmware, connection, live-view result, capture
+and image-transfer result in §2.4 before an event.
 
-### 2.2 Why CCAPI instead of native SDKs
+### 2.2 Protocol and SDK choices
 
-| Option | Verdict | Reason |
+| Path | Current role | Constraint |
 |---|---|---|
-| **Canon CCAPI** (HTTP REST on the camera) | ✅ Chosen for Android | No native binary, no per-ABI builds, works over venue Wi-Fi, upgradeable without recompiling the app |
-| Canon EDSDK (C++) | ✖ Not bundled | Windows/macOS only; unusable on Android; licence restricts redistribution |
-| Sony Camera Remote SDK | ⚠️ Stub | NDA/licence required; interface reserved |
-| Nikon SDK | ⚠️ Stub | Per-model binaries; PTP path mapped but transport not shipped |
-| gPhoto2 | ✖ Not used | Linux-centric, no Android target, unstable on newer bodies |
+| Canon CCAPI | HTTP control over camera Wi-Fi in React Native and Electron secondary path | Model/firmware support and camera network setup vary; test on the actual rig |
+| Nikon Remote SDK | Windows Electron main-process USB tether via PowerShell and vendor DLLs | Windows-only in the current implementation; handle SDK files under their vendor terms |
+| PTP over USB | Android native USB-OTG shutter/capture and object retrieval | Limited PTP operations; no live view/settings support in the RN provider |
+| Tablet/host camera APIs | Integrated fallback camera | Requires OS camera permission and working device hardware |
+| Sony Remote SDK / Canon EDSDK | Not integrated here | No complete native vendor-SDK path is implemented in this snapshot |
 
-CCAPI endpoints used:
-
-```
-GET  http://<camera-ip>:8080/ccapi/ver110/deviceinformation
-GET  http://<camera-ip>:8080/ccapi/ver110/devicestatus/battery
-POST http://<camera-ip>:8080/ccapi/ver110/shooting/control/shutterbutton   { "af": true }
-GET  http://<camera-ip>:8080/ccapi/ver110/shooting/liveview/flipdetail
-GET  http://<camera-ip>:8080/ccapi/ver110/shooting/liveview?kind=video
-```
+Electron starts a local HTTP Print Bridge on port `9123`. Its camera routes let a tablet on the same
+LAN use the Windows Nikon camera status, live view and capture. This does not make the Windows-only
+Nikon SDK itself available on iPad or macOS. Keep this unauthenticated service on a trusted LAN.
 
 ### 2.3 Verifying a camera before an event (30-minute check)
 
@@ -154,39 +142,37 @@ Keep this log in the handover register so a replacement body is not a surprise a
 
 ## 3. Camera protocols and SDKs
 
-### 3.1 Android (`client-app/packages/camera-core`)
+### 3.1 React Native (`client-app/packages/camera-core`)
 
-| Provider | Protocol | Capture | Live view | Battery | Discovery |
+| Provider | Protocol / host API | Capture | Live view | Settings | Notes |
 |---|---|---|---|---|---|
-| `PhoneCameraProvider` | Camera2 / VisionCamera | ✅ | ✅ | device API | n/a |
-| `CanonCameraProvider` | CCAPI HTTP | ✅ | ✅ polling | ✅ | IP probe / mDNS |
-| `PtpCameraProvider` | PTP over USB | ⚠️ transport | ⚠️ | ⚠️ | USB enumeration |
-| `SonyCameraProvider` | Sony SDK | ⚠️ stub | ⚠️ | ⚠️ | USB |
+| `PhoneCameraProvider` | VisionCamera | Implemented | Implemented | OS camera controls | Built-in tablet camera |
+| `CanonCameraProvider` | Canon CCAPI HTTP | Implemented path | CCAPI path | Limited to provider API | Validate actual camera/firmware and LAN |
+| `NikonBridgeProvider` | HTTP to Electron Print Bridge, port 9123 | Implemented path | Bridge endpoints | Not exposed over tablet bridge | Windows PC must host bridge; iPad local HTTP behavior requires testing |
+| `PtpCameraProvider` | Native Android USB PTP | Implemented path | Not implemented | Not implemented | Android only; battery result is a fixed placeholder, not measured |
+| `SonyCameraProvider` | Provider interface | Not certified | Not certified | Not certified | Sony SDK not integrated |
 
-`CameraManager` picks a provider in priority order (configured → CCAPI → phone), exposes
-`getStatus()`, `capture()` and `startPreview()/getLiveViewUrl()`, and normalises battery to
-`high|low|depleted` → `90|20|5 %`.
+`CameraManager` discovers in this order: Nikon Kiosk Bridge, Canon CCAPI, direct USB PTP, then the
+integrated tablet camera. It exposes normalized status, capture and preview methods. Discovery is a
+network/device probe; do not use a provider being listed as proof a real capture will work.
 
-### 3.2 Electron (`electron/src/electron/hardware.ts`)
+### 3.2 Electron (`electron/src/electron/camera`)
 
-| Path | Mechanism |
-|---|---|
-| Capture | `navigator.mediaDevices.getUserMedia` → `<video>` → canvas → JPEG (0.92) |
-| Model | `MediaStreamTrack.label` |
-| Battery | `navigator.getBattery()` where available; otherwise `null` (honest) |
-| Telemetry | Renderer → `booth:camera-report` → `hardwareSnapshot().camera` |
-| Counter | `booth:record-capture` → `shutterCount` persisted to disk |
-| Canon seam | `provider: 'canon-sdk-pending'` — reserving the field, no fake data |
+The Electron Nikon SDK path lives in the main process: `cameraManager.ts` starts
+`nikonAdapter.ts` only on Windows, which launches `resources/nikon/NikonBridge.ps1`. Camera IPC is
+registered through `cameraIpc.ts` and exposed through the preload bridge. The implemented service
+modules cover connection/status, live view, capture/transfer and camera-setting operations.
 
-### 3.3 What is *not* implemented
+Electron also has a Canon CCAPI secondary path. Host webcams use `getUserMedia`. macOS/Linux do not
+run the Nikon PowerShell SDK path.
 
-| Capability | Status | Notes |
-|---|---|---|
-| Canon USB tether on Windows/macOS | ✖ | Requires EDSDK binaries + licence; can be added behind `hardware.ts` |
-| Sony remote control | ✖ | SDK licence pending |
-| Nikon USB capture | ⚠️ | PTP opcodes mapped; USB transport not shipped |
-| Camera-side exposure control from UI | ✖ | Set on the body; CCAPI supports it but the UI does not expose it yet |
-| Wireless tethering of RAW files | ✖ | JPEG only today |
+### 3.3 Verification status
+
+This repository state documents implementation but does not establish a physical test result for
+any specific camera, lens, cable, firmware, Android tablet or iPad. A deployment sign-off should
+include one real capture and transfer, any required live-view check, reconnect behavior, battery/data
+validity, and offline/error behavior on the exact production rig. The direct Android PTP module's
+fixed 85% battery value must not be used as measured telemetry.
 
 ---
 
@@ -194,52 +180,31 @@ Keep this log in the handover register so a replacement body is not a surprise a
 
 ### 4.1 Discovery order
 
-```
-1. Configured device (env / settings)           — fastest, deterministic
-2. Canon CCAPI probe on the last-known IP       — 1.5 s timeout
-3. mDNS/SSDP sweep on the local subnet          — Android via Zeroconf
-4. Host camera via getUserMedia / VisionCamera  — always available fallback
-```
+React Native `CameraManager` attempts the configured/default Nikon Kiosk Bridge, Canon CCAPI, direct
+Android USB PTP, then always lists the integrated tablet camera as fallback. Electron initializes the
+Nikon SDK path only on Windows and probes Canon CCAPI secondarily. These are implementation paths;
+verify a successful capture before marking the selected camera ready for an event.
 
-A discovered device is not considered *usable* until one real capture succeeds. The UI shows
-**Connected** only after that, which prevents the classic "camera is green but nothing works" state.
+### 4.2 Capture behavior by path
 
-### 4.2 Capture sequence (per slot)
-
-```
-trigger
-  → pre-flight: device ready? battery > 10 %? storage writable?
-  → countdown 3 · 2 · 1 (cancellable)
-  → optional flash/pre-flash
-  → capture frame → validate (non-zero length, decodable)
-  → store local copy → update shutter counter
-  → advance slot
-```
-
-If validation fails, the frame is rejected and the guest is asked to retake — an empty or corrupt
-image is never pushed into the session (it would poison the gallery and the guest download).
+- **Nikon Electron SDK:** Windows PowerShell bridge invokes the Remote SDK, then transfers the image
+  to Electron. Verify the exact supported camera and transfer mode.
+- **Android direct PTP:** requests USB permission, opens a PTP session, triggers capture, retrieves
+  the newest image object and returns a JPEG URI/data URL. Direct PTP preview and settings are not
+  implemented by this React Native provider.
+- **Nikon Kiosk Bridge:** Android/iPad provider communicates over LAN with the Electron HTTP routes
+  for status, live view and capture. Camera settings are not exposed over those tablet routes.
+- **Canon CCAPI:** camera control is over Wi-Fi; test camera Wi-Fi mode, connectivity and still-image
+  transfer on the target camera.
+- **Built-in / host camera:** uses the native camera or browser media capture APIs and their OS
+  permission settings.
 
 ### 4.3 Live view
 
-| Host | Mechanism | Target |
-|---|---|---|
-| Android + Canon | CCAPI `liveview` polling (JPEG frames) | ≥ 15 fps at 480×320 preview |
-| Android device camera | VisionCamera preview | native |
-| Electron | `<video srcObject>` | native |
-
-Live view is a **preview only**; the captured still always comes from the full-resolution path.
-
-### 4.4 Reconnect behaviour
-
-| Event | Behaviour |
-|---|---|
-| Camera sleeps (auto power-off) | Provider retries every 3 s; UI shows "Reconnecting camera…" |
-| Camera IP changes (DHCP) | Discovery re-probes the subnet; session waits at the capture screen, does not abort |
-| Wi-Fi drops | Captures fall back to the host camera if enabled; otherwise the session pauses with a clear message |
-| Camera removed mid-session | Already-captured slots are preserved; only the missing slot is retaken |
-| Camera replaced between events | Re-run the 30-minute verification; update the log |
-
----
+Live view is provider-dependent. Electron's Nikon SDK path uses its live-view service; the network
+bridge exposes frames to mobile clients. Android direct PTP has no live-view implementation. Canon
+CCAPI and built-in cameras use their own provider/OS preview paths. Treat frame rate and image quality
+as rig-specific measurements, not guaranteed targets.
 
 ## 5. Printers — supported models
 

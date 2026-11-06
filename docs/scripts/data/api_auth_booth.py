@@ -125,13 +125,13 @@ BOOTH = router(
     endpoints=[
         ep("GET", "/asset-proxy",
            "Stream template artwork, overlays, stickers and logos for the booth UI. Tries local uploads/ first, "
-           "then the private S3 bucket, then 404 — so an <img> never needs AWS credentials.",
+           "then the Cloudinary media storage, then 404 — so an <img> does not require AWS/S3 credentials.",
            auth="public",
-           query=[("key", "string", "required: an S3 key, uploads path, absolute URL or a data: URL")],
+           query=[("key", "string", "required: an Cloudinary public ID or legacy media key, uploads path, absolute URL or a data: URL")],
            res=[("image/*", "binary", "the asset with Cache-Control: public, max-age=31536000")],
            errors=[("400 BAD_REQUEST", "no key, or a key containing '..'"),
-                   ("404 NOT_FOUND", "asset missing in uploads/ and in S3")],
-           uses=["utils/s3", "S3.GetObject"]),
+                   ("404 NOT_FOUND", "asset missing in uploads/ and supported media sources")],
+           uses=["utils/s3", "Cloudinary URL / local file"]),
 
         ep("POST", "/login",
            "Pair a booth. Validates organisation credentials, refuses banned/suspended organisations, enforces the "
@@ -295,16 +295,16 @@ BOOTH = router(
            side="Creates Payment(status=paid, settlement=wallet) so revenue reporting can still count the session."),
 
         ep("POST", "/sessions/upload-urls",
-           "Issue up to 30 presigned PUT URLs so the booth uploads frames and the composite straight to S3, "
-           "bypassing the API for the heavy bytes.",
+           "Issue up to 30 signed Cloudinary upload parameters so the booth can upload frames and the composite directly, "
+           "when Cloudinary is configured; fallback paths are also available.",
            auth="device (strict)",
            body=[("sessionId", "string", "required"),
                  ("eventId", "string", "optional; defaults to the assigned event"),
                  ("files", "array", "up to 30 × {type: 'frame'|'composite', index, contentType}")],
-           res=[("s3Configured", "boolean", "false when credentials are missing — the booth then posts base64 to /sessions/complete"),
-                ("urls", "array", "type, index, key, uploadUrl (PUT, 900 s), publicUrl, contentType")],
+           res=[("storageConfigured", "boolean", "Cloudinary configured; legacy s3Configured alias is also returned"),
+                ("urls", "array", "type, index, key/public ID, Cloudinary uploadUrl, publicUrl, contentType and signed cloudinaryParams")],
            errors=[("400 BAD_SESSION", "no sessionId")],
-           uses=["utils/s3.getPresignedUploadUrl", "Event"],
+           uses=["utils/cloudinary.getCloudinaryUploadSignature", "Event"],
            side="No database write. Keys follow photos/<orgId>/<eventId>/<sessionId>-<type>[-index]-<ts>-<rand>.<ext>."),
 
         ep("POST", "/sessions/complete",
@@ -312,7 +312,7 @@ BOOTH = router(
            "guest consent applied, and one 24-hour guest download created.",
            auth="device (strict)",
            body=[("sessionId", "string", "required"),
-                 ("photos", "array", "up to 40 items: {key, url, isComposite} objects, plain URLs, S3 keys or data URLs"),
+                 ("photos", "array", "up to 40 items: {key, url, isComposite} objects, Cloudinary URLs/keys, external URLs or data URLs"),
                  ("composite", "object | string", "optional separate final print: {key, url} preferred"),
                  ("compositeUrl", "string", "accepted alias for the composite"),
                  ("digitalCopy", "boolean", "default true; false skips the download link"),
@@ -329,9 +329,9 @@ BOOTH = router(
                 ("photosStored", "number", "rows created"), ("photosVisibleInGallery", "number", "rows passing consent"),
                 ("photosSkipped", "number", "inputs that could not be stored")],
            errors=[("400 BAD_SESSION", "no sessionId"), ("402 PLAN_EXPIRED", "subscription lapsed")],
-           uses=["Photo", "GuestDownload", "guestDownloadService", "gallerySettingsService", "utils/s3.uploadToS3", "auditLogger"],
-           side="Increments Device.telemetry.prints. Persists data URLs to S3 when configured, otherwise leaves them "
-                "inline (25 MB cap). Blocks SSRF by rejecting private, loopback and link-local hosts."),
+           uses=["Photo", "GuestDownload", "guestDownloadService", "gallerySettingsService", "utils/cloudinary.uploadToCloudinary", "auditLogger"],
+           side="Increments Device.telemetry.prints. Persists data URLs to Cloudinary when configured, otherwise leaves them "
+                " Blocks SSRF by rejecting private, loopback and link-local hosts."),
 
         ep("POST", "/sessions/consent",
            "Record or revoke publishing consent for an existing session (used when the booth asks after the fact).",

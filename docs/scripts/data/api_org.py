@@ -14,10 +14,10 @@ ORG = router(
          "blocks suspended organisations with 403 ORG_SUSPENDED.",
     endpoints=[
         ep("GET", "/asset-proxy",
-           "Serve local or S3 artwork to the CRM before auth runs, so <img> and CSS url() keep working without a token.",
-           auth="public", query=[("key", "string", "required: S3 key, uploads path or data: URL")],
+           "Serve local or Cloudinary-backed artwork to the CRM before auth runs, so <img> and CSS url() keep working without a token.",
+           auth="public", query=[("key", "string", "required: Cloudinary public ID or legacy media key, uploads path or data: URL")],
            res=[("image/*", "binary", "asset bytes, cached for a year")],
-           errors=[("400 BAD_REQUEST", "missing key or '..' in the key"), ("404 NOT_FOUND", "not in uploads/ or S3")],
+           errors=[("400 BAD_REQUEST", "missing key or '..' in the key"), ("404 NOT_FOUND", "not in uploads/ or supported media URL")],
            uses=["utils/s3", "fs"]),
 
         ep("GET", "/dashboard",
@@ -434,8 +434,8 @@ ORG = router(
            errors=[("404 MEMBER_NOT_FOUND", "unknown member")], uses=["User", "auditLogger"]),
 
         ep("GET", "/gallery",
-           "The organisation gallery: one row per booth session, composite preferred, each image signed for the "
-           "browser (the bucket is private).",
+           "The organisation gallery: one row per booth session, composite preferred; access is tenant/policy checked, but "
+           "Cloudinary delivery URLs are returned directly and direct reachability depends on provider settings.",
            perm="ORG_GALLERY_VIEW",
            query=[("eventId", "string", "optional filter"), ("boothId", "string", "optional filter")],
            res=[("enabled", "boolean", "platform policy"),
@@ -447,8 +447,8 @@ ORG = router(
            side="Backfills eventId on orphaned photos that only have a deviceId (max 500 rows per call)."),
 
         ep("GET", "/gallery/photo/:id/view",
-           "Stream one gallery image: decodes inline data URLs, streams from S3 with server credentials, or redirects "
-           "to a signed URL. Used where a browser cannot follow a signed URL directly.",
+           "Stream one gallery image: decodes inline data URLs, streams local/data URLs or redirects to a Cloudinary/external URL. "
+           "The redirect does not create an expiring media URL; access depends on provider settings.",
            perm="ORG_GALLERY_VIEW",
            query=[("kind", "string", "composite (default) or raw")],
            res=[("image/*", "binary | 302", "image bytes or a redirect")],

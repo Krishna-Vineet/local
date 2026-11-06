@@ -62,6 +62,16 @@ The app leverages shared packages from the monorepo:
 - **`@happypix/state-machine`**: XState-based core logic.
 - **`@happypix/camera-core` & `@happypix/printer-core`**: Hardware abstraction layers.
 
+### Current camera paths
+
+- Integrated tablet camera via VisionCamera.
+- Canon CCAPI over Wi-Fi; validate exact camera model/firmware.
+- Android direct USB PTP via `PtpUsbModule` (USB Host/OTG): shutter capture and JPEG retrieval only; no PTP live view/settings, and battery is a fixed placeholder.
+- Nikon Remote SDK via the Windows Electron Kiosk Bridge over the LAN. Tablet endpoints expose status, live view and capture; camera settings are Electron IPC-only.
+- iPadOS has no direct USB PTP implementation. Physical iPad access to the HTTP bridge must be tested for local-network permission and App Transport Security behavior.
+
+These are code paths, not model-specific certification. See [`../../../docs/HARDWARE_PRINTING.md`](../../../docs/HARDWARE_PRINTING.md) for test criteria.
+
 ## 🔒 Kiosk Mode
 
 **Android:** the app is intended to run in Kiosk Mode (Lock Task Mode) on production devices. Ensure the device is properly provisioned using ADB as a Device Owner if you need to test Kiosk mode locally.

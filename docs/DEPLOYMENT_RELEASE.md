@@ -2,7 +2,7 @@
 
 > **Scope:** how every artefact gets from a commit to a customer, and how to get it back out again.
 > **Audience:** release engineer, on-call engineer, founder doing a hotfix at 11 pm.
-> **Last verified:** 2026-10-23, branch `main`.
+> **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. This does not imply physical hardware verification.
 
 ---
 
@@ -39,7 +39,7 @@
         │ /api                                                      │
    ┌────▼──────────────────┐                          ┌─────────────▼──────────┐
    │ Vercel: website-backend│                         │ MongoDB Atlas (M10+)   │
-   │ Express serverless     │◄──── same database ────►│ S3 bucket (private)    │
+   │ Express serverless     │◄──── same database ────►│ Cloudinary media storage    │
    └────────────────────────┘                         └────────────────────────┘
 
    ┌────────────────────────┐   ┌─────────────────────────┐   ┌──────────────────┐
@@ -57,7 +57,7 @@
 | Main API | Vercel serverless (Node 20) | Express 5 | Per-request, auto |
 | Website API | Vercel serverless (Node 20) | Express 5 | Per-request, auto |
 | Database | MongoDB Atlas | Replica set | Vertical + read preference |
-| Object storage | AWS S3 | Managed | Effectively unlimited |
+| Object storage | Cloudinary | Managed service; account/configuration determines plan and region | Verify current quota/backup policy |
 | Print bridge | Customer booth PC | Node/Electron | One per booth |
 | Booth apps | Customer hardware | — | — |
 
@@ -74,7 +74,7 @@ requests.
 |---|---|---|
 | Vercel functions | `bom1` (Mumbai) preferred | Majority of customers are in India |
 | MongoDB Atlas | `ap-south-1` / nearest to Vercel | Latency |
-| S3 | `ap-south-1` or `ap-southeast-2` | Data locality + existing bucket |
+| Cloudinary | Account data-center / region as provisioned | Verify data locality and plan in the Cloudinary console |
 
 If the Vercel region and the Atlas region differ, every query pays a round-trip. Verify with a
 `/api/org/dashboard` timing check after any region change.
@@ -136,14 +136,14 @@ while the API returns 200 to `curl`.
 |---|---|---|---|---|---|
 | **Local** | Development | `localhost:5000` | `localhost:5173` | `localhost:5174` | Local Mongo / dev Atlas |
 | **Preview** | PR review | Vercel preview | Vercel preview | Vercel preview | **Dev Atlas** (never production) |
-| **Staging** | Pre-release validation | `staging-api` ⟨TBC⟩ | `staging-crm` ⟨TBC⟩ | `staging` ⟨TBC⟩ | Staging Atlas + separate S3 bucket |
-| **Production** | Customers | `api.happypix.in` | `crm.happypix.in` | `happypix.in` | Production Atlas + production bucket |
+| **Staging** | Pre-release validation | `staging-api` ⟨TBC⟩ | `staging-crm` ⟨TBC⟩ | `staging` ⟨TBC⟩ | Staging Atlas + separate Cloudinary environment/account or isolated media folders |
+| **Production** | Customers | `api.happypix.in` | `crm.happypix.in` | `happypix.in` | Production Atlas + configured production Cloudinary account |
 
 ### 3.1 Hard rules
 
 1. **Previews never touch production data.** Preview deployments must use a separate database and
-   bucket. A preview that writes into production can send real emails, charge real cards and pollute
-   analytics.
+   isolated Cloudinary account/folder configuration. A preview that writes into production can send
+   real emails, charge real cards and pollute analytics.
 2. **Staging mirrors production config**, differing only in credentials and URLs.
 3. **No environment shares a JWT secret** with another.
 4. **Payment keys differ by environment** — `rzp_test_*` outside production; production boots log
@@ -182,9 +182,9 @@ vercel env add MONGODB_URI production
 vercel env add JWT_SECRET production
 vercel env add RAZORPAY_KEY_ID production
 vercel env add RAZORPAY_KEY_SECRET production
-vercel env add S3_BUCKET_NAME production
-vercel env add AWS_ACCESS_KEY_ID production
-vercel env add AWS_SECRET_ACCESS_KEY production
+vercel env add CLOUDINARY_CLOUD_NAME production
+vercel env add CLOUDINARY_API_KEY production
+vercel env add CLOUDINARY_API_SECRET production
 vercel env add WEBSITE_URL production
 vercel env add CLIENT_URL production
 ```
@@ -210,7 +210,7 @@ anyone can forge. A failed deploy is better than a silently insecure one.
 | CORS origins | `grep staticAllowedOrigins backend/server.js` |
 | Website API base | `website/.env` → `VITE_API_URL` |
 | CRM API base | CRM project env → `VITE_API_URL`, `VITE_MOCK=false` |
-| S3 bucket + region | Match `S3_BUCKET_NAME` and `AWS_REGION` |
+| Cloudinary account | Confirm `CLOUDINARY_CLOUD_NAME`, API key/secret and account region/plan |
 | Plan catalogue | Compare `planService.js` to `website-backend/src/pricing.js` |
 
 ---
@@ -474,7 +474,7 @@ Bump rules: breaking API contract → MAJOR; new feature → MINOR; fix → PATC
 ## HappyPix 2.4.0 — 2026-10-23
 
 ### Highlights
-- Final composited frame now uploads to S3 with individual photos; CRM gallery shows the composite
+- Historical 2026-10-23 note: the final composited frame was added to the individual-photo upload path. Current implementation uses the Cloudinary-backed adapter; see the SDK/storage update below.
   as the session cover and the guest QR resolves to the same image.
 - Cross-platform printer telemetry: macOS now reports status, queue depth, orientation and quality
   via CUPS (paper/ribbon levels remain unavailable where the driver does not expose them).
@@ -520,6 +520,16 @@ Each release must record: version, commit SHA, tag, date, deployer, artefact has
 applied, rollback commit. Store it in the handover register and in the GitHub Release body.
 
 ---
+
+### Current implementation note — commit `d0ba133` (2026-11-06)
+
+Photo storage uses Cloudinary adapters in both backends; older S3 environment-variable and bucket
+instructions in earlier sections are superseded. Configure `CLOUDINARY_CLOUD_NAME`,
+`CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` for hosted media. Nikon Remote SDK is included as
+an Electron Windows-only PowerShell bridge under `electron/resources/nikon`; ensure the packaged
+resource files are present and review vendor terms. Android USB PTP is a separate, limited capture
+path; it is not available on iPad. Use `electron/HARDWARE_SDK_REPORT.md` for the implementation
+boundary and `docs/TESTING_RELEASE_CHECKLIST.md` for verification gates.
 
 ## 9. Rollback
 
@@ -697,7 +707,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://happypix.in/api/downloads/unkno
 | Payment success rate | < 95 % | Check gateway status, then roll back |
 | Heartbeat failures | > 10 % of devices | Check auth/CORS |
 | New error codes in logs | any unfamiliar code | Read the trace |
-| S3 upload errors | > 1 % | Check bucket policy/quota |
+| Cloudinary upload errors | > 1 % | Check account credentials, quota and provider status |
 
 ---
 

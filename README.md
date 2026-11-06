@@ -34,7 +34,7 @@ WhatsApp group for photo delivery — with one system where:
 * the **operator** manages clients, events, booths, templates, pricing and staff in a CRM;
 * the **booth** (Android tablet, iPad, or a Windows/macOS PC) captures, composes, prints and uploads;
 * the **guest** pays at the booth, walks away with a physical print and scans a QR code for a
-  high-resolution digital copy that self-destructs in 24 hours;
+  high-resolution digital copy through a download link that expires after 24 hours;
 * the **platform owner** sees revenue, subscriptions, support and device telemetry in one console.
 
 ### The problem it solves
@@ -51,14 +51,16 @@ WhatsApp group for photo delivery — with one system where:
 
 ### What is genuinely production-grade today
 
-Verified in this repository (build + typecheck + lint passing on `main`):
+Implementation snapshot reviewed in this repository at commit `d0ba133` on 2026-11-06. This status reflects source code, not a claim that every hardware rig was physically tested:
 
-* **Backend** — 100+ REST endpoints, 23 Mongoose models, JWT auth, device-token auth, rate limits,
-  audit log, payment webhooks with signature verification, S3 uploads, TTL-based guest downloads.
+* **Backend** — 100+ REST endpoints, 25 Mongoose models, JWT auth, device-token auth, rate limits,
+  audit log, payment webhooks with signature verification, Cloudinary-backed uploads (legacy S3 adapter names remain), and TTL-based guest-download links.
 * **CRM** — 5 fixed roles enforced three times (nav, router, API), 21 screens, zero UI dependencies.
 * **Booth apps** — one React Native codebase for **Android and iPad** (XState + Skia, Canon CCAPI,
-  IPP/AirPrint) plus an Electron kiosk (React 19, PowerShell spooler, CUPS); all three run the same
-  session flow, filters, ornaments, payment, print, issue-raising and QR.
+  Android USB PTP capture, and a LAN Nikon bridge provider) plus an Electron kiosk (React 19, Windows
+  PowerShell Nikon Remote SDK bridge, Windows spooler/CUPS). Capabilities differ by platform, and each
+  physical rig needs validation; the apps share a session flow, filters, ornaments, payments, printing,
+  issue reporting and QR delivery.
 * **Website** — marketing, pricing, plan checkout, guest download portal.
 
 Where something is *not* production-ready, it is explicitly marked in
@@ -86,14 +88,14 @@ working if it only exists as a stub.
                                ▼                                        │
                   ┌─────────────────────────┐                           │
                   │  MongoDB Atlas (shared) │                           │
-                  │  S3 (photos, assets)    │                           │
+                  │  Cloudinary (photos/assets)│                           │
                   │  Razorpay / Cashfree    │                           │
                   │  Groq / Together / xAI  │                           │
                   └─────────────────────────┘                           │
                                                                         │
                   ┌─────────────────────────────────────────────────────┘
                   ▼
-        Camera (Canon CCAPI / USB / device camera)
+        Camera (Canon CCAPI / Windows Nikon SDK bridge / Android PTP / device camera)
         Printer (DNP · Citizen · HiTi · Canon SELPHY · any OS driver)
 ```
 
@@ -102,7 +104,7 @@ working if it only exists as a stub.
 | # | Application | Path | Who uses it | Purpose |
 |---|---|---|---|---|
 | 1 | **Public website** | `/website` | Prospective customers, guests | Marketing, pricing, subscription checkout, **guest download portal** (`/download/:id`) |
-| 2 | **Website backend** | `/website-backend` | Website (server-to-server) | Public plans API, Razorpay checkout, presigned guest downloads, sales leads |
+| 2 | **Website backend** | `/website-backend` | Website (server-to-server) | Public plans API, Razorpay checkout, guest download links, sales leads |
 | 3 | **CRM** | `/crm` | Platform owner/admins, org admins/managers | Tenancy, events, devices, templates, pricing, revenue, support, audit |
 | 4 | **Main backend** | `/backend` | CRM, booths, webhooks | Auth, tenancy, snapshots, payments, sessions, photos, support, AI |
 | 5 | **React Native booth** | `/client-app` | Booth operators (Android tablet, iPad) | Full kiosk flow with native camera/printer/kiosk packages; iOS target in `apps/booth/ios` |
@@ -119,7 +121,7 @@ working if it only exists as a stub.
 | Runtime | Node.js (ESM) | 20 LTS / 22 LTS |
 | HTTP | Express | 5.2.x |
 | Database | MongoDB Atlas + Mongoose | 7.x driver / 9.4.x |
-| Files | AWS S3 (`@aws-sdk/client-s3`, `lib-storage`, `s3-request-presigner`) | v3 |
+| Files | Cloudinary (`cloudinary` SDK) with backend local/data-URL fallback | v2 |
 | Imaging | Sharp | 0.35.x |
 | Auth | `jsonwebtoken`, `bcryptjs`, device token hashing (SHA-256) | — |
 | Payments | Razorpay 2.9.x, Cashfree PG 6.x | — |
@@ -141,13 +143,14 @@ working if it only exists as a stub.
 | Device class | RN booth — Android | RN booth — iPad | Electron booth |
 |---|---|---|---|
 | Device/phone camera | ✅ VisionCamera | ✅ VisionCamera | ✅ `getUserMedia` |
-| Canon DSLR (Wi-Fi) | ✅ CCAPI REST | ⚠️ same code, untested | ⚠️ seam only (`canon-sdk-pending`) |
-| Nikon (USB PTP) | ⚠️ transport pending | ⚠️ transport pending | ⚠️ transport pending |
+| Canon DSLR (Wi-Fi) | CCAPI provider implemented; validate model/firmware | Shared provider code; physical iPad validation required | Secondary CCAPI network path |
+| Nikon Remote SDK (USB) | Via Windows Electron bridge over LAN; direct USB PTP capture also implemented | Via bridge provider code; local-network/ATS validation required | Windows PowerShell SDK bridge; macOS SDK path not implemented |
+| Nikon direct USB PTP | Android USB-OTG capture/JPEG transfer only; no PTP live view/settings | Not supported | — |
 | Sony Alpha | ⚠️ interface stub (SDK NDA) | ⚠️ interface stub | ⚠️ interface stub |
 | Windows spooler printers | — | — (via Print Bridge) | ✅ PowerShell + `System.Drawing` |
 | macOS/Linux CUPS printers | — | — (via Print Bridge) | ✅ `lp` + `lpstat` |
 | Network IPP printers | ✅ raw IPP (RFC 8011) | ⚠️ via Print Bridge | ⚠️ via OS driver |
-| AirPrint | — | ❌ stub only (needs a native bridge) | — |
+| AirPrint | — | Stub / not a supported completed print path | — |
 | DNP media/ribbon telemetry | ⚠️ no public Android SDK | ⚠️ no public iOS SDK | ✅ `CyStat64.dll` + WMI fallback |
 | Kiosk lockdown | ✅ Lock Task Mode (device owner) | ⚠️ Guided Access / MDM only | ✅ `kiosk: true` window |
 
@@ -187,9 +190,9 @@ Every document below is versioned in this repository. Start with the owner's ord
 
 Supporting technical references already in the repo:
 
-* [`HAPPYPIX_V2_MASTER_DOCUMENTATION.md`](HAPPYPIX_V2_MASTER_DOCUMENTATION.md) — deep technical
+* [`HAPPYPIX_V2_MASTER_DOCUMENTATION.md`](docs/HAPPYPIX_V2_MASTER_DOCUMENTATION.md) — deep technical
   handbook (schema rationale, AI pipeline, viva-style Q&A).
-* [`electron/HARDWARE_SDK_REPORT.md`](electron/HARDWARE_SDK_REPORT.md) — Windows/macOS SDK parity.
+* [`electron/HARDWARE_SDK_REPORT.md`](electron/HARDWARE_SDK_REPORT.md) — current platform-specific SDK/provider boundaries and storage notes.
 * [`crm/SECURITY.md`](crm/SECURITY.md) — CRM hosting headers and client-side posture.
 * [`docs/BACKEND_REFERENCE.html`](docs/BACKEND_REFERENCE.html) — the generated, single-file backend reference
   (rebuild with `python3 docs/scripts/build_backend_doc.py`).
@@ -212,10 +215,10 @@ local/
 │   ├── routes/                   ← auth, events, coupons, payments, support, devices,
 │   │   │                            booth (kiosk API), share, downloads
 │   │   └── crm/                  ← auth.js · platform.js · org.js  (CRM v2 API)
-│   ├── models/                   ← 23 Mongoose schemas
+│   ├── models/                   ← 25 Mongoose schemas
 │   ├── services/                 ← plan, snapshot, coupons, gallery, downloads, delivery, AI
 │   ├── middleware/               ← authenticate · requirePerm · authenticateDevice
-│   ├── utils/                    ← s3 · crypto · auditLogger · httpError · printHelper
+│   ├── utils/                    ← cloudinary (s3 compat) · crypto · auditLogger · httpError · printHelper
 │   ├── scripts/                  ← seed + maintenance scripts
 │   └── tests/                    ← node:test suites
 │
@@ -364,7 +367,7 @@ Detailed walkthrough: [`docs/USER_ADMIN_GUIDE.md`](docs/USER_ADMIN_GUIDE.md).
 |---|---|
 | Single monorepo | `github.com/Krishna-Vineet/local` |
 | Default branch | `main` |
-| Active development branch | `main` |
+| Active development branch | `arena/097e52ae-local` (this documentation snapshot) |
 | Package managers | npm (5 apps) + pnpm (client-app workspace) |
 
 ### Environments
@@ -391,7 +394,7 @@ Any new domain must be added to that array and redeployed — otherwise the brow
 | Service | Used for | Owner action |
 |---|---|---|
 | MongoDB Atlas | Primary datastore (single shared cluster) | Backup policy, IP allowlist |
-| AWS S3 | Photos, composites, template art | Bucket policy, CORS, lifecycle |
+| Cloudinary | Photos, composites, template art | Account credentials, privacy/access mode, retention/backup policy |
 | Razorpay | Subscription + on-booth payments | Live keys, webhook URL |
 | Cashfree | Alternate UPI rail for booth payments | Live keys, webhook URL |
 | Groq | Template prompt classification / design JSON | Key rotation, spend cap |
@@ -430,22 +433,23 @@ Security Officer *and* the Engineering Lead within 15 minutes, regardless of hou
 
 ## 9. Project status at a glance
 
-Last verified: **2026-10-23** on branch `main`
-(`npm run typecheck && npm run lint && npm run build:react` in `/electron` — passing).
+Implementation snapshot reviewed: **2026-11-06**, commit `d0ba133` on `arena/097e52ae-local`. No repository-wide build/test pass is asserted here; see `docs/TESTING_RELEASE_CHECKLIST.md` for the current verification record and required device checks.
 
 | Area | Status | Notes |
 |---|---|---|
 | Multi-tenant backend + RBAC | ✅ Production | 5 fixed roles, three-layer enforcement |
 | CRM (platform + org) | ✅ Production | 21 screens, 6 demo orgs, audit trail |
-| Website + guest downloads | ✅ Production | 24 h TTL, presigned S3 |
+| Website + guest downloads | Implemented | 24 h download-link expiry; Cloudinary-backed media URLs (not S3 presigned object URLs) |
 | RN booth flow (Android) | ✅ Production | Capture → edit → print → QR |
 | iPad build | ⚠️ Runs, not shipped | Xcode target + iPad config present; printing, kiosk lockdown, icons and signing still open — see [`docs/IPAD_SUPPORT.md`](docs/IPAD_SUPPORT.md) |
 | Electron booth flow | ✅ Production | Same flow, cross-platform print |
 | Payments (Razorpay/Cashfree) | ✅ Production | Webhook signature verification |
-| S3 photo + composite upload | ✅ Fixed 2026-10-23 | Composite now uploaded with individuals |
+| Cloud photo + composite upload | Implemented in current code | Cloudinary adapter; configure Cloudinary and verify end-to-end uploads on deployment |
 | DNP telemetry | ✅ Production (Win) / ✅ best-effort (macOS) | CUPS cannot always report media |
-| Canon CCAPI camera | ✅ Android / ⚠️ Electron seam | Wi-Fi REST, no native SDK |
-| Nikon PTP / Sony SDK | ⚠️ Not shipped | Interfaces ready, transports pending |
+| Canon CCAPI camera | Implemented provider paths | Wi-Fi REST; validate each model and firmware on target hardware |
+| Nikon Remote SDK | Implemented for Electron on Windows | PowerShell bridge + vendor files; no macOS SDK path |
+| Android USB PTP | Implemented capture path | Android USB-OTG only; no PTP live view/settings; battery field is placeholder |
+| Sony SDK | Not integrated | Provider seam only |
 | Live video booth mode | ⚠️ Add-on scaffolded | Not shipped to customers |
 | iPad distribution | ⚠️ Not started | No App Store record, no icons, no Fastlane — §8 of the iPad doc |
 | Automated E2E (Detox/Playwright) | ⚠️ Partial | Unit + contract tests only |
@@ -462,8 +466,8 @@ No part may be redistributed, sublicensed or published without written permissio
 Third-party licences that matter operationally:
 
 * **Canon CCAPI** — device-embedded HTTP API, no distribution licence required.
-* **Canon EDSDK / Sony Camera Remote SDK / Nikon SDK** — require vendor agreements before shipping
-  native bindings. Not currently bundled.
+* **Nikon Remote SDK** — vendor SDK files are present under `electron/resources/nikon` and included by the Electron resource packaging rule; check the applicable Nikon terms before redistribution. The Electron Remote SDK integration is Windows-only.
+* **Canon EDSDK / Sony Camera Remote SDK** — no completed native integrations are present in this snapshot; obtain vendor agreements before adding/distributing SDK bindings.
 * **DNP `CyStat64.dll`** — ships with the DNP Windows driver; we call it, we do not redistribute it.
 * **Inter font / Nunito / Fredoka** — SIL Open Font License 1.1 (bundled via `@fontsource-variable`).
 * **Electron, React, Express, Mongoose** — MIT / Apache-2.0; keep attribution in installers.

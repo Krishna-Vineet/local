@@ -1,4 +1,4 @@
-%%@ d2-1 :: ER overview — 23 collections and their foreign keys
+%%@ d2-1 :: ER overview — 25 collections and their foreign keys
 %%@ note: Read this first, then open the five detail diagrams. Cardinality is as enforced by the code, not as declared: MongoDB has no real FK constraints, so every arrow is enforced by an application check.
 %%@ note: Three relations are deliberately nullable and matter operationally — AuditLog.organizationId (null = platform scope), Photo.organizationId (null = legacy/unscoped capture) and PhotoShare.organizationId (required only for org-scoped shares).
 erDiagram
@@ -369,13 +369,13 @@ erDiagram
 
 %%@ d2-5 :: ER detail — media, digital delivery and TTL lifecycle
 %%@ note: Four collections carry a MongoDB TTL index on expiresAt: PHOTO_SHARE, GUEST_DOWNLOAD, DIGITAL_TOKEN (and the index is declared, not cron-driven). Data disappears without any application write, so every reader must also check expiry explicitly.
-%%@ note: PHOTO has no TTL — photo rows are permanent by design (a legacy TTL index on createdAt is actively dropped at boot). Its URL points at a private bucket, so readers must sign.
+%%@ note: PHOTO has no TTL — photo rows are permanent by design (a legacy TTL index on createdAt is actively dropped at boot). Its URL may point to a Cloudinary delivery URL; guest-link expiry does not revoke that media URL.
 erDiagram
   PHOTO {
     objectId _id PK
     objectId organizationId FK "nullable for legacy captures"
     string s3Key
-    string url "private bucket URL"
+    string url "Cloudinary / legacy media URL"
     string compositeUrl "final print strip"
     objectId eventId FK
     objectId deviceId FK

@@ -39,7 +39,7 @@ EDGE_COLORS_JS = ROOT / "docs" / "scripts" / "edge_colors.js"
 
 FAMILIES = {
     "01-ecosystem.mmd": ("1 · Ecosystem", "Whole-system component and trust maps."),
-    "02-er.mmd": ("2 · Database (ER)", "The 23 Mongoose collections and their foreign keys."),
+    "02-er.mmd": ("2 · Database (ER)", "The 25 Mongoose collections and their foreign keys."),
     "03-dfd.mmd": ("3 · Data flow (DFD 0/1/2)", "Context, level 1, and one level 2 diagram per business process."),
     "04-hld-lld.mmd": ("4 · HLD / LLD", "Layered architecture, deployment, request pipeline, sequences, state machine."),
     "05-future.mmd": ("5 · Future architecture", "The target state at full load and the measurable triggers to get there."),
@@ -119,6 +119,7 @@ def build_markdown(diagrams: list[Diagram]) -> str:
     add("> **Generated file:** do not edit by hand. The source of truth is `docs/diagrams/src/*.mmd`;")
     add("> regenerate with `python3 docs/scripts/build_diagrams.py`.")
     add(">")
+    add("> **Implementation snapshot:** reviewed against commit `d0ba133` (2026-11-06). Current diagrams show Cloudinary-backed media and platform-specific Nikon paths; the `05 · Future architecture` family is explicitly a target state.")
     add("> **Rendering:** every definition is Mermaid. GitHub renders them natively. For a styled, searchable")
     add("> viewer open [`docs/diagrams/index.html`](diagrams/index.html) in a browser.")
     add("")
@@ -169,7 +170,7 @@ def build_markdown(diagrams: list[Diagram]) -> str:
     add("| Blue | HTTP / API call | the label, or an endpoint-shaped node (`/api/booth/...`) |")
     add("| Red | Auth, token, permission | `token`, `login`, `session`, `permission`, `role` |")
     add("| Green | MongoDB / data | `MongoDB`, `collection`, `query`, `index`, `TTL index` |")
-    add("| Amber | S3 / photo media | `S3`, `upload`, `presign`, `photo`, `composite` |")
+    add("| Amber | Cloudinary / photo media | `Cloudinary`, `upload`, `signature`, `photo`, `composite` |")
     add("| Purple | Payment, price, plan | `payment`, `order`, `coupon`, `price`, `settlement` |")
     add("| Orange | Printing | `print`, `spool`, `IPP`, `DNP`, `paper` |")
     add("| Cyan | Async, webhook, TTL | `webhook`, `cron`, `retry`, `poll`, `expiry` |")

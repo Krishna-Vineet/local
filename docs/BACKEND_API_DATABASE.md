@@ -4,7 +4,7 @@
 > (`/website-backend`, port 5001).
 > **Machine-readable contract:** [`openapi.yaml`](openapi.yaml) (OpenAPI 3.1) — import into Postman,
 > Insomnia or Swagger UI.
-> **Last verified:** 2026-10-23, branch `main`.
+> **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. This does not imply physical hardware verification.
 
 ---
 
@@ -23,7 +23,7 @@
 11. [Rate limits](#11-rate-limits)
 12. [Database schema](#12-database-schema)
 13. [Indexes and migrations](#13-indexes-and-migrations)
-14. [File storage (S3)](#14-file-storage-s3)
+14. [File storage (Cloudinary)](#14-file-storage-cloudinary)
 15. [Background jobs, webhooks and retries](#15-background-jobs-webhooks-and-retries)
 16. [Versioning and compatibility](#16-versioning-and-compatibility)
 
@@ -93,7 +93,7 @@ request
   │
   ├─ handler (asyncRoute wraps errors)
   │    ├─ mongoose queries (tenant-scoped)
-  │    ├─ S3 / provider calls (timeout-guarded)
+  │    ├─ Cloudinary / media provider calls (timeout-guarded)
   │    └─ auditLogger (mutations)
   │
   └─ error handler → httpError shape         ── 4xx/5xx
@@ -379,7 +379,7 @@ slot immediately.
 | `POST` | `/team/:id/deactivate` | `ORG_TEAM_MANAGE` + writable | Deactivate |
 | `POST` | `/team/:id/activate` | `ORG_TEAM_MANAGE` + writable | Reactivate |
 | `GET` | `/gallery` | `ORG_GALLERY_VIEW` | Session-grouped gallery |
-| `GET` | `/gallery/photo/:id/view` | `ORG_GALLERY_VIEW` | Redirect to presigned photo |
+| `GET` | `/gallery/photo/:id/view` | `ORG_GALLERY_VIEW` | Serve local/data media or resolve supported Cloudinary/external media URL |
 | `GET` | `/templates` | `GLOBAL_TEMPLATES_USE` | Templates available to this org |
 | `GET` | `/audit` | `ORG_AUDIT_VIEW` | Org audit log |
 | `GET` | `/template-layouts` | auth only | Layout catalogue for the designer |
@@ -408,7 +408,7 @@ Query params: `?eventId=&from=&to=&q=&page=&limit=`. Response:
       "eventId": "6651b…",
       "eventName": "Kapoor × Mehta Reception",
       "capturedAt": "2026-11-14T14:32:11.000Z",
-      "coverUrl": "https://…presigned…",
+      "coverUrl": "https://res.cloudinary.com/<cloud>/image/upload/...",
       "photoIds": ["6652a…", "6652b…", "6652c…"],
       "isComposite": true
     }
@@ -438,7 +438,7 @@ Base: `/api/booth`. Auth: `Authorization: Bearer <deviceToken>` unless stated.
 | `GET` | `/payments/:id` | device | Poll status |
 | `POST` | `/payments/:id/confirm` | device | Client-confirm (still signature-checked) |
 | `POST` | `/checkout/free-complete` | device | Complete a ₹0 session |
-| `POST` | `/sessions/upload-urls` | device | Presigned S3 PUT URLs |
+| `POST` | `/sessions/upload-urls` | device | Cloudinary signed upload parameters (when configured) |
 | `POST` | `/sessions/complete` | device | Persist photos + create 24 h download |
 | `POST` | `/sessions/consent` | device | Record guest consent |
 | `POST` | `/support` | device | Guest raises an issue → `ticketId` |
@@ -562,21 +562,47 @@ platform `SUGGESTED_PRICES`. The booth never computes the payable amount itself.
 
 ### 7.5 `POST /api/booth/sessions/upload-urls`
 
-```json
-{ "sessionId": "sess_9f2…", "files": [{ "kind": "photo", "contentType": "image/jpeg" }, { "kind": "composite", "contentType": "image/png" }] }
-```
+The booth authenticates with its device token and provides a session ID plus a list of requested
+files. With Cloudinary configured, the route returns server-generated Cloudinary signature data; the
+API secret is never returned. When storage is not configured, the route returns empty `urls` and the
+booth/backend persistence path is used instead. `s3Configured` remains as a legacy response alias;
+`storageConfigured` is the provider-neutral field.
 
-**200**
+**Request**
 
 ```json
 {
-  "uploads": [
-    { "kind": "photo", "key": "org/664ff/events/6651b/sessions/sess_9f2/1.jpg", "url": "https://…presigned-put…" },
-    { "kind": "composite", "key": "org/664ff/events/6651b/sessions/sess_9f2/composite.png", "url": "https://…presigned-put…" }
-  ],
-  "expiresIn": 900
+  "sessionId": "sess_9f2…",
+  "eventId": "6651b…",
+  "files": [
+    { "type": "frame", "index": 0, "contentType": "image/jpeg" },
+    { "type": "composite", "index": 0, "contentType": "image/png" }
+  ]
 }
 ```
+
+**200 (Cloudinary configured)**
+
+```json
+{
+  "storageConfigured": true,
+  "s3Configured": true,
+  "urls": [{
+    "type": "frame",
+    "index": 0,
+    "key": "happypix/photos/<org>/<event>/<session>-frame-0-<timestamp>-<suffix>.jpg",
+    "uploadUrl": "https://api.cloudinary.com/v1_1/<cloud>/image/upload",
+    "publicUrl": "https://res.cloudinary.com/<cloud>/image/upload/<public-id>",
+    "contentType": "image/jpeg",
+    "cloudinaryParams": {
+      "cloudName": "<cloud>", "apiKey": "<key>", "folder": "happypix/photos/<org>/<event>",
+      "timestamp": 1790000000, "signature": "<server-generated-signature>"
+    }
+  }]
+}
+```
+
+The route currently retains the `s3Configured` compatibility flag despite not using an AWS S3 client.
 
 ### 7.6 `POST /api/booth/sessions/complete`
 
@@ -589,12 +615,12 @@ platform `SUGGESTED_PRICES`. The booth never computes the payable amount itself.
   "digitalCopy": true,
   "guestConsent": true,
   "photos": [
-    { "key": "…/1.jpg", "url": "https://cdn/…/1.jpg" },
-    { "key": "…/2.jpg", "url": "https://cdn/…/2.jpg" },
-    { "key": "…/3.jpg", "url": "https://cdn/…/3.jpg" },
-    { "key": "…/composite.png", "url": "https://cdn/…/composite.png", "isComposite": true }
+    { "key": "…/1.jpg", "url": "https://res.cloudinary.com/<cloud>/image/upload/.../1.jpg" },
+    { "key": "…/2.jpg", "url": "https://res.cloudinary.com/<cloud>/image/upload/.../2.jpg" },
+    { "key": "…/3.jpg", "url": "https://res.cloudinary.com/<cloud>/image/upload/.../3.jpg" },
+    { "key": "…/composite.png", "url": "https://res.cloudinary.com/<cloud>/image/upload/.../composite.png", "isComposite": true }
   ],
-  "compositeUrl": "https://cdn/…/composite.png",
+  "compositeUrl": "https://res.cloudinary.com/<cloud>/image/upload/.../composite.png",
   "prints": 2
 }
 ```
@@ -612,7 +638,7 @@ platform `SUGGESTED_PRICES`. The booth never computes the payable amount itself.
   "success": true,
   "sessionId": "sess_9f2…",
   "photoIds": ["6652a…", "6652b…", "6652c…", "6652d…"],
-  "compositeUrl": "https://cdn/…/composite.png",
+  "compositeUrl": "https://res.cloudinary.com/<cloud>/image/upload/.../composite.png",
   "downloadId": "9fQ2x…144bit…",
   "shareUrl": "https://happypix.in/download/9fQ2x…",
   "expiresAt": "2026-11-15T14:32:00.000Z",
@@ -683,7 +709,7 @@ while investigating. Category values used by the booth UI: `printing | payment |
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/downloads/:id` | `downloadLimiter` | Metadata + expiry + file list |
-| `GET` | `/api/downloads/:id/file/:kind` | `downloadLimiter` | `302` to presigned S3 (`composite` \| index) |
+| `GET` | `/api/downloads/:id/file/:kind` | `downloadLimiter` | Resolve media after download-ID validation (`composite` or frame index) |
 | `POST` | `/api/downloads/internal` | internal secret | Server-to-server creation |
 
 **`GET /api/downloads/:id` → 200**
@@ -693,8 +719,8 @@ while investigating. Category values used by the booth UI: `printing | payment |
   "downloadId": "9fQ2x…",
   "eventName": "Kapoor × Mehta Reception",
   "organizationName": "Sunset Weddings",
-  "compositeUrl": "https://…presigned…",
-  "photoUrls": ["https://…presigned…", "…"],
+  "compositeUrl": "https://res.cloudinary.com/<cloud>/image/upload/...",
+  "photoUrls": ["https://res.cloudinary.com/<cloud>/image/upload/...", "…"],
   "expiresAt": "2026-11-15T14:32:00.000Z",
   "views": 3,
   "downloads": 1
@@ -716,7 +742,7 @@ Base `https://<website-host>/api`. No user auth.
 | `POST` | `/checkout/order` | Create a Razorpay order for a plan |
 | `POST` | `/checkout/verify` | Verify payment, create org + subscription + owner user |
 | `GET` | `/downloads/:id` | Guest download metadata |
-| `GET` | `/downloads/:id/file/:kind` | Presigned redirect |
+| `GET` | `/downloads/:id/file/:kind` | Resolve media after validating the download ID |
 | `POST` | `/internal/downloads` | Server-to-server download creation (secret header) |
 | `POST` | `/leads` | Contact / demo request |
 
@@ -774,7 +800,7 @@ Every error:
 | `413` | Payload too large (photo batch, upload) |
 | `429` | Rate limited |
 | `500` | Unexpected server error (never leaks internals) |
-| `502/503` | Upstream failure (S3, payment gateway, AI provider) |
+| `502/503` | Upstream failure (Cloudinary, payment gateway, AI provider) |
 
 ### 10.2 Code reference
 
@@ -805,7 +831,7 @@ Every error:
 | `PAYMENT_NOT_CONFIRMED` | 409 | Provider says pending/failed |
 | `SIGNATURE_INVALID` | 400 | Webhook/verify signature mismatch (never trust client) |
 | `DOWNLOAD_EXPIRED` | 410 | 24 h passed |
-| `STORAGE_UNAVAILABLE` | 502 | S3 rejected the write |
+| `STORAGE_UNAVAILABLE` | 502 | Configured media provider rejected the write |
 | `GATEWAY_UNAVAILABLE` | 503 | Payment provider unreachable |
 | `AI_QUOTA_EXCEEDED` | 429 | Org AI credits exhausted |
 | `LAYOUT_IMMUTABLE` | 422 | AI prompt attempted geometry change |
@@ -837,7 +863,7 @@ Responses include `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`; o
 
 ## 12. Database schema
 
-MongoDB, single database, 23 collections. `_id` is ObjectId unless noted. All schemas use
+MongoDB, single database, 25 collections. `_id` is ObjectId unless noted. All schemas use
 `timestamps: true` unless stated, so `createdAt`/`updatedAt` exist everywhere.
 
 ### 12.1 Identity, tenancy and billing
@@ -964,7 +990,7 @@ Owner-only and audited.
 | `design` | Mixed | background, ornaments, typography, palette |
 | `source` | Enum | `designer · playground · ai_generated` |
 | `active` | Boolean | publish gate |
-| `assets` | [String] | S3 URLs |
+| `assets` | [String] | Cloudinary or legacy media URLs |
 | `price` | Number | suggested price |
 
 #### `templatelayouts`
@@ -986,7 +1012,7 @@ Owner-only and audited.
 | `name`, `category`, `description` | String | |
 | `layout` | Mixed | family, slots, print size |
 | `design` | Mixed | palette, ornaments, treatment |
-| `assets` | [String] | S3 |
+| `assets` | [String] | Cloud media URLs (legacy values may remain) |
 | `prompt` | String | the generating prompt (audit) |
 | `price` | Number | |
 
@@ -1024,9 +1050,9 @@ Owner-only and audited.
 | Field | Type | Notes |
 |---|---|---|
 | `organizationId`, `eventId`, `deviceId` | ObjectId | |
-| `url` | String | required (S3 or data URL persisted) |
+| `url` | String | required (Cloudinary/local/external URL or data URL) |
 | `compositeUrl` | String | set on the composite row **and** back-filled onto session rows |
-| `s3Key` | String | for re-signing |
+| `s3Key` | String | legacy compatibility field; may contain a provider public ID or older media key |
 | `sessionId` | String | gallery grouping key |
 | `guestConsent` | Boolean | |
 | `generatedAt`, `createdAt` | Date | |
@@ -1157,7 +1183,7 @@ There must be **no** `expireAfterSeconds` index on `photos`. Recreating it destr
 db.guestdownloads.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 ```
 
-Without it, expired download documents linger (URLs still resolve to deleted S3 objects → 404, but
+Without it, expired download documents linger (application link expires; media storage is separate, so
 the page shows "expired" only if the record is gone).
 
 #### Backfill `compositeUrl` onto session rows
@@ -1183,63 +1209,69 @@ switch reads → remove old field after a release cycle.
 ### 13.3 Backup and restore expectations
 
 * Atlas continuous backup enabled; PITR window ≥ 7 days (production).
-* Weekly logical dump stored outside the cluster (`mongodump` → S3, encrypted).
+* Weekly logical dump should be stored encrypted outside the cluster in a separately configured backup target. Do not assume Cloudinary is the database backup target.
 * Restore drill quarterly; see [`OPERATIONS.md`](OPERATIONS.md#4-backup-and-disaster-recovery).
 
 ---
 
-## 14. File storage (S3)
+## 14. File storage (Cloudinary)
 
-### 14.1 Key layout
+### 14.1 Current implementation
 
+The main backend configures Cloudinary through `utils/cloudinary.js`; the public website backend has
+its own adapter in `src/cloudinary.js`. The older `backend/utils/s3.js` API names (including
+`uploadToS3`, `deleteFromS3`, and `getPresignedUploadUrl`) are compatibility aliases around
+Cloudinary helpers, and the `s3` object is a stub that throws rather than an AWS client. Do not infer
+that AWS credentials or a bucket are used from a legacy field name such as `s3Key`.
+
+Required server-side environment variables for hosted storage are:
+
+```env
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
 ```
-<orgId>/events/<eventId>/sessions/<sessionId>/<index>.jpg      individual captures
-<orgId>/events/<eventId>/sessions/<sessionId>/composite.png    final composed sheet
-<orgId>/templates/<templateId>/background.png                  template artwork
-<orgId>/branding/<orgId>-logo.png                              org logo
-global/templates/<templateId>/…                                platform templates
-```
 
-### 14.2 Access model
+The API secret must remain server-side. When Cloudinary is configured, the booth upload-URL route
+returns a Cloudinary upload URL and signed parameters; for server-persisted images the backend stores
+the resulting Cloudinary URL/public ID. When Cloudinary is unavailable or unconfigured,
+`uploadToCloudinary` can save to `backend/uploads/`; if that also fails, it can return a data URL.
+Local disk is not durable on many serverless hosts, so configure hosted storage for production and
+verify the deployment's storage path.
 
-| Object | ACL | Access path |
+### 14.2 Key / public-ID conventions
+
+The route builds folder names from organization, event and session identifiers where available.
+Cloudinary public IDs and URLs are stored in photo/template/logo records. Existing Mongo records may
+still carry historical S3 URLs or `s3Key` fields; compatibility parsing exists, but those old URLs
+are not migrated by changing the adapter. Review/migrate legacy records before removing compatibility
+code.
+
+### 14.3 Access and download model
+
+| Object | Current path | Important behavior |
 |---|---|---|
-| Booth photos/composites | private | presigned GET (5–15 min) via API |
-| Template art | private or public-read | `asset-proxy` or presigned |
-| Download page files | private | website-backend presigns |
+| Booth photos and composites | Cloudinary upload URL or backend server upload | Cloudinary delivery URL is persisted; configured upload signatures are generated server-side |
+| Branding/templates | Cloudinary where uploaded; local/remote URLs may remain | CRM asset proxy resolves supported source URLs |
+| Guest download | GuestDownload ID validated by the website backend, then media URL is returned/served | 24-hour application link expiry does not make the underlying Cloudinary URL expire |
 
-### 14.3 Required bucket configuration
-
-**CORS**
-
-```json
-[
-  {
-    "AllowedHeaders": ["*"],
-    "AllowedMethods": ["GET", "PUT", "POST", "HEAD"],
-    "AllowedOrigins": ["https://happypix.in", "https://crm.happypix.in"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3000
-  }
-]
-```
-
-**Lifecycle (cost control)**
-
-| Prefix | Rule |
-|---|---|
-| `*/sessions/*` | Transition to Infrequent Access at 30 days |
-| `*/sessions/*` | Expire non-composite objects at 400 days (configurable per retention policy) |
-| `*/composite.png` | Retain per contract; never auto-expire without legal sign-off |
-
-**Block Public Access** stays ON. No object is served without a signature.
+The guest download ID and endpoint rate limits protect the application download flow. Do not describe
+Cloudinary media URLs as private S3 objects or as time-limited presigned GET URLs. Apply the account's
+Cloudinary access/backup/retention configuration according to the desired privacy and lifecycle
+policy.
 
 ### 14.4 Upload paths
 
-| Path | When | Size guard |
+| Path | When | Behavior |
 |---|---|---|
-| Presigned PUT (`/sessions/upload-urls`) | Preferred — booth uploads directly | 15 MB per object |
-| Server-side (`persistSessionPhoto` for data URLs) | Fallback for legacy booths | 10 MB JSON body limit |
+| Booth signed-upload route (`/sessions/upload-urls`) | Direct booth upload when configured | Returns Cloudinary upload URL and signed parameters; validates auth and session fields in the route |
+| Server-side `persistSessionPhoto` | Inline data URLs or legacy booth payloads | Uploads to Cloudinary when configured; backend local/data fallback remains |
+| Logo/template upload | CRM/backend routes | Multer memory upload and Cloudinary adapter; local fallback is possible |
+
+This section is the implementation state at commit `d0ba133`; it supersedes prior S3 bucket, CORS,
+lifecycle, private-object, and presigned-URL deployment instructions elsewhere in older notes. Any
+S3-specific backup or scale estimates are planning material, not evidence that an AWS bucket is
+currently configured.
 
 ---
 
@@ -1252,7 +1284,7 @@ global/templates/<templateId>/…                                platform templa
 | Subscription expiry sweep | hourly | recompute org status; send expiry reminders |
 | Trial reminders | daily | 7/3/1-day emails |
 | Device offline sweep | 5 min | mark devices offline after 3 missed heartbeats |
-| Guest download purge | hourly (plus TTL) | belt-and-braces cleanup of orphan S3 keys |
+| Guest download purge | hourly (plus TTL) | belt-and-braces cleanup of orphan Cloudinary/local media references |
 | Audit retention | daily | archive/delete logs older than the retention window |
 | Lead follow-up digest | daily | notify sales of new leads |
 
@@ -1277,7 +1309,7 @@ booth's own polling provides a second path so a guest is never stuck behind a lo
 
 | Call | Retry policy |
 |---|---|
-| S3 put/get | 3 attempts, exponential backoff (SDK default) |
+| Cloudinary media upload/delivery | 3 attempts, exponential backoff (SDK default) |
 | Razorpay order create | 2 attempts; on failure return `503 GATEWAY_UNAVAILABLE` |
 | Groq/Together generation | 2 attempts; then `502 AI_UNAVAILABLE` (credits are not consumed) |
 | SendGrid email | 1 retry; failures are logged, never block the user's request |
@@ -1332,4 +1364,4 @@ booth's own polling provides a second path so a guest is never stuck behind a lo
 ---
 
 *Machine-readable contract: [`openapi.yaml`](openapi.yaml).*
-*Schema rationale and design notes: [`../HAPPYPIX_V2_MASTER_DOCUMENTATION.md`](../HAPPYPIX_V2_MASTER_DOCUMENTATION.md).*
+*Schema rationale and design notes: [`HAPPYPIX_V2_MASTER_DOCUMENTATION.md`](HAPPYPIX_V2_MASTER_DOCUMENTATION.md).*

@@ -4,9 +4,11 @@ The public API behind `website/` (happypix.in). A **separate service**
 from `backend/` (booth/CRM API) with its own rate limits and CORS list,
 connected to the **same MongoDB database** — plans, discounts,
 organizations, users, subscriptions and guest downloads are shared
-collections. See `src/models.js` for the mirrored schemas (only
+collections. Photo download URLs are delivered through the Cloudinary-backed
+adapter (`src/cloudinary.js`); legacy `src/s3.js` is a compatibility re-export,
+not an AWS S3 transport. See `src/models.js` for the mirrored schemas (only
 `websitecheckouts` + `websiteleads` are owned here) and
-`../docs/New_Display_Website_and_Gallery_Fixes.md` for the full design.
+`../docs/ARCHITECTURE.md` for the system design and `../docs/BACKEND_API_DATABASE.md` for API details.
 
 ## Run
 

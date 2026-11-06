@@ -162,7 +162,7 @@ MODELS = [
     model("Photo", "models/Photo.js",
           "One stored frame. The composite is attached to every row of the session so any row can serve the gallery.",
           [("organizationId", "ObjectId → Organization", "tenant — required for the gallery query"),
-           ("s3Key / url", "String", "key and public URL (the bucket itself is private; the gallery signs URLs)"),
+           ("s3Key / url", "String", "Cloudinary public ID or legacy media key and URL; current delivery URLs are not expiring S3 signatures"),
            ("compositeUrl", "String", "the final print; was missing from the schema for a long time and silently dropped"),
            ("eventId / deviceId / sessionId", "Mixed", "attribution; deviceId can be nulled when a booth is deleted"),
            ("guestConsent", "Boolean", "publishing consent, default false"),

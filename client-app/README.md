@@ -18,7 +18,7 @@ client-app/
     ├── types/           ← Shared TypeScript interfaces and types
     ├── api/             ← Server API client for backend communication
     ├── state-machine/   ← XState-based finite state machine for booth logic
-    ├── camera-core/     ← Camera integration (Phone, Canon CCAPI, Sony/PTP stubs)
+    ├── camera-core/     ← Phone, Canon CCAPI, Nikon LAN bridge, Android PTP and Sony provider seam
     ├── printer-core/    ← Printer integration (IPP, DNP stub, AirPrint stub)
     ├── kiosk-core/      ← Kiosk mode: Android Lock Task Mode; iOS is a no-op today
     └── ui/              ← Shared React Native UI components
@@ -128,15 +128,23 @@ fleet. Details and the native fix are in [`docs/IPAD_SUPPORT.md`](../docs/IPAD_S
 
 ---
 
-## 🛠️ SDK Stubs (Hardware Integrations)
+## Camera provider status
 
-We are actively integrating with various hardware SDKs. Here is the current status:
+`@happypix/camera-core` currently discovers the Windows Electron Nikon bridge over the LAN, Canon CCAPI over Wi-Fi, direct USB PTP, then the tablet camera. Platform capabilities differ:
 
-| Integration | Status |
-|-------------|--------|
-| **Sony Camera Remote SDK** | Stub ready — awaiting NDA |
-| **DNP Printer SDK** | Stub ready — awaiting developer license |
-| **AirPrint (iOS)** | ⚠️ Stub only — `AirPrintProvider` posts a raw bitmap, which is not a valid IPP job. iPad booths print through the Electron Print Bridge on the LAN; the native `UIPrintInteractionController` bridge is the roadmap item (`docs/IPAD_SUPPORT.md` IP-8) |
+| Path | Android | iPad |
+|---|---|---|
+| Tablet camera | VisionCamera provider | VisionCamera provider; validate on device |
+| Canon CCAPI | Provider implementation; verify exact body/firmware | Shared provider code; physical iPad/network validation required |
+| Nikon Remote SDK | Use Nikon camera connected to a Windows Electron PC via the LAN bridge | Provider code can call the LAN bridge; validate local network permission and ATS on device |
+| Direct USB PTP | Android USB Host/OTG capture and JPEG retrieval only | Not supported by this native module |
+
+Direct USB PTP currently has no live view or settings support, and its reported battery value is a fixed placeholder. Sony remains an unintegrated provider seam. See [`docs/HARDWARE_PRINTING.md`](../docs/HARDWARE_PRINTING.md) and [`electron/HARDWARE_SDK_REPORT.md`](../electron/HARDWARE_SDK_REPORT.md).
+
+## Printer limitations
+
+- The iPad target does not have a completed native AirPrint implementation; use the Electron Print Bridge on the trusted LAN when printing is required. Confirm print delivery on the actual iPad/bridge rig.
+- DNP telemetry and vendor printer SDK support are OS/driver-specific. Do not assume every printer model is certified by the presence of an adapter.
 
 ---
 

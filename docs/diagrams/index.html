@@ -130,7 +130,7 @@
 <a href="#d1-1"><span class="id">d1-1</span>Complete HappyPix ecosystem — every component and how it connects</a>
 <a href="#d1-2"><span class="id">d1-2</span>Trust boundaries, credentials and data ownership</a>
 <h4>2 · Database (ER)</h4>
-<a href="#d2-1"><span class="id">d2-1</span>ER overview — 23 collections and their foreign keys</a>
+<a href="#d2-1"><span class="id">d2-1</span>ER overview — 25 collections and their foreign keys</a>
 <a href="#d2-2"><span class="id">d2-2</span>ER detail — identity, tenancy, subscription and configuration</a>
 <a href="#d2-3"><span class="id">d2-3</span>ER detail — events, booths, templates and coupons</a>
 <a href="#d2-4"><span class="id">d2-4</span>ER detail — money: payments, subscriptions, coupons and payouts</a>
@@ -202,10 +202,10 @@
   subgraph CLIENTS[&quot;Client applications&quot;]
     C1[&quot;Website SPA&lt;br/&gt;React + Vite&lt;br/&gt;happypix.in&quot;]
     C2[&quot;CRM console SPA&lt;br/&gt;React + Vite&lt;br/&gt;crm.happypix.in&quot;]
-    C3[&quot;Electron booth&lt;br/&gt;Windows + macOS&lt;br/&gt;electron/&quot;]
-    C4[&quot;Android booth&lt;br/&gt;client-app/&quot;]
+    C3[&quot;Electron booth&lt;br/&gt;Windows / macOS / Linux&lt;br/&gt;Nikon SDK on Windows&lt;br/&gt;electron/&quot;]
+    C4[&quot;React Native booth&lt;br/&gt;Android + iPad&lt;br/&gt;client-app/&quot;]
     C5[&quot;Guest phone&lt;br/&gt;browser&quot;]
-    C6[&quot;Print bridge&lt;br/&gt;printServer.ts&quot;]
+    C6[&quot;LAN Print + Nikon Bridge&lt;br/&gt;printServer.ts :9123&quot;]
   end
 
   subgraph EDGE[&quot;Vercel edge + serverless (bom1 / Mumbai)&quot;]
@@ -227,15 +227,15 @@
   end
 
   subgraph DATA[&quot;Data stores&quot;]
-    D1[(&quot;MongoDB Atlas&lt;br/&gt;23 collections&quot;)]
-    D2[(&quot;AWS S3 bucket&lt;br/&gt;photos, logos, artwork&quot;)]
-    D3[(&quot;Local disk uploads/&lt;br/&gt;dev and S3 fallback&quot;)]
+    D1[(&quot;MongoDB Atlas&lt;br/&gt;25 collections&quot;)]
+    D2[(&quot;Cloudinary&lt;br/&gt;photos, logos, artwork&quot;)]
+    D3[(&quot;Local disk uploads/&lt;br/&gt;backend fallback&quot;)]
     D4[(&quot;Process caches&lt;br/&gt;gallery 15 s, printer 30 s&quot;)]
   end
 
   subgraph HW[&quot;Customer hardware at the venue&quot;]
     H1[&quot;DNP dye-sub&lt;br/&gt;photo printer&quot;]
-    H2[&quot;DSLR or USB&lt;br/&gt;camera&quot;]
+    H2[&quot;Nikon / Canon / UVC&lt;br/&gt;camera&quot;]
     H3[&quot;Touchscreen&lt;br/&gt;kiosk display&quot;]
   end
 
@@ -249,6 +249,7 @@
     X7[&quot;Together FLUX&lt;br/&gt;+ xAI&lt;br/&gt;image generation&quot;]
     X8[&quot;remove.bg&lt;br/&gt;background removal&quot;]
     X9[&quot;GitHub Releases&lt;br/&gt;installers and APKs&quot;]
+    X10[&quot;Cloudinary&lt;br/&gt;media CDN&quot;]
   end
 
   A1 --&gt; C1
@@ -267,9 +268,11 @@
   C5 --&gt;|&quot;HTTPS: /download/:id&quot;| E3
   C3 --&gt;|&quot;USB / OS spooler&quot;| C6
   C6 --&gt;|&quot;IPP, CUPS,&lt;br/&gt;PowerShell PrintDocument&quot;| H1
-  C3 --&gt;|&quot;USB Video / AVFoundation&quot;| H2
+  C3 --&gt;|&quot;Windows: Nikon Remote SDK over USB; host camera APIs&quot;| H2
   C3 --&gt; H3
-  C4 --&gt;|&quot;CameraX&lt;br/&gt;USB or network&quot;| H2
+  C4 --&gt;|&quot;tablet camera / Android PTP USB OTG&quot;| H2
+  C4 --&gt;|&quot;HTTP on trusted LAN: Nikon status / live view / capture&quot;| C6
+  C6 --&gt;|&quot;Windows Nikon SDK bridge&quot;| H2
   C4 --&gt;|&quot;IPP / raw socket&quot;| H1
 
   E1 --&gt; C1
@@ -299,10 +302,11 @@
   S8 --&gt; D1
   S9 --&gt; D1
   S9 --&gt; D3
-  E2 --&gt;|&quot;presigned PUT&lt;br/&gt;booth uploads directly&quot;| D2
-  D2 --&gt;|&quot;presigned GET&lt;br/&gt;1 h gallery, 24 h download&quot;| C5
-  D2 --&gt;|&quot;presigned GET&quot;| C2
-  D3 --&gt; D2
+  E2 --&gt;|&quot;Cloudinary signed upload params&quot;| C4
+  C4 --&gt;|&quot;HTTPS media upload&quot;| X10
+  E2 --&gt;|&quot;server-side upload / local fallback&quot;| X10
+  X10 --&gt;|&quot;media URL&quot;| E3
+  D3 --&gt; E2
 
   S4 --&gt;|&quot;create order,&lt;br/&gt;poll status&quot;| X1
   S4 --&gt;|&quot;create order,&lt;br/&gt;fetch QR&quot;| X2
@@ -330,10 +334,10 @@
   subgraph CLIENTS[&quot;Client applications&quot;]
     C1[&quot;Website SPA&lt;br/&gt;React + Vite&lt;br/&gt;happypix.in&quot;]
     C2[&quot;CRM console SPA&lt;br/&gt;React + Vite&lt;br/&gt;crm.happypix.in&quot;]
-    C3[&quot;Electron booth&lt;br/&gt;Windows + macOS&lt;br/&gt;electron/&quot;]
-    C4[&quot;Android booth&lt;br/&gt;client-app/&quot;]
+    C3[&quot;Electron booth&lt;br/&gt;Windows / macOS / Linux&lt;br/&gt;Nikon SDK on Windows&lt;br/&gt;electron/&quot;]
+    C4[&quot;React Native booth&lt;br/&gt;Android + iPad&lt;br/&gt;client-app/&quot;]
     C5[&quot;Guest phone&lt;br/&gt;browser&quot;]
-    C6[&quot;Print bridge&lt;br/&gt;printServer.ts&quot;]
+    C6[&quot;LAN Print + Nikon Bridge&lt;br/&gt;printServer.ts :9123&quot;]
   end
 
   subgraph EDGE[&quot;Vercel edge + serverless (bom1 / Mumbai)&quot;]
@@ -355,15 +359,15 @@
   end
 
   subgraph DATA[&quot;Data stores&quot;]
-    D1[(&quot;MongoDB Atlas&lt;br/&gt;23 collections&quot;)]
-    D2[(&quot;AWS S3 bucket&lt;br/&gt;photos, logos, artwork&quot;)]
-    D3[(&quot;Local disk uploads/&lt;br/&gt;dev and S3 fallback&quot;)]
+    D1[(&quot;MongoDB Atlas&lt;br/&gt;25 collections&quot;)]
+    D2[(&quot;Cloudinary&lt;br/&gt;photos, logos, artwork&quot;)]
+    D3[(&quot;Local disk uploads/&lt;br/&gt;backend fallback&quot;)]
     D4[(&quot;Process caches&lt;br/&gt;gallery 15 s, printer 30 s&quot;)]
   end
 
   subgraph HW[&quot;Customer hardware at the venue&quot;]
     H1[&quot;DNP dye-sub&lt;br/&gt;photo printer&quot;]
-    H2[&quot;DSLR or USB&lt;br/&gt;camera&quot;]
+    H2[&quot;Nikon / Canon / UVC&lt;br/&gt;camera&quot;]
     H3[&quot;Touchscreen&lt;br/&gt;kiosk display&quot;]
   end
 
@@ -377,6 +381,7 @@
     X7[&quot;Together FLUX&lt;br/&gt;+ xAI&lt;br/&gt;image generation&quot;]
     X8[&quot;remove.bg&lt;br/&gt;background removal&quot;]
     X9[&quot;GitHub Releases&lt;br/&gt;installers and APKs&quot;]
+    X10[&quot;Cloudinary&lt;br/&gt;media CDN&quot;]
   end
 
   A1 --&gt; C1
@@ -395,9 +400,11 @@
   C5 --&gt;|&quot;HTTPS: /download/:id&quot;| E3
   C3 --&gt;|&quot;USB / OS spooler&quot;| C6
   C6 --&gt;|&quot;IPP, CUPS,&lt;br/&gt;PowerShell PrintDocument&quot;| H1
-  C3 --&gt;|&quot;USB Video / AVFoundation&quot;| H2
+  C3 --&gt;|&quot;Windows: Nikon Remote SDK over USB; host camera APIs&quot;| H2
   C3 --&gt; H3
-  C4 --&gt;|&quot;CameraX&lt;br/&gt;USB or network&quot;| H2
+  C4 --&gt;|&quot;tablet camera / Android PTP USB OTG&quot;| H2
+  C4 --&gt;|&quot;HTTP on trusted LAN: Nikon status / live view / capture&quot;| C6
+  C6 --&gt;|&quot;Windows Nikon SDK bridge&quot;| H2
   C4 --&gt;|&quot;IPP / raw socket&quot;| H1
 
   E1 --&gt; C1
@@ -427,10 +434,11 @@
   S8 --&gt; D1
   S9 --&gt; D1
   S9 --&gt; D3
-  E2 --&gt;|&quot;presigned PUT&lt;br/&gt;booth uploads directly&quot;| D2
-  D2 --&gt;|&quot;presigned GET&lt;br/&gt;1 h gallery, 24 h download&quot;| C5
-  D2 --&gt;|&quot;presigned GET&quot;| C2
-  D3 --&gt; D2
+  E2 --&gt;|&quot;Cloudinary signed upload params&quot;| C4
+  C4 --&gt;|&quot;HTTPS media upload&quot;| X10
+  E2 --&gt;|&quot;server-side upload / local fallback&quot;| X10
+  X10 --&gt;|&quot;media URL&quot;| E3
+  D3 --&gt; E2
 
   S4 --&gt;|&quot;create order,&lt;br/&gt;poll status&quot;| X1
   S4 --&gt;|&quot;create order,&lt;br/&gt;fetch QR&quot;| X2
@@ -586,8 +594,8 @@
 </section>
 <section class="family">
 <h2>2 · Database (ER)</h2>
-<p class="blurb">The 23 Mongoose collections and their foreign keys.</p>
-<article class="card" id="d2-1"><h3><span class="id">D2-1</span>ER overview — 23 collections and their foreign keys</h3><div class=notes><p>Read this first, then open the five detail diagrams. Cardinality is as enforced by the code, not as declared: MongoDB has no real FK constraints, so every arrow is enforced by an application check.</p><p>Three relations are deliberately nullable and matter operationally — AuditLog.organizationId (null = platform scope), Photo.organizationId (null = legacy/unscoped capture) and PhotoShare.organizationId (required only for org-scoped shares).</p></div><div class="canvas"><div class="mermaid">erDiagram
+<p class="blurb">The 25 Mongoose collections and their foreign keys.</p>
+<article class="card" id="d2-1"><h3><span class="id">D2-1</span>ER overview — 25 collections and their foreign keys</h3><div class=notes><p>Read this first, then open the five detail diagrams. Cardinality is as enforced by the code, not as declared: MongoDB has no real FK constraints, so every arrow is enforced by an application check.</p><p>Three relations are deliberately nullable and matter operationally — AuditLog.organizationId (null = platform scope), Photo.organizationId (null = legacy/unscoped capture) and PhotoShare.organizationId (required only for org-scoped shares).</p></div><div class="canvas"><div class="mermaid">erDiagram
   ORGANIZATION ||--o{ USER : &quot;employs&quot;
   ORGANIZATION ||--o{ DEVICE : &quot;owns&quot;
   ORGANIZATION ||--o{ EVENT : &quot;runs&quot;
@@ -1289,12 +1297,12 @@
   EVENT ||--o{ PAYMENT : &quot;earns&quot;
   DEVICE ||--o{ PAYMENT : &quot;collects&quot;
   COUPON ||--o{ PAYMENT : &quot;discounts&quot;</pre></article>
-<article class="card" id="d2-5"><h3><span class="id">D2-5</span>ER detail — media, digital delivery and TTL lifecycle</h3><div class=notes><p>Four collections carry a MongoDB TTL index on expiresAt: PHOTO_SHARE, GUEST_DOWNLOAD, DIGITAL_TOKEN (and the index is declared, not cron-driven). Data disappears without any application write, so every reader must also check expiry explicitly.</p><p>PHOTO has no TTL — photo rows are permanent by design (a legacy TTL index on createdAt is actively dropped at boot). Its URL points at a private bucket, so readers must sign.</p></div><div class="canvas"><div class="mermaid">erDiagram
+<article class="card" id="d2-5"><h3><span class="id">D2-5</span>ER detail — media, digital delivery and TTL lifecycle</h3><div class=notes><p>Four collections carry a MongoDB TTL index on expiresAt: PHOTO_SHARE, GUEST_DOWNLOAD, DIGITAL_TOKEN (and the index is declared, not cron-driven). Data disappears without any application write, so every reader must also check expiry explicitly.</p><p>PHOTO has no TTL — photo rows are permanent by design (a legacy TTL index on createdAt is actively dropped at boot). Its URL may point to a Cloudinary delivery URL; guest-link expiry does not revoke that media URL.</p></div><div class="canvas"><div class="mermaid">erDiagram
   PHOTO {
     objectId _id PK
     objectId organizationId FK &quot;nullable for legacy captures&quot;
     string s3Key
-    string url &quot;private bucket URL&quot;
+    string url &quot;Cloudinary / legacy media URL&quot;
     string compositeUrl &quot;final print strip&quot;
     objectId eventId FK
     objectId deviceId FK
@@ -1375,7 +1383,7 @@
     objectId _id PK
     objectId organizationId FK &quot;nullable for legacy captures&quot;
     string s3Key
-    string url &quot;private bucket URL&quot;
+    string url &quot;Cloudinary / legacy media URL&quot;
     string compositeUrl &quot;final print strip&quot;
     objectId eventId FK
     objectId deviceId FK
@@ -1638,7 +1646,7 @@
   E7[&quot;Cashfree&quot;]
   E8[&quot;SendGrid /&lt;br/&gt;Twilio / WhatsApp&quot;]
   E9[&quot;Groq / Together /&lt;br/&gt;xAI / remove.bg&quot;]
-  D1[(&quot;AWS S3&lt;br/&gt;photo objects&quot;)]
+  D1[(&quot;Cloudinary&lt;br/&gt;photo media&quot;)]
 
   E1 --&gt;|&quot;photo selection, consent,&lt;br/&gt;print request, payment&quot;| P0
   P0 --&gt;|&quot;print, QR code, download link&quot;| E1
@@ -1658,8 +1666,8 @@
   P0 --&gt;|&quot;OTP, receipts&quot;| E8
   P0 --&gt;|&quot;prompts, images&quot;| E9
   E9 --&gt;|&quot;design assets&quot;| P0
-  P0 --&gt;|&quot;presigned upload&quot;| D1
-  D1 --&gt;|&quot;presigned download&quot;| E1</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-0-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-0-raw">flowchart LR
+  P0 --&gt;|&quot;signed Cloudinary upload parameters&quot;| D1
+  D1 --&gt;|&quot;Cloudinary media URL&quot;| E1</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-0-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-0-raw">flowchart LR
   E1[&quot;Guest at the event&quot;]
   E2[&quot;Booth operator&quot;]
   E3[&quot;Organization admin / manager&quot;]
@@ -1670,7 +1678,7 @@
   E7[&quot;Cashfree&quot;]
   E8[&quot;SendGrid /&lt;br/&gt;Twilio / WhatsApp&quot;]
   E9[&quot;Groq / Together /&lt;br/&gt;xAI / remove.bg&quot;]
-  D1[(&quot;AWS S3&lt;br/&gt;photo objects&quot;)]
+  D1[(&quot;Cloudinary&lt;br/&gt;photo media&quot;)]
 
   E1 --&gt;|&quot;photo selection, consent,&lt;br/&gt;print request, payment&quot;| P0
   P0 --&gt;|&quot;print, QR code, download link&quot;| E1
@@ -1690,8 +1698,8 @@
   P0 --&gt;|&quot;OTP, receipts&quot;| E8
   P0 --&gt;|&quot;prompts, images&quot;| E9
   E9 --&gt;|&quot;design assets&quot;| P0
-  P0 --&gt;|&quot;presigned upload&quot;| D1
-  D1 --&gt;|&quot;presigned download&quot;| E1</pre></article>
+  P0 --&gt;|&quot;signed Cloudinary upload parameters&quot;| D1
+  D1 --&gt;|&quot;Cloudinary media URL&quot;| E1</pre></article>
 <article class="card" id="d3-1"><h3><span class="id">D3-1</span>DFD level 1 — the nine processes of the platform</h3><div class=notes><p>This level is the map of the backend: every mounted router belongs to exactly one of these processes.</p><p>Process 9 is cross-cutting — it is drawn as a process because audit writes are an explicit step in every state change, not an implicit side effect.</p></div><div class="canvas"><div class="mermaid">flowchart TB
   E1[&quot;Guest&quot;]
   E2[&quot;Booth app&lt;br/&gt;(Electron / Android)&quot;]
@@ -1723,7 +1731,7 @@
   D11[(&quot;D11 support tickets&quot;)]
   D12[(&quot;D12 audit log&quot;)]
   D13[(&quot;D13 settings and&lt;br/&gt;org defaults&quot;)]
-  D14[(&quot;D14 S3 objects&quot;)]
+  D14[(&quot;D14 Cloudinary media&quot;)]
 
   E2 --&gt;|&quot;pairing, heartbeat,&lt;br/&gt;session payload&quot;| P1
   P1 --&gt;|&quot;snapshot, revision,&lt;br/&gt;quote, upload URLs&quot;| E2
@@ -1741,7 +1749,7 @@
   P3 --&gt;|&quot;link, QR, file&quot;| E1
   P3 --&gt;|&quot;email, SMS, WhatsApp&quot;| E6
   P4 --&gt; D3
-  P4 --&gt;|&quot;signed image URLs,&lt;br/&gt;session feed&quot;| E3
+  P4 --&gt;|&quot;Cloudinary media URLs,&lt;br/&gt;session feed&quot;| E3
   E3 --&gt;|&quot;event, device, price,&lt;br/&gt;coupon changes&quot;| P5
   P5 --&gt; D1
   P5 --&gt; D2
@@ -1799,7 +1807,7 @@
   D11[(&quot;D11 support tickets&quot;)]
   D12[(&quot;D12 audit log&quot;)]
   D13[(&quot;D13 settings and&lt;br/&gt;org defaults&quot;)]
-  D14[(&quot;D14 S3 objects&quot;)]
+  D14[(&quot;D14 Cloudinary media&quot;)]
 
   E2 --&gt;|&quot;pairing, heartbeat,&lt;br/&gt;session payload&quot;| P1
   P1 --&gt;|&quot;snapshot, revision,&lt;br/&gt;quote, upload URLs&quot;| E2
@@ -1817,7 +1825,7 @@
   P3 --&gt;|&quot;link, QR, file&quot;| E1
   P3 --&gt;|&quot;email, SMS, WhatsApp&quot;| E6
   P4 --&gt; D3
-  P4 --&gt;|&quot;signed image URLs,&lt;br/&gt;session feed&quot;| E3
+  P4 --&gt;|&quot;Cloudinary media URLs,&lt;br/&gt;session feed&quot;| E3
   E3 --&gt;|&quot;event, device, price,&lt;br/&gt;coupon changes&quot;| P5
   P5 --&gt; D1
   P5 --&gt; D2
@@ -1845,13 +1853,13 @@
   P9 --&gt;|&quot;dashboards, revenue,&lt;br/&gt;audit pages&quot;| E3
   P9 --&gt;|&quot;platform KPIs,&lt;br/&gt;audit trail&quot;| E4
   D7 --&gt; P2</pre></article>
-<article class="card" id="d3-2"><h3><span class="id">D3-2</span>DFD level 2 — process 1.0 booth session</h3><div class=notes><p>The important detail is that the heavy media work happens on the booth, not the server: the API only issues presigned URLs and writes thin Photo rows.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+<article class="card" id="d3-2"><h3><span class="id">D3-2</span>DFD level 2 — process 1.0 booth session</h3><div class=notes><p>With Cloudinary configured, the API issues signed upload parameters and the booth uploads directly; server-persisted and local fallback paths also exist.</p></div><div class="canvas"><div class="mermaid">flowchart LR
   E1[&quot;Booth app&quot;]
   E2[&quot;Guest&quot;]
   P11((&quot;1.1&lt;br/&gt;Pair device&quot;))
   P12((&quot;1.2&lt;br/&gt;Serve config&lt;br/&gt;snapshot&quot;))
   P13((&quot;1.3&lt;br/&gt;Heartbeat and&lt;br/&gt;revision check&quot;))
-  P14((&quot;1.4&lt;br/&gt;Issue presigned&lt;br/&gt;upload URLs&quot;))
+  P14((&quot;1.4&lt;br/&gt;Issue signed&lt;br/&gt;Cloudinary upload params&quot;))
   P15((&quot;1.5&lt;br/&gt;Persist session&lt;br/&gt;records&quot;))
   P16((&quot;1.6&lt;br/&gt;Capture and compose&lt;br/&gt;on device&quot;))
   P17((&quot;1.7&lt;br/&gt;Record consent&quot;))
@@ -1860,7 +1868,7 @@
   D3[(&quot;D3 photos&quot;)]
   D6[(&quot;D6 organizations&quot;)]
   D13[(&quot;D13 settings&lt;br/&gt;and defaults&quot;)]
-  D14[(&quot;D14 S3 objects&quot;)]
+  D14[(&quot;D14 Cloudinary media&quot;)]
   D12[(&quot;D12 audit log&quot;)]
 
   E1 --&gt;|&quot;email, password,&lt;br/&gt;deviceUuid&quot;| P11
@@ -1876,9 +1884,9 @@
   P13 --&gt; D1
   P13 --&gt;|&quot;hardware counters&quot;| D1
   E1 --&gt;|&quot;sessionId,&lt;br/&gt;file list&quot;| P14
-  P14 --&gt;|&quot;30 presigned PUT URLs&quot;| E1
+  P14 --&gt;|&quot;Cloudinary upload URL + signed parameters&quot;| E1
   P14 --&gt; D14
-  E1 --&gt;|&quot;files upload&lt;br/&gt;directly to S3&quot;| D14
+  E1 --&gt;|&quot;files upload&lt;br/&gt;to Cloudinary&quot;| D14
   E2 --&gt;|&quot;frames and filters&quot;| P16
   P16 --&gt;|&quot;composited strip&quot;| E1
   E1 --&gt;|&quot;photo keys, composite,&lt;br/&gt;sessionId&quot;| P15
@@ -1893,7 +1901,7 @@
   P11((&quot;1.1&lt;br/&gt;Pair device&quot;))
   P12((&quot;1.2&lt;br/&gt;Serve config&lt;br/&gt;snapshot&quot;))
   P13((&quot;1.3&lt;br/&gt;Heartbeat and&lt;br/&gt;revision check&quot;))
-  P14((&quot;1.4&lt;br/&gt;Issue presigned&lt;br/&gt;upload URLs&quot;))
+  P14((&quot;1.4&lt;br/&gt;Issue signed&lt;br/&gt;Cloudinary upload params&quot;))
   P15((&quot;1.5&lt;br/&gt;Persist session&lt;br/&gt;records&quot;))
   P16((&quot;1.6&lt;br/&gt;Capture and compose&lt;br/&gt;on device&quot;))
   P17((&quot;1.7&lt;br/&gt;Record consent&quot;))
@@ -1902,7 +1910,7 @@
   D3[(&quot;D3 photos&quot;)]
   D6[(&quot;D6 organizations&quot;)]
   D13[(&quot;D13 settings&lt;br/&gt;and defaults&quot;)]
-  D14[(&quot;D14 S3 objects&quot;)]
+  D14[(&quot;D14 Cloudinary media&quot;)]
   D12[(&quot;D12 audit log&quot;)]
 
   E1 --&gt;|&quot;email, password,&lt;br/&gt;deviceUuid&quot;| P11
@@ -1918,9 +1926,9 @@
   P13 --&gt; D1
   P13 --&gt;|&quot;hardware counters&quot;| D1
   E1 --&gt;|&quot;sessionId,&lt;br/&gt;file list&quot;| P14
-  P14 --&gt;|&quot;30 presigned PUT URLs&quot;| E1
+  P14 --&gt;|&quot;Cloudinary upload URL + signed parameters&quot;| E1
   P14 --&gt; D14
-  E1 --&gt;|&quot;files upload&lt;br/&gt;directly to S3&quot;| D14
+  E1 --&gt;|&quot;files upload&lt;br/&gt;to Cloudinary&quot;| D14
   E2 --&gt;|&quot;frames and filters&quot;| P16
   P16 --&gt;|&quot;composited strip&quot;| E1
   E1 --&gt;|&quot;photo keys, composite,&lt;br/&gt;sessionId&quot;| P15
@@ -2017,18 +2025,18 @@
   P27 --&gt;|&quot;coupon usage&quot;| D5
   E3 --&gt;|&quot;gateway keys,&lt;br/&gt;payout mode&quot;| P23
   P23 --&gt; D13</pre></article>
-<article class="card" id="d3-4"><h3><span class="id">D3-4</span>DFD level 2 — process 3.0 digital delivery</h3><div class=notes><p>Security detail: the guest never receives an S3 URL. They receive an unguessable 144-bit download id, and the API signs short-lived URLs only after checking expiry.</p></div><div class="canvas"><div class="mermaid">flowchart LR
+<article class="card" id="d3-4"><h3><span class="id">D3-4</span>DFD level 2 — process 3.0 digital delivery</h3><div class=notes><p>The guest receives an unguessable 144-bit application download id. Current Cloudinary media URLs may remain directly accessible beyond the application link TTL; verify account access settings.</p></div><div class="canvas"><div class="mermaid">flowchart LR
   E1[&quot;Guest phone&quot;]
   E2[&quot;Booth success screen&quot;]
   E3[&quot;Email / SMS /&lt;br/&gt;WhatsApp&quot;]
   P31((&quot;3.1&lt;br/&gt;Create guest&lt;br/&gt;download&quot;))
   P32((&quot;3.2&lt;br/&gt;Resolve download&lt;br/&gt;page&quot;))
-  P33((&quot;3.3&lt;br/&gt;Sign and stream&lt;br/&gt;file&quot;))
+  P33((&quot;3.3&lt;br/&gt;Resolve and stream&lt;br/&gt;file&quot;))
   P34((&quot;3.4&lt;br/&gt;Create share&lt;br/&gt;token&quot;))
   P35((&quot;3.5&lt;br/&gt;Deliver over&lt;br/&gt;a channel&quot;))
   D10[(&quot;D10 guest downloads,&lt;br/&gt;shares, tokens&quot;)]
   D3[(&quot;D3 photos&quot;)]
-  D14[(&quot;D14 S3 objects&quot;)]
+  D14[(&quot;D14 Cloudinary media&quot;)]
   D15[(&quot;D15 delivery records&quot;)]
 
   E2 --&gt;|&quot;session photos,&lt;br/&gt;composite&quot;| P31
@@ -2036,11 +2044,11 @@
   P31 --&gt; D10
   E2 --&gt;|&quot;QR code of&lt;br/&gt;/download/:id&quot;| E1
   E1 --&gt;|&quot;GET /downloads/:id&quot;| P32
-  P32 --&gt;|&quot;composite and frame&lt;br/&gt;signed URLs, TTL left&quot;| E1
+  P32 --&gt;|&quot;composite and frame&lt;br/&gt;media URLs, TTL left&quot;| E1
   P32 --&gt; D10
   P32 --&gt; P33
   E1 --&gt;|&quot;GET file kind&quot;| P33
-  P33 --&gt;|&quot;presigned GET&quot;| D14
+  P33 --&gt;|&quot;Cloudinary media URL&quot;| D14
   P33 --&gt;|&quot;stream or redirect&quot;| E1
   P33 --&gt; D10
   E1 --&gt;|&quot;create share&quot;| P34
@@ -2058,12 +2066,12 @@
   E3[&quot;Email / SMS /&lt;br/&gt;WhatsApp&quot;]
   P31((&quot;3.1&lt;br/&gt;Create guest&lt;br/&gt;download&quot;))
   P32((&quot;3.2&lt;br/&gt;Resolve download&lt;br/&gt;page&quot;))
-  P33((&quot;3.3&lt;br/&gt;Sign and stream&lt;br/&gt;file&quot;))
+  P33((&quot;3.3&lt;br/&gt;Resolve and stream&lt;br/&gt;file&quot;))
   P34((&quot;3.4&lt;br/&gt;Create share&lt;br/&gt;token&quot;))
   P35((&quot;3.5&lt;br/&gt;Deliver over&lt;br/&gt;a channel&quot;))
   D10[(&quot;D10 guest downloads,&lt;br/&gt;shares, tokens&quot;)]
   D3[(&quot;D3 photos&quot;)]
-  D14[(&quot;D14 S3 objects&quot;)]
+  D14[(&quot;D14 Cloudinary media&quot;)]
   D15[(&quot;D15 delivery records&quot;)]
 
   E2 --&gt;|&quot;session photos,&lt;br/&gt;composite&quot;| P31
@@ -2071,11 +2079,11 @@
   P31 --&gt; D10
   E2 --&gt;|&quot;QR code of&lt;br/&gt;/download/:id&quot;| E1
   E1 --&gt;|&quot;GET /downloads/:id&quot;| P32
-  P32 --&gt;|&quot;composite and frame&lt;br/&gt;signed URLs, TTL left&quot;| E1
+  P32 --&gt;|&quot;composite and frame&lt;br/&gt;media URLs, TTL left&quot;| E1
   P32 --&gt; D10
   P32 --&gt; P33
   E1 --&gt;|&quot;GET file kind&quot;| P33
-  P33 --&gt;|&quot;presigned GET&quot;| D14
+  P33 --&gt;|&quot;Cloudinary media URL&quot;| D14
   P33 --&gt;|&quot;stream or redirect&quot;| E1
   P33 --&gt; D10
   E1 --&gt;|&quot;create share&quot;| P34
@@ -2099,7 +2107,7 @@
   P45((&quot;4.5&lt;br/&gt;Sign and serve&lt;br/&gt;image&quot;))
   D13[(&quot;D13 global setting&lt;br/&gt;row&quot;)]
   D3[(&quot;D3 photos&quot;)]
-  D14[(&quot;D14 S3 objects&quot;)]
+  D14[(&quot;D14 Cloudinary media&quot;)]
   D16[(&quot;D16 in-process&lt;br/&gt;15 s cache&quot;)]
 
   E1 --&gt;|&quot;galleryEnabled,&lt;br/&gt;requireGuestConsent&quot;| P41
@@ -2112,7 +2120,7 @@
   P43 --&gt;|&quot;visible photo set&quot;| P44
   P44 --&gt;|&quot;one row per session,&lt;br/&gt;composite preferred&quot;| E2
   E2 --&gt;|&quot;GET /api/org/gallery&quot;| P43
-  P44 --&gt;|&quot;signed URLs&quot;| P45
+  P44 --&gt;|&quot;Cloudinary media URLs&quot;| P45
   P45 --&gt; D14
   P45 --&gt;|&quot;image bytes&quot;| E2
   P44 --&gt;|&quot;galleryPhotoIds&quot;| E3</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d3-5-raw">Show source</button><span class="src">docs/diagrams/src/03-dfd.mmd</span></div><pre class="raw" id="d3-5-raw">flowchart TB
@@ -2126,7 +2134,7 @@
   P45((&quot;4.5&lt;br/&gt;Sign and serve&lt;br/&gt;image&quot;))
   D13[(&quot;D13 global setting&lt;br/&gt;row&quot;)]
   D3[(&quot;D3 photos&quot;)]
-  D14[(&quot;D14 S3 objects&quot;)]
+  D14[(&quot;D14 Cloudinary media&quot;)]
   D16[(&quot;D16 in-process&lt;br/&gt;15 s cache&quot;)]
 
   E1 --&gt;|&quot;galleryEnabled,&lt;br/&gt;requireGuestConsent&quot;| P41
@@ -2139,7 +2147,7 @@
   P43 --&gt;|&quot;visible photo set&quot;| P44
   P44 --&gt;|&quot;one row per session,&lt;br/&gt;composite preferred&quot;| E2
   E2 --&gt;|&quot;GET /api/org/gallery&quot;| P43
-  P44 --&gt;|&quot;signed URLs&quot;| P45
+  P44 --&gt;|&quot;Cloudinary media URLs&quot;| P45
   P45 --&gt; D14
   P45 --&gt;|&quot;image bytes&quot;| E2
   P44 --&gt;|&quot;galleryPhotoIds&quot;| E3</pre></article>
@@ -2314,7 +2322,7 @@
   D9[(&quot;D9 templates,&lt;br/&gt;layouts, org AI templates&quot;)]
   D6[(&quot;D6 organizations&lt;br/&gt;aiCredits&quot;)]
   D13[(&quot;D13 template&lt;br/&gt;prices&quot;)]
-  D14[(&quot;D14 S3 assets&quot;)]
+  D14[(&quot;D14 Cloudinary assets&quot;)]
   D12[(&quot;D12 audit log&quot;)]
 
   E1 --&gt;|&quot;GET layouts&quot;| P71
@@ -2355,7 +2363,7 @@
   D9[(&quot;D9 templates,&lt;br/&gt;layouts, org AI templates&quot;)]
   D6[(&quot;D6 organizations&lt;br/&gt;aiCredits&quot;)]
   D13[(&quot;D13 template&lt;br/&gt;prices&quot;)]
-  D14[(&quot;D14 S3 assets&quot;)]
+  D14[(&quot;D14 Cloudinary assets&quot;)]
   D12[(&quot;D12 audit log&quot;)]
 
   E1 --&gt;|&quot;GET layouts&quot;| P71
@@ -2474,15 +2482,15 @@
     S3[&quot;couponService&lt;br/&gt;discount rules&quot;]
     S4[&quot;gallerySettingsService&lt;br/&gt;policy + visibility&quot;]
     S5[&quot;guestDownloadService&lt;br/&gt;24 h links&quot;]
-    S6[&quot;photoUrlService&lt;br/&gt;S3 signing&quot;]
+    S6[&quot;photoUrlService&lt;br/&gt;Cloudinary URL delivery&quot;]
     S7[&quot;DeliveryService&lt;br/&gt;email, SMS, WhatsApp&quot;]
     S8[&quot;TemplateGenerationService&lt;br/&gt;AI design&quot;]
     S9[&quot;eventService&lt;br/&gt;status and views&quot;]
   end
 
   subgraph L4[&quot;4 · Data layer&quot;]
-    M[(&quot;MongoDB Atlas&lt;br/&gt;23 Mongoose models&quot;)]
-    O[(&quot;AWS S3&lt;br/&gt;private bucket&quot;)]
+    M[(&quot;MongoDB Atlas&lt;br/&gt;25 Mongoose models&quot;)]
+    O[(&quot;Cloudinary&lt;br/&gt;media storage&quot;)]
     K[(&quot;In-process caches&lt;br/&gt;gallery 15 s, printer 30 s&quot;)]
   end
 
@@ -2546,15 +2554,15 @@
     S3[&quot;couponService&lt;br/&gt;discount rules&quot;]
     S4[&quot;gallerySettingsService&lt;br/&gt;policy + visibility&quot;]
     S5[&quot;guestDownloadService&lt;br/&gt;24 h links&quot;]
-    S6[&quot;photoUrlService&lt;br/&gt;S3 signing&quot;]
+    S6[&quot;photoUrlService&lt;br/&gt;Cloudinary URL delivery&quot;]
     S7[&quot;DeliveryService&lt;br/&gt;email, SMS, WhatsApp&quot;]
     S8[&quot;TemplateGenerationService&lt;br/&gt;AI design&quot;]
     S9[&quot;eventService&lt;br/&gt;status and views&quot;]
   end
 
   subgraph L4[&quot;4 · Data layer&quot;]
-    M[(&quot;MongoDB Atlas&lt;br/&gt;23 Mongoose models&quot;)]
-    O[(&quot;AWS S3&lt;br/&gt;private bucket&quot;)]
+    M[(&quot;MongoDB Atlas&lt;br/&gt;25 Mongoose models&quot;)]
+    O[(&quot;Cloudinary&lt;br/&gt;media storage&quot;)]
     K[(&quot;In-process caches&lt;br/&gt;gallery 15 s, printer 30 s&quot;)]
   end
 
@@ -2598,7 +2606,7 @@
   P1 --&gt; P2
   P4 --&gt; M
   P5 --&gt; M</pre></article>
-<article class="card" id="d4-2"><h3><span class="id">D4-2</span>HLD — deployment topology, regions and failure domains</h3><div class=notes><p>Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an S3 outage only breaks images and uploads, and a gateway outage blocks checkout but not capture and printing.</p></div><div class="canvas"><div class="mermaid">flowchart TB
+<article class="card" id="d4-2"><h3><span class="id">D4-2</span>HLD — deployment topology, regions and failure domains</h3><div class=notes><p>Three failure domains matter operationally: an Atlas outage stops everything (no request runs without a connection), an Cloudinary outage only breaks images and uploads, and a gateway outage blocks checkout but not capture and printing.</p></div><div class="canvas"><div class="mermaid">flowchart TB
   subgraph USER[&quot;Customer and guest networks&quot;]
     U1[&quot;Booth PC&lt;br/&gt;Electron + printer&quot;]
     U2[&quot;Android tablet&lt;br/&gt;booth&quot;]
@@ -2619,9 +2627,9 @@
     V4[&quot;website-backend project&lt;br/&gt;plans, checkout, downloads, leads&quot;]
   end
 
-  subgraph AWS[&quot;AWS · ap-south-1&quot;]
-    A1[(&quot;S3 bucket — private&lt;br/&gt;photos/, happypix/org/logos/&quot;)]
-    A2[&quot;S3 lifecycle rules&lt;br/&gt;NOT CONFIGURED YET&quot;]
+  subgraph MEDIA[&quot;Cloudinary · account region/plan to verify&quot;]
+    A1[(&quot;Cloudinary media&lt;br/&gt;photos, logos, artwork&quot;)]
+    A2[&quot;Access, retention and backup&lt;br/&gt;account configuration to verify&quot;]
   end
 
   subgraph ATLAS[&quot;MongoDB Atlas · ap-south-1&quot;]
@@ -2662,7 +2670,7 @@
   V3 --&gt; T5
   T1 --&gt;|&quot;webhook&quot;| V3
   T2 --&gt;|&quot;webhook&quot;| V3
-  V1 --&gt;|&quot;presigned GET&lt;br/&gt;direct from browser&quot;| A1</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d4-2-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-2-raw">flowchart TB
+  V1 --&gt;|&quot;Cloudinary media URL&lt;br/&gt;direct delivery&quot;| A1</div></div><div class="cardbar"><span class="pill">flowchart</span><button type="button" data-raw="d4-2-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-2-raw">flowchart TB
   subgraph USER[&quot;Customer and guest networks&quot;]
     U1[&quot;Booth PC&lt;br/&gt;Electron + printer&quot;]
     U2[&quot;Android tablet&lt;br/&gt;booth&quot;]
@@ -2683,9 +2691,9 @@
     V4[&quot;website-backend project&lt;br/&gt;plans, checkout, downloads, leads&quot;]
   end
 
-  subgraph AWS[&quot;AWS · ap-south-1&quot;]
-    A1[(&quot;S3 bucket — private&lt;br/&gt;photos/, happypix/org/logos/&quot;)]
-    A2[&quot;S3 lifecycle rules&lt;br/&gt;NOT CONFIGURED YET&quot;]
+  subgraph MEDIA[&quot;Cloudinary · account region/plan to verify&quot;]
+    A1[(&quot;Cloudinary media&lt;br/&gt;photos, logos, artwork&quot;)]
+    A2[&quot;Access, retention and backup&lt;br/&gt;account configuration to verify&quot;]
   end
 
   subgraph ATLAS[&quot;MongoDB Atlas · ap-south-1&quot;]
@@ -2726,7 +2734,7 @@
   V3 --&gt; T5
   T1 --&gt;|&quot;webhook&quot;| V3
   T2 --&gt;|&quot;webhook&quot;| V3
-  V1 --&gt;|&quot;presigned GET&lt;br/&gt;direct from browser&quot;| A1</pre></article>
+  V1 --&gt;|&quot;Cloudinary media URL&lt;br/&gt;direct delivery&quot;| A1</pre></article>
 <article class="card" id="d4-3"><h3><span class="id">D4-3</span>LLD — the exact request pipeline and middleware order</h3><div class=notes><p>Order is load-bearing. The origin check runs before any body parsing, and the Mongo gate runs after static assets so /uploads keeps working during a database incident.</p><p>Rate limiters are per-scope: global 1200/15 min, then per-route limiters on leads, pairing, OTP, coupons, gallery delivery, AI and downloads.</p></div><div class="canvas"><div class="mermaid">flowchart TB
   A0[&quot;Incoming request&quot;] --&gt; A1[&quot;Security headers&lt;br/&gt;nosniff, DENY frame, HSTS in prod&quot;]
   A1 --&gt; A2[&quot;globalLimiter&lt;br/&gt;1200 requests / 15 min / IP&quot;]
@@ -3075,7 +3083,6 @@
   participant BO as Booth app
   participant API as Main API
   participant DB as MongoDB
-  participant S3 as S3
 
   OP-&gt;&gt;BO: enter org email, password, device name
   BO-&gt;&gt;API: POST /api/booth/login
@@ -3118,7 +3125,6 @@
   participant BO as Booth app
   participant API as Main API
   participant DB as MongoDB
-  participant S3 as S3
 
   OP-&gt;&gt;BO: enter org email, password, device name
   BO-&gt;&gt;API: POST /api/booth/login
@@ -3163,7 +3169,7 @@
   participant API as Main API
   participant GW as Razorpay / Cashfree
   participant DB as MongoDB
-  participant S3 as S3
+  participant C as Cloudinary media
 
   G-&gt;&gt;BO: choose template and print count
   BO-&gt;&gt;API: POST /api/booth/checkout/quote
@@ -3197,23 +3203,23 @@
     API-&gt;&gt;DB: Coupon usedCount + 1
   end
   BO-&gt;&gt;API: POST /api/booth/sessions/upload-urls
-  API--&gt;&gt;BO: presigned PUT URLs, 900 s
-  BO-&gt;&gt;S3: PUT frames and composite directly
+  API--&gt;&gt;BO: Cloudinary signed upload parameters
+  BO-&gt;&gt;C: upload frames and composite directly
   BO-&gt;&gt;API: POST /api/booth/sessions/complete
   API-&gt;&gt;DB: Photo.create per file, compositeUrl on all rows
   API-&gt;&gt;DB: GuestDownload.create 24 h TTL
   API--&gt;&gt;BO: shareUrl, downloadId, galleryPhotoIds
   BO-&gt;&gt;G: print strip, show QR of the download page
   G-&gt;&gt;API: GET /api/downloads/:id
-  API-&gt;&gt;S3: presign composite and frames
-  API--&gt;&gt;G: signed URLs, expiresAt</div></div><div class="cardbar"><span class="pill">sequenceDiagram</span><button type="button" data-raw="d4-6-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-6-raw">sequenceDiagram
+  API-&gt;&gt;C: resolve media URLs after download-ID check
+  API--&gt;&gt;G: Cloudinary media URLs, application link expiresAt</div></div><div class="cardbar"><span class="pill">sequenceDiagram</span><button type="button" data-raw="d4-6-raw">Show source</button><span class="src">docs/diagrams/src/04-hld-lld.mmd</span></div><pre class="raw" id="d4-6-raw">sequenceDiagram
   autonumber
   participant G as Guest
   participant BO as Booth app
   participant API as Main API
   participant GW as Razorpay / Cashfree
   participant DB as MongoDB
-  participant S3 as S3
+  participant C as Cloudinary media
 
   G-&gt;&gt;BO: choose template and print count
   BO-&gt;&gt;API: POST /api/booth/checkout/quote
@@ -3247,16 +3253,16 @@
     API-&gt;&gt;DB: Coupon usedCount + 1
   end
   BO-&gt;&gt;API: POST /api/booth/sessions/upload-urls
-  API--&gt;&gt;BO: presigned PUT URLs, 900 s
-  BO-&gt;&gt;S3: PUT frames and composite directly
+  API--&gt;&gt;BO: Cloudinary signed upload parameters
+  BO-&gt;&gt;C: upload frames and composite directly
   BO-&gt;&gt;API: POST /api/booth/sessions/complete
   API-&gt;&gt;DB: Photo.create per file, compositeUrl on all rows
   API-&gt;&gt;DB: GuestDownload.create 24 h TTL
   API--&gt;&gt;BO: shareUrl, downloadId, galleryPhotoIds
   BO-&gt;&gt;G: print strip, show QR of the download page
   G-&gt;&gt;API: GET /api/downloads/:id
-  API-&gt;&gt;S3: presign composite and frames
-  API--&gt;&gt;G: signed URLs, expiresAt</pre></article>
+  API-&gt;&gt;C: resolve media URLs after download-ID check
+  API--&gt;&gt;G: Cloudinary media URLs, application link expiresAt</pre></article>
 <article class="card" id="d4-7"><h3><span class="id">D4-7</span>LLD sequence — sign-in, session revocation and organisation lifecycle</h3><div class=notes><p>The sessionVersion integer is the whole revocation mechanism: bumping it on the user or across the organisation invalidates every previously issued token without a session store.</p></div><div class="canvas"><div class="mermaid">sequenceDiagram
   autonumber
   participant U as User browser
@@ -3361,7 +3367,7 @@
   S11 --&gt; S12[&quot;Photo selection&lt;br/&gt;filter and retake&quot;]
   S12 --&gt; S13[&quot;Customize&lt;br/&gt;stickers, text, layout&quot;]
   S13 --&gt; S14[&quot;Checkout&lt;br/&gt;quote, QR, countdown&quot;]
-  S14 --&gt;|&quot;paid or free&quot;| S15[&quot;Upload&lt;br/&gt;presigned PUT to S3&quot;]
+  S14 --&gt;|&quot;paid or free&quot;| S15[&quot;Upload&lt;br/&gt;to Cloudinary-backed storage&quot;]
   S15 --&gt;|&quot;session complete&quot;| S16[&quot;Print&lt;br/&gt;copies per payment&quot;]
   S16 --&gt; S17[&quot;Success&lt;br/&gt;download QR,&lt;br/&gt;raise-issue action&quot;]
   S17 --&gt;|&quot;issue raised&quot;| S18[&quot;POST /api/booth/support&lt;br/&gt;ticket created&quot;]
@@ -3387,7 +3393,7 @@
   S11 --&gt; S12[&quot;Photo selection&lt;br/&gt;filter and retake&quot;]
   S12 --&gt; S13[&quot;Customize&lt;br/&gt;stickers, text, layout&quot;]
   S13 --&gt; S14[&quot;Checkout&lt;br/&gt;quote, QR, countdown&quot;]
-  S14 --&gt;|&quot;paid or free&quot;| S15[&quot;Upload&lt;br/&gt;presigned PUT to S3&quot;]
+  S14 --&gt;|&quot;paid or free&quot;| S15[&quot;Upload&lt;br/&gt;to Cloudinary-backed storage&quot;]
   S15 --&gt;|&quot;session complete&quot;| S16[&quot;Print&lt;br/&gt;copies per payment&quot;]
   S16 --&gt; S17[&quot;Success&lt;br/&gt;download QR,&lt;br/&gt;raise-issue action&quot;]
   S17 --&gt;|&quot;issue raised&quot;| S18[&quot;POST /api/booth/support&lt;br/&gt;ticket created&quot;]
@@ -3916,7 +3922,7 @@
     { key: 'request', label: 'HTTP / API call' },
     { key: 'auth',    label: 'Auth, token, permission' },
     { key: 'data',    label: 'MongoDB / data' },
-    { key: 'media',   label: 'S3 / photo media' },
+    { key: 'media',   label: 'Cloudinary / photo media' },
     { key: 'money',   label: 'Payment, price, plan' },
     { key: 'print',   label: 'Printing' },
     { key: 'async',   label: 'Async, webhook, TTL' },
@@ -3933,7 +3939,7 @@
     ['money', /\b(payment|payments|pay|paid|upi|razorpay|cashfree|gateway|order|amount|price|prices|pricing|coupon|coupons|discount|settle|settles|settled|settlement|payout|payouts|refund|refunds|wallet|revenue|invoice|plan|plans|credit|credits|subscription|subscriptions|quote|checkout)\b/i],
     ['auth', /\b(auth|authenticate|authentication|authorize|token|tokens|jwt|login|logout|signin|sign-in|sign in|session|sessions|password|credential|credentials|permission|permissions|role|roles|rbac|owner|revoke|revoked|api-key|api key|device token|otp|2fa|guard|guards)\b/i],
     ['data', /\b(mongo|mongodb|atlas|mongoose|db|database|collection|collections|query|queries|index|indexes|aggregate|aggregation|upsert|find|insert|update|delete|document|documents|schema|schemas|ttl index|cache|redis|write|writes|read|reads)\b/i],
-    ['media', /\b(s3|bucket|presign|presigned|upload|uploads|uploading|photo|photos|image|images|jpeg|png|webp|composite|composites|cdn|media|frame|frames|render|renders|thumbnail|thumbnails|video|gif|file|files|object storage)\b/i],
+    ['media', /\b(cloudinary|s3|bucket|signature|presign|presigned|upload|uploads|uploading|photo|photos|image|images|jpeg|png|webp|composite|composites|cdn|media|frame|frames|render|renders|thumbnail|thumbnails|video|gif|file|files|object storage)\b/i],
     ['async', /\b(webhook|webhooks|queue|queued|job|jobs|cron|schedule|scheduled|retry|retries|ttl|expire|expires|expiry|expired|notify|notification|notifications|email|sms|whatsapp|push|async|background|heartbeat|poll|polls|polling|websocket|sse|event bus|dlq)\b/i],
     ['request', /\b(http|https|rest|api|json|get|post|put|patch|delete|request|requests|response|call|call|endpoint|graphql|fetch|socket|grpc)\b/i]
   ];
@@ -4011,7 +4017,7 @@
     return node ? clean(node.textContent) : '';
   }
 
-  // "L_PHOTO_S3_0"  → "PHOTO S3" plus the node labels behind those ids;
+  // "L_PHOTO_S3_0"  → "PHOTO S3" plus the node labels behind those ids (legacy ID names may remain);
   // "id_entity-EVENT-1_entity-PAYMENT-2_0" → "EVENT PAYMENT".
   function edgeHint(dataId, nodes) {
     if (!dataId) return '';

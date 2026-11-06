@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * Validate every Mermaid diagram in docs/diagrams/src/*.mmd.
+ * Validate Mermaid diagrams in docs/diagrams/src/*.mmd and the generated
+ * diagrams embedded in docs/BACKEND_REFERENCE.html.
  *
  * Mermaid parses diagrams before rendering, so a syntax error here is exactly
- * the error a reader would see as an empty box on GitHub.
+ * the error a reader would see as an empty box in a rendered document.
  *
  * Setup (one-off, nothing is committed):
  *   npm install --no-save mermaid@11 jsdom
@@ -77,6 +78,34 @@ for (const file of files) {
       failed += 1;
       console.log(`FAIL ${file.padEnd(18)} ${block.id}  ${block.title}`);
       console.log(`     ${String(error.message).split('\n').slice(0, 6).join('\n     ')}`);
+    }
+  }
+}
+
+const backendReference = path.join(here, '..', 'BACKEND_REFERENCE.html');
+if (fs.existsSync(backendReference)) {
+  const html = fs.readFileSync(backendReference, 'utf8');
+  const match = html.match(/^const DIAGRAMS = (\{.*\});$/m);
+  if (!match) {
+    failed += 1;
+    console.log('FAIL BACKEND_REFERENCE.html — embedded DIAGRAMS object not found');
+  } else {
+    try {
+      const diagrams = JSON.parse(match[1]);
+      for (const [id, definition] of Object.entries(diagrams)) {
+        total += 1;
+        try {
+          const parsed = await mermaid.parse(definition);
+          console.log(`OK   BACKEND_REFERENCE.html ${id.padEnd(18)} ${String(parsed.diagramType)}`);
+        } catch (error) {
+          failed += 1;
+          console.log(`FAIL BACKEND_REFERENCE.html ${id}`);
+          console.log(`     ${String(error.message).split('\n').slice(0, 6).join('\n     ')}`);
+        }
+      }
+    } catch (error) {
+      failed += 1;
+      console.log(`FAIL BACKEND_REFERENCE.html — could not parse embedded DIAGRAMS JSON: ${error.message}`);
     }
   }
 }

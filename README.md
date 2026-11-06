@@ -173,7 +173,8 @@ Every document below is versioned in this repository. Start with the owner's ord
 | 4b | [`docs/openapi.yaml`](docs/openapi.yaml) | Machine-readable OpenAPI 3.1 contract |
 | 4c | [`docs/BACKEND_REFERENCE.html`](docs/BACKEND_REFERENCE.html) | **Self-contained HTML backend reference** — every endpoint with inputs/outputs, all middleware, utils, services, models and the total system flow. Open it in a browser; no server needed |
 | 5 | [`docs/APPLICATIONS_CRM.md`](docs/APPLICATIONS_CRM.md) | Website, CRM, Android, Electron — modules and behaviour |
-| 6 | [`docs/HARDWARE_PRINTING.md`](docs/HARDWARE_PRINTING.md) | Cameras, printers, drivers, media, print geometry |
+| 6 | [`docs/HARDWARE_PRINTING.md`](docs/HARDWARE_PRINTING.md) | Camera/printer capabilities, drivers, media and print geometry |
+| 6a | [`docs/HARDWARE_CONNECTION_GUIDE.md`](docs/HARDWARE_CONNECTION_GUIDE.md) | Physical wiring and setup for Android, iPad, Windows/macOS Electron, cameras, printers, Wi-Fi and kiosk screens |
 | 7 | [`docs/DEPLOYMENT_RELEASE.md`](docs/DEPLOYMENT_RELEASE.md) | Hosting, DNS, CI/CD, signing, rollout, rollback |
 | 8 | [`docs/SECURITY_PRIVACY.md`](docs/SECURITY_PRIVACY.md) | Secrets, RBAC, data retention, incidents, DPDP/GDPR |
 | 9 | [`docs/TESTING_RELEASE_CHECKLIST.md`](docs/TESTING_RELEASE_CHECKLIST.md) | Test strategy, matrices, known bugs, sign-off |
@@ -207,7 +208,7 @@ Supporting technical references already in the repo:
 ```
 local/
 ├── README.md                     ← you are here
-├── docs/                         ← the 11 engineering/operations documents
+├── docs/                         ← the engineering, operations and hardware guides
 ├── business/                     ← scalability plan + 3 financial workbooks
 │
 ├── backend/                      ← main REST API (Express 5, ESM)

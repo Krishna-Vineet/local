@@ -2,7 +2,7 @@
 
 > **Scope:** what cameras and printers HappyPix supports, how they are driven, what is verified
 > versus merely implemented, and how to recover from failures at a live event.
-> **Companion:** [`../electron/HARDWARE_SDK_REPORT.md`](../electron/HARDWARE_SDK_REPORT.md) (current camera SDK and storage implementation).
+> **Companions:** [`HARDWARE_CONNECTION_GUIDE.md`](HARDWARE_CONNECTION_GUIDE.md) (physical wiring, per-platform setup, Wi-Fi and kiosk display); [`../electron/HARDWARE_SDK_REPORT.md`](../electron/HARDWARE_SDK_REPORT.md) (current camera SDK and storage implementation).
 > **Implementation snapshot reviewed:** 2026-11-06, commit `d0ba133`, active branch `arena/097e52ae-local`. Hardware verification remains per model and must be recorded below.
 
 ---

@@ -477,7 +477,7 @@ DEPENDENCY_MAP = """flowchart LR
     S10[CronService]
   end
   subgraph utils [Utils]
-    U1[cloudinary (legacy s3 aliases)]
+    U1["cloudinary (legacy s3 aliases)"]
     U2[crypto]
     U3[auditLogger]
     U4[printHelper]

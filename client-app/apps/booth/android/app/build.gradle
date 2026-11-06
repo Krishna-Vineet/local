@@ -9,7 +9,10 @@ project.ext.envConfigFiles = [
     debug: ".env",
     release: ".env",
 ]
-apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
+def rnConfigProject = project.findProject(':react-native-config')
+if (rnConfigProject != null) {
+    apply from: "${rnConfigProject.projectDir}/dotenv.gradle"
+}
 
 react {
     root = file("../../")

@@ -35,6 +35,7 @@ class CameraManager {
   }
 
   private nikonStarted = false
+  private nikonConnectInFlight = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   // ── Initialization ──────────────────────────────────────────────────────
@@ -216,6 +217,8 @@ class CameraManager {
   }
 
   private async _tryConnectNikon(): Promise<void> {
+    if (this.nikonConnectInFlight) return
+    this.nikonConnectInFlight = true
     try {
       const devices = await nikonAdapter.listDevices()
       const available = devices.filter((d) => d.available)
@@ -242,6 +245,8 @@ class CameraManager {
       const msg = err instanceof Error ? err.message : String(err)
       console.warn('[CameraManager] Nikon connect failed:', msg)
       this.state.error = msg
+    } finally {
+      this.nikonConnectInFlight = false
     }
   }
 

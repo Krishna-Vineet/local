@@ -83,6 +83,14 @@ public static class NikonBridge {
 
     [DllImport("kernel32.dll")] static extern bool FreeLibrary(IntPtr h);
 
+    // The SDK's returned buffers are allocated by the UCRT imported by
+    // ControlServiceLayer.dll. Use that same allocator pair for callbacks and
+    // SDK-owned output buffers; Marshal.FreeHGlobal is not interchangeable.
+    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "malloc")]
+    static extern IntPtr CrtMalloc(IntPtr size);
+    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "free")]
+    static extern void CrtFree(IntPtr p);
+
     // ── MAID Delegate types ────────────────────────────────────────────────
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     delegate IntPtr AllocFn(IntPtr size);
@@ -93,7 +101,7 @@ public static class NikonBridge {
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     delegate void   EventFn(IntPtr r, uint evt, IntPtr data);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    delegate void   ProgressFn(IntPtr r, uint done, uint total);
+    delegate void   ProgressFn(uint msg, uint done, IntPtr data, uint dataType, uint total);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     delegate int    DataFn(IntPtr r, IntPtr info, IntPtr pdata);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
@@ -110,22 +118,26 @@ public static class NikonBridge {
     }
 
     // ── NkMAIDEnumDevices layout ───────────────────────────────────────────
-    [StructLayout(LayoutKind.Sequential)]
+    // ControlServiceLayer uses Maid3.h's #pragma pack(push, 2). The enum
+    // contains both ULONG fields before its device-data pointer; the previous
+    // bridge treated the InitializeSDK output as this list and never enumerated.
+    [StructLayout(LayoutKind.Sequential, Pack = 2, CharSet = CharSet.Ansi)]
     struct NkMAIDDeviceInfo {
-        public uint   ID;
+        public uint ID;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
         public string Name;
         [MarshalAs(UnmanagedType.I1)]
-        public bool   Availability;
-        public uint   ulConnectedPID;
+        public bool Availability;
+        public uint ulConnectedPID;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
         public string Version;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 2)]
     struct NkMAIDEnumDevices {
-        public uint   ulElements;
-        public IntPtr pDeviceData;  // NkMAIDDeviceInfo[]
+        public uint ulElements;
+        public uint ulValue;
+        public IntPtr pDeviceData;
     }
 
     // ── Function pointer delegates (SDK entry points) ─────────────────────
@@ -135,9 +147,12 @@ public static class NikonBridge {
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     delegate int InitializeSDKFn(
         IntPtr pAlloc, IntPtr pFree,
-        ref NkMAIDCSCallback cb,
-        out IntPtr ppDeviceList,
+        IntPtr pCallbacks,
+        IntPtr ppDevices,
         IntPtr ppEnumCapInfo);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    delegate int EnumDevicesFn(out IntPtr ppDevices, IntPtr pProc, IntPtr nkRef);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     delegate int FreeSDKFn();
@@ -155,65 +170,60 @@ public static class NikonBridge {
     delegate int StopLiveViewFn(IntPtr pProc, IntPtr nkRef);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    delegate int GetLiveViewStatusFn(ref int pStatus);
-
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    delegate int StartShootingFn(ref MAIDShootingStructure param, IntPtr pProc, IntPtr nkRef);
+    delegate int StartShootingFn(IntPtr pParam, IntPtr pProc, IntPtr nkRef);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     delegate int GetShootingStatusFn(ref int pStatus);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    delegate int GetCapabilityFn(uint capId, ref uint pDataType, out IntPtr pValue);
+    delegate int GetCapabilityFn(uint capId, int request, IntPtr ppData, IntPtr pDataType);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    delegate int SetCapabilityFn(uint capId, uint dataType, IntPtr pValue);
+    delegate int SetCapabilityFn(uint capId, IntPtr pValue, int dataType);
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     delegate int SetImageVideoSavePathFn(
         [MarshalAs(UnmanagedType.LPWStr)] string imagePath,
         [MarshalAs(UnmanagedType.LPWStr)] string videoPath);
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    struct MAIDShootingStructure {
-        public uint  shootingMode;
-        public uint  delayTime;
-        public uint  intervalTime;
-        public uint  shootCount;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-        public string ImageSavePath;
-    }
+    // ── ControlServiceLayer data types (Maid3.h pack(2)) ──────────────────
+    const int NK_GET_VALUE = 0;
+    const int NK_GET_SUPPORTED_VALUES = 1;
+    const int NK_DATA_UNSIGNED_PTR = 6;
+    const int NK_DATA_ENUM_PTR = 16;
+    const int NK_DATA_INTEGER_PTR = 5;
+    const int NK_ENUM_HEADER_SIZE = 26;
+    const int NK_ENUM_PDATA_OFFSET = 18;
+    const int NK_ENUM_VALUE_OFFSET = 8;
+    const int NK_ENUM_ELEMENTS_OFFSET = 4;
+    const int NK_ENUM_TYPE_OFFSET = 0;
+    const int NK_ENUM_DEFAULT_OFFSET = 12;
+    const int NK_ENUM_PHYSICAL_BYTES_OFFSET = 16;
+    const int NK_SHOOTING_SIZE = 2078;
+    const int NK_SHOOTING_SAVE_PATH_OFFSET = 22;
+    const int NK_SHOOTING_SAVE_PATH_CHARS = 1024;
+    const int NK_LIVEVIEW_SIZE = 900;
+    const int NK_LIVEVIEW_IMAGE_SIZE_OFFSET = 0;
+    const int NK_LIVEVIEW_IMAGE_DATA_OFFSET = 892;
+    const int NK_UI_REQUEST_DEFAULT_OFFSET = 4;
 
-    // ── NkMAIDLiveViewData (partial — only fields we use) ─────────────────
-    [StructLayout(LayoutKind.Sequential)]
-    struct NkMAIDLiveViewData {
-        public uint  wVersion;
-        public uint  wPhysicalBytes;
-        public uint  ulLvImageSize;
-        public IntPtr pImageData;
-        public uint  ulLvHeaderSize;
-        public IntPtr pHeaderData;
-        public uint  wLvZoomFactor;
-        public uint  wLvZoomCenterX;
-        public uint  wLvZoomCenterY;
-    }
-
-    // ── Capability IDs (from MAID3-COMMON spec) ────────────────────────────
-    const uint kNkMAIDCapability_BatteryLevel       = 0x0018;
-    const uint kNkMAIDCapability_ExposureMode       = 0x0009;
-    const uint kNkMAIDCapability_ShutterSpeed       = 0x000A;
-    const uint kNkMAIDCapability_Aperture           = 0x000B;
-    const uint kNkMAIDCapability_ISO                = 0x0010;
-    const uint kNkMAIDDataType_Unsigned             = 0x0004;
+    // ── Capability IDs (Maid3d1.h) ────────────────────────────────────────
+    const uint kNkMAIDCapability_BatteryLevel = 48;
+    const uint kNkMAIDCapability_ExposureMode = 0x8111;
+    const uint kNkMAIDCapability_ShutterSpeed = 0x8112;
+    const uint kNkMAIDCapability_Aperture = 0x8113;
+    const uint kNkMAIDCapability_ISO = 0x8117;
+    const uint kNkMAIDCapability_SaveMedia = 0x8305;
+    const int kNkMAIDSaveMedia_SDRAM = 1;
 
     // NKMAID result codes
     const int kNkMAIDResult_NoError = 0;
+    const int kNkMAIDResult_SessionFailure = 142; // Maid3d1.h
 
-    // ── Shooting mode constants ────────────────────────────────────────────
-    const uint MAID_SHOOTING_MODE_SINGLE = 0;
 
     // ── State ──────────────────────────────────────────────────────────────
     static IntPtr hMod = IntPtr.Zero;
+    static IntPtr callbackBlock = IntPtr.Zero;
     static string sdkDirectory = "";
     static string sdkFileVersion = "unknown";
     static bool sdkInitialized = false;
@@ -238,29 +248,33 @@ public static class NikonBridge {
     // ── SDK function pointers ─────────────────────────────────────────────
     static SetLoggingLevelFn      fnSetLoggingLevel;
     static InitializeSDKFn        fnInitializeSDK;
+    static EnumDevicesFn          fnEnumDevices;
     static FreeSDKFn              fnFreeSDK;
     static ConnectDeviceFn        fnConnectDevice;
     static DisconnectDeviceFn     fnDisconnectDevice;
     static StartLiveViewFn        fnStartLiveView;
     static StopLiveViewFn         fnStopLiveView;
-    static GetLiveViewStatusFn    fnGetLiveViewStatus;
     static StartShootingFn        fnStartShooting;
     static GetShootingStatusFn    fnGetShootingStatus;
     static GetCapabilityFn        fnGetCapability;
     static SetCapabilityFn        fnSetCapability;
     static SetImageVideoSavePathFn fnSetSavePath;
 
-    // ── Device list pointer (SDK-owned memory) ─────────────────────────────
-    static IntPtr pDeviceList = IntPtr.Zero;
 
     // ── Captured-image queue ──────────────────────────────────────────────
     static ConcurrentQueue<string> capturedImages = new ConcurrentQueue<string>();
     static string lastCapturedImagePath = "";
 
     // ── Callbacks ─────────────────────────────────────────────────────────
-    static IntPtr MyAlloc(IntPtr size) { return Marshal.AllocHGlobal(size); }
-    static void   MyFree(IntPtr p)     { Marshal.FreeHGlobal(p); }
-    static uint   MyUIReq(IntPtr r, IntPtr req) { return 0; }
+    static IntPtr MyAlloc(IntPtr size) { return CrtMalloc(size); }
+    static void   MyFree(IntPtr p)     { if (p != IntPtr.Zero) CrtFree(p); }
+    static uint MyUIReq(IntPtr r, IntPtr req) {
+        // Return the SDK-provided default rather than hard-coding an invalid
+        // zero answer to every modal UI request.
+        if (req == IntPtr.Zero) return 0;
+        try { return (uint)Marshal.ReadInt32(req, NK_UI_REQUEST_DEFAULT_OFFSET); }
+        catch { return 0; }
+    }
 
     static void MyEvent(IntPtr r, uint evt, IntPtr data) {
         // kNkMAIDEvent_AddChild=5, kNkMAIDEvent_RemoveChild=6,
@@ -270,20 +284,26 @@ public static class NikonBridge {
         }
     }
 
-    static void   MyProgress(IntPtr r, uint d, uint t) { }
-    static int    MyData(IntPtr r, IntPtr info, IntPtr pdata) { return 0; }
+    static void MyProgress(uint msg, uint done, IntPtr data, uint dataType, uint total) { }
+    static int MyData(IntPtr r, IntPtr info, IntPtr pdata) { return 0; }
 
     static void MyLiveView(IntPtr r, IntPtr pLV) {
+        IntPtr imageData = IntPtr.Zero;
         try {
             if (pLV == IntPtr.Zero) return;
-            var lv = (NkMAIDLiveViewData)Marshal.PtrToStructure(pLV, typeof(NkMAIDLiveViewData));
-            if (lv.ulLvImageSize == 0 || lv.pImageData == IntPtr.Zero) return;
-            int sz = (int)lv.ulLvImageSize;
-            byte[] buf = new byte[sz];
-            Marshal.Copy(lv.pImageData, buf, 0, sz);
+            int imageSize = Marshal.ReadInt32(pLV, NK_LIVEVIEW_IMAGE_SIZE_OFFSET);
+            imageData = Marshal.ReadIntPtr(pLV, NK_LIVEVIEW_IMAGE_DATA_OFFSET);
+            if (imageSize <= 0 || imageData == IntPtr.Zero || imageSize > 64 * 1024 * 1024) return;
+            byte[] buf = new byte[imageSize];
+            Marshal.Copy(imageData, buf, 0, imageSize);
             latestLVFrameB64 = Convert.ToBase64String(buf);
             Interlocked.Increment(ref lvFrameCount);
         } catch { }
+        finally {
+            // The Remote SDK transfers ownership of both buffers to this callback.
+            try { if (imageData != IntPtr.Zero) MyFree(imageData); } catch { }
+            try { if (pLV != IntPtr.Zero) MyFree(pLV); } catch { }
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
@@ -291,31 +311,6 @@ public static class NikonBridge {
         IntPtr ptr = GetProcAddress(hMod, name);
         if (ptr == IntPtr.Zero) throw new Exception("DLL export not found: " + name);
         return (T)(object)Marshal.GetDelegateForFunctionPointer(ptr, typeof(T));
-    }
-
-    static string FindModelModule(string fileName) {
-        try {
-            string direct = Path.Combine(sdkDirectory, fileName);
-            if (File.Exists(direct)) return direct;
-            string[] matches = Directory.GetFiles(sdkDirectory, fileName, SearchOption.AllDirectories);
-            return matches.Length > 0 ? matches[0] : "";
-        } catch { return ""; }
-    }
-
-    static bool HasD5600SdkAssets() {
-        if (FindModelModule("Type0016.md3").Length > 0) return true;
-        string[] profiles = { "DC_PTP_Config.config", "MaidLayer.config", "RangeValue.config" };
-        foreach (string name in profiles) {
-            try {
-                string path = Path.Combine(sdkDirectory, name);
-                if (!File.Exists(path)) continue;
-                string text = File.ReadAllText(path);
-                if (text.IndexOf("D5600", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    System.Text.RegularExpressions.Regex.IsMatch(text, @"<model:Type0016(?:>|\s)", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                    return true;
-            } catch { }
-        }
-        return false;
     }
 
     static string EscJson(string s) {
@@ -345,19 +340,19 @@ public static class NikonBridge {
 
         fnSetLoggingLevel = GetFunc<SetLoggingLevelFn>("SetLoggingLevel");
         fnInitializeSDK   = GetFunc<InitializeSDKFn>("InitializeSDK");
+        fnEnumDevices     = GetFunc<EnumDevicesFn>("EnumDevices");
         fnFreeSDK         = GetFunc<FreeSDKFn>("FreeSDK");
         fnConnectDevice   = GetFunc<ConnectDeviceFn>("ConnectDevice");
         fnDisconnectDevice= GetFunc<DisconnectDeviceFn>("DisconnectDevice");
         fnStartLiveView   = GetFunc<StartLiveViewFn>("StartLiveView");
         fnStopLiveView    = GetFunc<StopLiveViewFn>("StopLiveView");
-        fnGetLiveViewStatus = GetFunc<GetLiveViewStatusFn>("GetLiveViewStatus");
         fnStartShooting   = GetFunc<StartShootingFn>("StartShooting");
         fnGetShootingStatus = GetFunc<GetShootingStatusFn>("GetShootingStatus");
         fnGetCapability   = GetFunc<GetCapabilityFn>("GetCapability");
         fnSetCapability   = GetFunc<SetCapabilityFn>("SetCapability");
         fnSetSavePath     = GetFunc<SetImageVideoSavePathFn>("SetImageVideoSavePath");
 
-        fnSetLoggingLevel(1); // Error level only
+        fnSetLoggingLevel(2); // Error level (eNkMAIDLoggingLevel)
 
         var cb = new NkMAIDCSCallback {
             pUIReqProc       = Marshal.GetFunctionPointerForDelegate(uiDelegate),
@@ -367,16 +362,22 @@ public static class NikonBridge {
             pLiveViewDataProc= Marshal.GetFunctionPointerForDelegate(lvDelegate),
             refProc          = IntPtr.Zero
         };
+        callbackBlock = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(NkMAIDCSCallback)));
+        Marshal.StructureToPtr(cb, callbackBlock, false);
 
+        // This API takes the callback block itself and NULL for its optional
+        // device/capability outputs. Enumeration is a separate EnumDevices call.
         int res = fnInitializeSDK(
             Marshal.GetFunctionPointerForDelegate(allocDelegate),
             Marshal.GetFunctionPointerForDelegate(freeDelegate),
-            ref cb,
-            out pDeviceList,
+            callbackBlock,
+            IntPtr.Zero,
             IntPtr.Zero);
 
-        if (res != kNkMAIDResult_NoError)
-            return Err(id, "InitializeSDK failed: " + res);
+        if (res != kNkMAIDResult_NoError) {
+            if (callbackBlock != IntPtr.Zero) { Marshal.FreeHGlobal(callbackBlock); callbackBlock = IntPtr.Zero; }
+            return Err(id, "InitializeSDK failed: " + DescribeSdkResult(res));
+        }
 
         sdkInitialized = true;
         return Ok(id, "{\"initialized\":true,\"sdkDir\":\"" + EscJson(sdkDirectory)
@@ -384,25 +385,50 @@ public static class NikonBridge {
             + "\",\"processBits\":" + (IntPtr.Size * 8) + "}");
     }
 
+    static int ReadDevices(out List<NkMAIDDeviceInfo> devices) {
+        devices = new List<NkMAIDDeviceInfo>();
+        IntPtr list = IntPtr.Zero;
+        try {
+            int result = fnEnumDevices(out list, IntPtr.Zero, IntPtr.Zero);
+            if (result != kNkMAIDResult_NoError) return result;
+            if (list == IntPtr.Zero) return kNkMAIDResult_NoError;
+            var enumDevs = (NkMAIDEnumDevices)Marshal.PtrToStructure(list, typeof(NkMAIDEnumDevices));
+            int count = Math.Min((int)enumDevs.ulElements, 128);
+            int devSize = Marshal.SizeOf(typeof(NkMAIDDeviceInfo));
+            if (count > 0 && enumDevs.pDeviceData != IntPtr.Zero) {
+                for (int i = 0; i < count; i++) {
+                    IntPtr item = new IntPtr(enumDevs.pDeviceData.ToInt64() + (long)i * devSize);
+                    devices.Add((NkMAIDDeviceInfo)Marshal.PtrToStructure(item, typeof(NkMAIDDeviceInfo)));
+                }
+            }
+            return kNkMAIDResult_NoError;
+        } finally {
+            if (list != IntPtr.Zero) {
+                try {
+                    var enumDevs = (NkMAIDEnumDevices)Marshal.PtrToStructure(list, typeof(NkMAIDEnumDevices));
+                    if (enumDevs.pDeviceData != IntPtr.Zero) MyFree(enumDevs.pDeviceData);
+                } catch { }
+                try { MyFree(list); } catch { }
+            }
+        }
+    }
+
     static string CmdEnumDevices(int id) {
         if (!sdkInitialized) return Err(id, "SDK not initialized");
-        if (pDeviceList == IntPtr.Zero) return Ok(id, "{\"devices\":[]}");
-
-        var enumDevs = (NkMAIDEnumDevices)Marshal.PtrToStructure(pDeviceList, typeof(NkMAIDEnumDevices));
-        int count = (int)enumDevs.ulElements;
+        List<NkMAIDDeviceInfo> devices;
+        int result = ReadDevices(out devices);
+        if (result != kNkMAIDResult_NoError)
+            return Err(id, "EnumDevices failed: " + DescribeSdkResult(result));
         var sb = new StringBuilder();
         sb.Append("{\"devices\":[");
-        int devSize = Marshal.SizeOf(typeof(NkMAIDDeviceInfo));
-        for (int i = 0; i < count; i++) {
-            var info = (NkMAIDDeviceInfo)Marshal.PtrToStructure(
-                new IntPtr(enumDevs.pDeviceData.ToInt64() + i * devSize),
-                typeof(NkMAIDDeviceInfo));
+        for (int i = 0; i < devices.Count; i++) {
+            var info = devices[i];
             if (i > 0) sb.Append(",");
             sb.Append("{\"id\":" + info.ID
-                + ",\"name\":\"" + EscJson(info.Name) + "\""
+                + ",\"name\":\"" + EscJson((info.Name ?? "").Trim('\0')) + "\""
                 + ",\"available\":" + (info.Availability ? "true" : "false")
                 + ",\"productId\":" + info.ulConnectedPID
-                + ",\"version\":\"" + EscJson(info.Version) + "\"}");
+                + ",\"version\":\"" + EscJson((info.Version ?? "").Trim('\0')) + "\"}");
         }
         sb.Append("]}");
         return Ok(id, sb.ToString());
@@ -411,22 +437,20 @@ public static class NikonBridge {
     static string CmdConnect(int id, string line) {
         if (!sdkInitialized) return Err(id, "SDK not initialized");
         if (deviceConnected) return Ok(id, "{\"already\":true,\"name\":\"" + EscJson(connectedDeviceName) + "\"}");
-        if (pDeviceList == IntPtr.Zero) return Err(id, "No device list");
-
-        var enumDevs = (NkMAIDEnumDevices)Marshal.PtrToStructure(pDeviceList, typeof(NkMAIDEnumDevices));
-        if (enumDevs.ulElements == 0) return Err(id, "No Nikon camera detected via USB");
+        List<NkMAIDDeviceInfo> devices;
+        int enumResult = ReadDevices(out devices);
+        if (enumResult != kNkMAIDResult_NoError)
+            return Err(id, "EnumDevices failed: " + DescribeSdkResult(enumResult));
+        if (devices.Count == 0) return Err(id, "No Nikon camera detected via USB");
 
         // Prefer the explicitly requested device ID; otherwise choose the first
         // available camera as before.
         int requestedId = ExtractInt(line, "\"deviceId\"");
         bool hasRequestedId = line.IndexOf("\"deviceId\"", StringComparison.Ordinal) >= 0;
-        int devSize = Marshal.SizeOf(typeof(NkMAIDDeviceInfo));
         NkMAIDDeviceInfo chosen = default(NkMAIDDeviceInfo);
         bool found = false;
-        for (int i = 0; i < (int)enumDevs.ulElements; i++) {
-            var info = (NkMAIDDeviceInfo)Marshal.PtrToStructure(
-                new IntPtr(enumDevs.pDeviceData.ToInt64() + i * devSize),
-                typeof(NkMAIDDeviceInfo));
+        for (int i = 0; i < devices.Count; i++) {
+            var info = devices[i];
             if (info.Availability && (!hasRequestedId || info.ID == (uint)requestedId)) {
                 chosen = info;
                 found = true;
@@ -439,33 +463,18 @@ public static class NikonBridge {
                 : "No available Nikon camera (all in use or powered off)");
         }
 
-        bool isD5600 = chosen.Name.IndexOf("D5600", StringComparison.OrdinalIgnoreCase) >= 0;
-        if (isD5600 && !HasD5600SdkAssets()) {
-            return Err(id, "Nikon D5600 was detected, but the selected SDK folder has no D5600 profile or Type0016.md3 module: "
-                + sdkDirectory + ". This app currently loads ControlServiceLayer.dll, so enumeration can succeed while opening the D5600 fails. Install/extract Nikon package S-SDKD5600-009BF-ALLIN and select a compatible SDK resource folder with HAPPYPIX_NIKON_SDK_DIR. If that package contains only the legacy Type0016.md3/NkdPTP files and no compatible ControlServiceLayer.dll, this bridge needs a legacy MAID adapter before it can use that package. Result 179 is left unmapped because the standard MAID result list does not define it.");
-        }
-
         int res = fnConnectDevice(chosen.ID, IntPtr.Zero);
         if (res != kNkMAIDResult_NoError) {
-            // Keep the vendor's result numeric (the published MAID headers do
-            // not define 179 as a standard MAID result) and include enough
-            // runtime context to distinguish SDK/model mismatch from USB use.
-            string modelModule = chosen.Name.IndexOf("D5600", StringComparison.OrdinalIgnoreCase) >= 0
-                ? FindModelModule("Type0016.md3") : "";
-            string d5600Hint = chosen.Name.IndexOf("D5600", StringComparison.OrdinalIgnoreCase) >= 0
-                ? "; D5600 Type0016 module=" + (modelModule.Length > 0 ? modelModule : "not found in SDK folder")
-                : "";
-            string message = "ConnectDevice failed: " + res
-                + " (camera=\"" + chosen.Name.Trim('\\0') + "\", id=" + chosen.ID
+            string message = "ConnectDevice failed: " + DescribeSdkResult(res)
+                + " (camera=\"" + (chosen.Name ?? "").Trim('\0') + "\", id=" + chosen.ID
                 + ", productId=" + chosen.ulConnectedPID
                 + ", sdk=\"" + sdkDirectory + "\", ControlServiceLayer=" + sdkFileVersion
-                + d5600Hint
-                + "). Verify the Nikon SDK package matches this camera, close NX Tether/Camera Control Pro/Nikon Transfer and other camera apps, and reconnect the camera by USB.";
+                + "). Close NX Tether/Camera Control Pro/Nikon Transfer and other camera apps, then reconnect the camera by USB.";
             return Err(id, message);
         }
 
         connectedDeviceId   = chosen.ID;
-        connectedDeviceName = chosen.Name.Trim('\0');
+        connectedDeviceName = (chosen.Name ?? "").Trim('\0');
         deviceConnected = true;
 
         // Set save path to temp dir so SDK can save images autonomously
@@ -489,20 +498,44 @@ public static class NikonBridge {
         return Ok(id, "{\"disconnected\":true}");
     }
 
+    static string DescribeSdkResult(int code) {
+        if (code == kNkMAIDResult_NoError) return "0 (NoError)";
+        if (code == kNkMAIDResult_SessionFailure) return "142 (SessionFailure)";
+        // Result 179 is outside the published MAID standard/D5600 result range;
+        // preserve its numeric value without inventing a vendor-specific label.
+        return code.ToString();
+    }
+
+    static int GetCapabilityRaw(uint capId, int request, out IntPtr value, out int dataType) {
+        value = IntPtr.Zero;
+        dataType = 0;
+        IntPtr ppData = Marshal.AllocHGlobal(IntPtr.Size);
+        IntPtr pType = Marshal.AllocHGlobal(4);
+        try {
+            Marshal.WriteIntPtr(ppData, IntPtr.Zero);
+            Marshal.WriteInt32(pType, 0);
+            int result = fnGetCapability(capId, request, ppData, pType);
+            value = Marshal.ReadIntPtr(ppData);
+            dataType = Marshal.ReadInt32(pType);
+            return result;
+        } finally {
+            Marshal.FreeHGlobal(ppData);
+            Marshal.FreeHGlobal(pType);
+        }
+    }
+
     static string CmdStatus(int id) {
         int battPct = -1;
         if (deviceConnected) {
+            IntPtr pVal = IntPtr.Zero;
             try {
-                uint dtype = 0;
-                IntPtr pVal;
-                int r = fnGetCapability(kNkMAIDCapability_BatteryLevel, ref dtype, out pVal);
+                int dtype;
+                int r = GetCapabilityRaw(kNkMAIDCapability_BatteryLevel, NK_GET_VALUE, out pVal, out dtype);
                 if (r == kNkMAIDResult_NoError && pVal != IntPtr.Zero) {
-                    uint raw = (uint)Marshal.ReadInt32(pVal);
-                    // Battery: 0=critical,1=low,2=medium,3=full (typical MAID mapping)
-                    battPct = (int)(raw * 33);
-                    if (battPct > 100) battPct = 100;
+                    int raw = Marshal.ReadInt32(pVal);
+                    if (dtype == NK_DATA_INTEGER_PTR && raw >= 0 && raw <= 100) battPct = raw;
                 }
-            } catch {}
+            } catch {} finally { if (pVal != IntPtr.Zero) { try { MyFree(pVal); } catch { } } }
         }
 
         string statusJson = "{\"sdkInitialized\":" + (sdkInitialized ? "true" : "false")
@@ -517,10 +550,6 @@ public static class NikonBridge {
     static string CmdLiveViewStart(int id) {
         if (!deviceConnected) return Err(id, "Camera not connected");
         if (liveViewActive) return Ok(id, "{\"started\":true,\"already\":true}");
-
-        // Get LV status
-        int lvStatus = 0;
-        fnGetLiveViewStatus(ref lvStatus);
 
         int res = fnStartLiveView(IntPtr.Zero, IntPtr.Zero);
         if (res != kNkMAIDResult_NoError)
@@ -551,38 +580,58 @@ public static class NikonBridge {
 
         string savePath = Path.GetTempPath();
         fnSetSavePath(savePath, savePath);
+        SetUnsignedCapability(kNkMAIDCapability_SaveMedia, kNkMAIDSaveMedia_SDRAM);
 
-        // Clear captured queue
         string dummy;
         while (capturedImages.TryDequeue(out dummy)) {}
 
-        var param = new MAIDShootingStructure {
-            shootingMode = MAID_SHOOTING_MODE_SINGLE,
-            delayTime    = 0,
-            intervalTime = 0,
-            shootCount   = 1,
-            ImageSavePath = savePath
-        };
+        IntPtr param = Marshal.AllocHGlobal(NK_SHOOTING_SIZE);
+        try {
+            byte[] bytes = new byte[NK_SHOOTING_SIZE];
+            // MAIDShootingStructure: eNkMAIDShootingType::Single (1), one
+            // shot, autofocus enabled, UTF-16 save directory, null output ref.
+            Array.Copy(BitConverter.GetBytes((uint)1), 0, bytes, 0, 4);
+            Array.Copy(BitConverter.GetBytes((uint)1), 0, bytes, 4, 4);
+            bytes[20] = 1;
+            byte[] pathBytes = Encoding.Unicode.GetBytes(savePath);
+            int maxPathBytes = (NK_SHOOTING_SAVE_PATH_CHARS - 1) * 2;
+            if (pathBytes.Length > maxPathBytes)
+                return Err(id, "Capture folder path is too long for the Nikon SDK");
+            Array.Copy(pathBytes, 0, bytes, NK_SHOOTING_SAVE_PATH_OFFSET, pathBytes.Length);
+            Marshal.Copy(bytes, 0, param, bytes.Length);
 
-        int res = fnStartShooting(ref param, IntPtr.Zero, IntPtr.Zero);
-        if (res != kNkMAIDResult_NoError)
-            return Err(id, "StartShooting failed: " + res);
+            int res = fnStartShooting(param, IntPtr.Zero, IntPtr.Zero);
+            if (res != kNkMAIDResult_NoError)
+                return Err(id, "StartShooting failed: " + DescribeSdkResult(res));
+        } finally {
+            Marshal.FreeHGlobal(param);
+        }
 
-        // Poll until done or timeout (5 s)
-        int status = 0;
+        int status = 1;
         int waited = 0;
-        while (waited < 5000) {
+        while (waited < 10000) {
             Thread.Sleep(100);
             waited += 100;
-            fnGetShootingStatus(ref status);
-            // status 0 = kNkSDKShootingFinishedOrNotStarted
+            int statusResult = fnGetShootingStatus(ref status);
+            if (statusResult != kNkMAIDResult_NoError) break;
             if (status == 0) break;
         }
 
-        // Find most-recently modified file in temp with common camera extensions
         string found = FindLatestCapturedFile(savePath);
+        if (string.IsNullOrEmpty(found))
+            return Err(id, "Nikon SDK accepted the shot but no image file appeared in " + savePath + " (shooting status=" + status + ")");
         return Ok(id, "{\"captured\":true,\"path\":\""
-            + EscJson(found ?? "") + "\",\"status\":" + status + "}");
+            + EscJson(found) + "\",\"status\":" + status + "}");
+    }
+
+    static int SetUnsignedCapability(uint capId, uint value) {
+        IntPtr data = Marshal.AllocHGlobal(4);
+        try {
+            Marshal.WriteInt32(data, unchecked((int)value));
+            return fnSetCapability(capId, data, NK_DATA_UNSIGNED_PTR);
+        } finally {
+            Marshal.FreeHGlobal(data);
+        }
     }
 
     static string FindLatestCapturedFile(string dir) {
@@ -603,31 +652,68 @@ public static class NikonBridge {
         return null;
     }
 
+    static bool IsEnumCapability(uint capId) {
+        return capId == kNkMAIDCapability_ExposureMode || capId == kNkMAIDCapability_ShutterSpeed
+            || capId == kNkMAIDCapability_Aperture || capId == kNkMAIDCapability_ISO;
+    }
+
     static string CmdGetCapability(int id, uint capId) {
         if (!deviceConnected) return Err(id, "Camera not connected");
+        IntPtr value = IntPtr.Zero;
         try {
-            uint dtype = 0;
-            IntPtr pVal;
-            int r = fnGetCapability(capId, ref dtype, out pVal);
-            if (r != kNkMAIDResult_NoError) return Err(id, "GetCapability failed: " + r);
-            uint val = (pVal != IntPtr.Zero) ? (uint)Marshal.ReadInt32(pVal) : 0;
-            return Ok(id, "{\"capId\":" + capId + ",\"value\":" + val + ",\"dataType\":" + dtype + "}");
+            int dataType;
+            int result = GetCapabilityRaw(capId, NK_GET_VALUE, out value, out dataType);
+            if (result != kNkMAIDResult_NoError) return Err(id, "GetCapability failed: " + DescribeSdkResult(result));
+            if (value == IntPtr.Zero) return Err(id, "GetCapability returned a null value for capability " + capId);
+            uint raw;
+            if (IsEnumCapability(capId) && dataType == NK_DATA_ENUM_PTR) {
+                raw = unchecked((uint)Marshal.ReadInt32(value, NK_ENUM_VALUE_OFFSET));
+            } else {
+                raw = unchecked((uint)Marshal.ReadInt32(value));
+            }
+            return Ok(id, "{\"capId\":" + capId + ",\"value\":" + raw + ",\"dataType\":" + dataType + "}");
         } catch (Exception ex) {
             return Err(id, ex.Message);
+        } finally {
+            if (value != IntPtr.Zero) { try { MyFree(value); } catch { } }
         }
     }
 
     static string CmdSetCapability(int id, uint capId, uint value) {
         if (!deviceConnected) return Err(id, "Camera not connected");
+        IntPtr native = IntPtr.Zero;
         try {
-            IntPtr pVal = Marshal.AllocHGlobal(4);
-            Marshal.WriteInt32(pVal, (int)value);
-            int r = fnSetCapability(capId, kNkMAIDDataType_Unsigned, pVal);
-            Marshal.FreeHGlobal(pVal);
-            if (r != kNkMAIDResult_NoError) return Err(id, "SetCapability failed: " + r);
+            int dataType;
+            int result;
+            if (IsEnumCapability(capId)) {
+                IntPtr current = IntPtr.Zero;
+                try {
+                    result = GetCapabilityRaw(capId, NK_GET_VALUE, out current, out dataType);
+                    if (result != kNkMAIDResult_NoError) return Err(id, "GetCapability before enum set failed: " + DescribeSdkResult(result));
+                    if (current == IntPtr.Zero || dataType != NK_DATA_ENUM_PTR)
+                        return Err(id, "Nikon enum capability returned an unexpected data layout (type=" + dataType + ")");
+                    byte[] header = new byte[NK_ENUM_HEADER_SIZE];
+                    Marshal.Copy(current, header, 0, header.Length);
+                    Array.Copy(BitConverter.GetBytes(value), 0, header, NK_ENUM_VALUE_OFFSET, 4);
+                    // The SDK requires a null pData for a set operation.
+                    Array.Clear(header, NK_ENUM_PDATA_OFFSET, IntPtr.Size);
+                    native = Marshal.AllocHGlobal(header.Length);
+                    Marshal.Copy(header, 0, native, header.Length);
+                    result = fnSetCapability(capId, native, NK_DATA_ENUM_PTR);
+                } finally {
+                    if (current != IntPtr.Zero) { try { MyFree(current); } catch { } }
+                }
+            } else {
+                native = Marshal.AllocHGlobal(4);
+                Marshal.WriteInt32(native, unchecked((int)value));
+                result = fnSetCapability(capId, native, NK_DATA_UNSIGNED_PTR);
+            }
+            if (result != kNkMAIDResult_NoError) return Err(id, "SetCapability failed: " + DescribeSdkResult(result));
             return Ok(id, "{\"capId\":" + capId + ",\"set\":true}");
         } catch (Exception ex) {
             return Err(id, ex.Message);
+        } finally {
+            if (native != IntPtr.Zero) Marshal.FreeHGlobal(native);
         }
     }
 
@@ -679,6 +765,7 @@ public static class NikonBridge {
             if (liveViewActive) { try { fnStopLiveView(IntPtr.Zero, IntPtr.Zero); } catch {} }
             if (deviceConnected) { try { fnDisconnectDevice(); } catch {} }
             if (sdkInitialized) { try { fnFreeSDK(); } catch {} }
+            if (callbackBlock != IntPtr.Zero) { Marshal.FreeHGlobal(callbackBlock); callbackBlock = IntPtr.Zero; }
         } catch {}
         if (hMod != IntPtr.Zero) FreeLibrary(hMod);
     }
@@ -716,6 +803,7 @@ public static class NikonBridge {
                 case "shutdown":
                     CmdDisconnect(id);
                     if (sdkInitialized) { try { fnFreeSDK(); } catch {} sdkInitialized = false; }
+                    if (callbackBlock != IntPtr.Zero) { Marshal.FreeHGlobal(callbackBlock); callbackBlock = IntPtr.Zero; }
                     return Ok(id, "{\"shutdown\":true}");
                 default:
                     return Err(id, "Unknown command: " + cmd);

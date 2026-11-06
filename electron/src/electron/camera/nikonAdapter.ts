@@ -46,11 +46,12 @@ export type NikonAdapterEvent =
 // ── Capability IDs (MAID3-COMMON spec) ───────────────────────────────────────
 
 export const NikonCapability = {
-  BatteryLevel: 0x0018,
-  ExposureMode: 0x0009,
-  ShutterSpeed: 0x000a,
-  Aperture:     0x000b,
-  ISO:          0x0010,
+  // Remote SDK v2 D1 capabilities from Maid3d1.h.
+  BatteryLevel: 48,
+  ExposureMode: 0x8111,
+  ShutterSpeed: 0x8112,
+  Aperture:     0x8113,
+  ISO:          0x8117,
 } as const
 
 // ── NKERROR result codes ──────────────────────────────────────────────────────
@@ -138,6 +139,15 @@ export class NikonAdapter extends EventEmitter {
       `[NikonAdapter] SDK loaded from ${sdk.sdkDir ?? 'default resources'} ` +
       `(ControlServiceLayer ${sdk.sdkVersion ?? 'unknown'}, ${sdk.processBits ?? 'unknown'}-bit process)`,
     )
+    // Establish the baseline before polling. Without it, a camera already
+    // present at startup is reported as newly added after the first poll and
+    // can trigger a second ConnectDevice call while initial auto-connect runs.
+    try {
+      const devices = await this.listDevices()
+      this._knownDeviceIds = new Set(devices.filter((d) => d.available).map((d) => d.id))
+    } catch (err) {
+      console.debug('[NikonAdapter] Initial device enumeration unavailable:', err)
+    }
     this._startWatch()
   }
 
@@ -289,8 +299,20 @@ export class NikonAdapter extends EventEmitter {
     try {
       msg = JSON.parse(line) as typeof msg
     } catch {
-      console.warn('[NikonAdapter] Non-JSON from bridge:', line.slice(0, 120))
-      return
+      // Native Nikon logging writes directly to the child's stdout and can
+      // prefix/suffix a bridge response on the same line. Recover a complete
+      // JSON object if one is embedded rather than dropping the command reply.
+      const embedded = this._extractJsonObject(line)
+      if (!embedded) {
+        console.debug('[NikonAdapter] Nikon SDK diagnostic:', line.slice(0, 240))
+        return
+      }
+      try {
+        msg = JSON.parse(embedded) as typeof msg
+      } catch {
+        console.debug('[NikonAdapter] Unparsed Nikon bridge output:', line.slice(0, 240))
+        return
+      }
     }
 
     // id=0: ready handshake
@@ -314,6 +336,27 @@ export class NikonAdapter extends EventEmitter {
     } else {
       p.reject(new Error(msg.error ?? `NikonBridge error (id=${msg.id})`))
     }
+  }
+
+  private _extractJsonObject(line: string): string | null {
+    for (let start = line.indexOf('{'); start >= 0; start = line.indexOf('{', start + 1)) {
+      let depth = 0
+      let inString = false
+      let escaped = false
+      for (let i = start; i < line.length; i += 1) {
+        const ch = line[i]
+        if (inString) {
+          if (escaped) escaped = false
+          else if (ch === '\\') escaped = true
+          else if (ch === '"') inString = false
+          continue
+        }
+        if (ch === '"') inString = true
+        else if (ch === '{') depth += 1
+        else if (ch === '}' && --depth === 0) return line.slice(start, i + 1)
+      }
+    }
+    return null
   }
 
   private _rejectAll(err: Error): void {

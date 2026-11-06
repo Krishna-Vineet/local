@@ -6,7 +6,19 @@ import { canonCcapi } from './canonCcapi.js'
 import { getPreloadPath } from './pathResolver.js'
 import { isDev } from './util.js'
 import { startPrintServer, stopPrintServer } from './printServer.js'
-import { enqueueSession, getQueueStatus, getSessionStatus, startQueueWorker, stopQueueWorker, type EnqueueSessionPayload } from './uploadQueue.js'
+import {
+  enqueueSession,
+  getQueueStatus,
+  getSessionStatus,
+  markSessionUploaded,
+  processQueueTick,
+  startQueueWorker,
+  stopQueueWorker,
+  type EnqueueSessionPayload,
+} from './uploadQueue.js'
+import { cameraManager } from './camera/cameraManager.js'
+import { liveViewService } from './camera/liveViewService.js'
+import { registerCameraIpc } from './camera/cameraIpc.js'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -54,6 +66,7 @@ function createWindow(): void {
 }
 
 function registerIpc(): void {
+  // ── Existing booth IPC (unchanged) ──────────────────────────────────────
   ipcMain.handle('booth:get-installation', () => getInstallation())
   ipcMain.handle('booth:save-installation', (_event, value: StoredInstallation) => saveInstallation(value))
   ipcMain.handle('booth:clear-installation', () => clearInstallation())
@@ -66,6 +79,8 @@ function registerIpc(): void {
   ipcMain.handle('booth:enqueue-session', (_event, value: EnqueueSessionPayload) => enqueueSession(value))
   ipcMain.handle('booth:get-queue-status', () => getQueueStatus())
   ipcMain.handle('booth:get-session-status', (_event, sessionId: string) => getSessionStatus(sessionId))
+  ipcMain.handle('booth:mark-session-uploaded', (_event, sessionId: string, details?: any) => markSessionUploaded(sessionId, details))
+  ipcMain.handle('booth:trigger-queue-tick', () => processQueueTick())
   ipcMain.handle('booth:set-kiosk', (_event, enabled: boolean) => {
     if (!mainWindow) return false
     mainWindow.setKiosk(enabled)
@@ -82,6 +97,9 @@ function registerIpc(): void {
     platform: process.platform,
     packaged: app.isPackaged,
   }))
+
+  // ── Nikon SDK IPC (new) ─────────────────────────────────────────────────
+  registerCameraIpc()
 }
 
 app.whenReady().then(() => {
@@ -93,6 +111,11 @@ app.whenReady().then(() => {
     callback(permission === 'media')
   })
   createWindow()
+
+  // Initialize Nikon SDK after window is created (non-blocking)
+  void cameraManager.initialize().catch((err: unknown) => {
+    console.warn('[main] CameraManager init error:', err)
+  })
 })
 
 app.on('activate', () => {
@@ -102,6 +125,7 @@ app.on('activate', () => {
 app.on('window-all-closed', () => {
   stopPrintServer()
   stopQueueWorker()
+  void liveViewService.shutdown()
+  void cameraManager.shutdown()
   if (process.platform !== 'darwin') app.quit()
 })
-

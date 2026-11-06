@@ -13,7 +13,6 @@ import { authenticate, authorize, getOrgFilter } from '../middleware/auth.js';
 import { optionalDeviceAuth } from '../middleware/deviceAuth.js';
 import { logAudit } from '../utils/auditLogger.js';
 import '../models/Template.js';
-import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import rateLimit from 'express-rate-limit';
 
 const joinLimiter = rateLimit({
@@ -23,20 +22,6 @@ const joinLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many join attempts. Please try again later.' },
 });
-
-let s3ClientInstance = null;
-const getS3Client = () => {
-  if (!s3ClientInstance) {
-    s3ClientInstance = new S3Client({
-      region: process.env.AWS_REGION,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      },
-    });
-  }
-  return s3ClientInstance;
-};
 
 const router = express.Router();
 

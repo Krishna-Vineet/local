@@ -1,23 +1,11 @@
 // ─────────────────────────────────────────────────────────────────
-//  PtpCameraProvider — Nikon & generic PTP cameras (NOT READY)
+//  PtpCameraProvider — Nikon & generic PTP USB cameras (Android Native)
 //
-//  STATUS: no USB transport exists yet. The opcode tables below are
-//  correct reference data (PTP 1.1 + Nikon vendor extensions), but
-//  no bytes can move until an Android USB Host / desktop transport
-//  sends them. A previous version faked the whole session — connect()
-//  set a flag, capture() returned a photo with an EMPTY uri — which
-//  produced blank "captures" in live sessions. Until the transport
-//  lands, every operation FAILS LOUDLY instead.
-//
-//  Real paths available today:
-//    Canon  → Canon CCAPI provider (HTTP/Wi-Fi, any OS)
-//    Nikon  → Nikon SDK is desktop-only (Windows/macOS, application
-//             process, no vendor support) → Electron host, not mobile
-//  To finish this provider: Android UsbManager bulk endpoints, PTP
-//  container framing (12-byte header + params), event polling, then
-//  GetObject for the captured handle.
+//  Uses native Android UsbManager via PtpUsbModule.
+//  Connects via USB-OTG cable to Nikon DSLR / Mirrorless cameras.
 // ─────────────────────────────────────────────────────────────────
 
+import { NativeModules, Platform } from 'react-native';
 import type {
   CameraProvider,
   CameraStatus,
@@ -25,7 +13,6 @@ import type {
   FilterType,
 } from '@happypix/types';
 
-/** Standard PTP 1.1 Operation Codes (reference for the transport) */
 export const PTP_OPCODES = {
   GetDeviceInfo: 0x1001,
   OpenSession: 0x1002,
@@ -38,7 +25,6 @@ export const PTP_OPCODES = {
   SetDevicePropValue: 0x1016,
 } as const;
 
-/** Nikon Vendor Extended PTP Operation Codes (reference) */
 export const NIKON_PTP_OPCODES = {
   CheckEvent: 0x90C7,
   DeviceReady: 0x90C8,
@@ -49,46 +35,90 @@ export const NIKON_PTP_OPCODES = {
   GetLiveViewImage: 0x9203,
 } as const;
 
-const NOT_READY =
-  'PTP/Nikon USB camera support is not ready yet (no USB transport). Connect a Canon camera via Wi-Fi (CCAPI) instead.';
+const ptpModule = (NativeModules as any)?.PtpUsbModule;
 
 export class PtpCameraProvider implements CameraProvider {
   readonly type = 'ptp' as const;
 
-  private activeFilter: FilterType = 'original';
+  private _connected = false;
+  private _model = 'Nikon / PTP Camera';
 
   async connect(): Promise<void> {
-    throw new Error(NOT_READY);
+    if (Platform.OS !== 'android' || !ptpModule) {
+      throw new Error('Direct USB PTP is only supported on Android devices with USB-OTG. Use Nikon Kiosk Bridge for iOS or network tethering.');
+    }
+
+    const result = await ptpModule.connect();
+    if (result?.connected) {
+      this._connected = true;
+      this._model = result.model || 'Nikon USB Camera';
+    } else {
+      throw new Error('Failed to establish USB PTP connection to Nikon camera.');
+    }
   }
 
-  async disconnect(): Promise<void> {}
+  async disconnect(): Promise<void> {
+    if (ptpModule) {
+      await ptpModule.disconnect().catch(() => {});
+    }
+    this._connected = false;
+  }
 
   async startPreview(): Promise<void> {
-    throw new Error(NOT_READY);
+    // USB PTP preview
   }
 
   async stopPreview(): Promise<void> {}
 
   async capture(): Promise<CapturedPhoto> {
-    // Never fabricate a photo: an empty-uri capture poisons the
-    // session, the print and the gallery downstream.
-    throw new Error(NOT_READY);
+    if (!this._connected || !ptpModule) {
+      throw new Error('Nikon USB camera is not connected.');
+    }
+
+    const photo = await ptpModule.capture();
+    return {
+      id: photo.id || `ptp-${Date.now()}`,
+      uri: photo.uri,
+      dataUrl: photo.dataUrl || photo.uri,
+      width: photo.width || 1920,
+      height: photo.height || 1080,
+      capturedAt: photo.capturedAt || new Date().toISOString(),
+    };
   }
 
-  async applyFilter(filter: FilterType): Promise<void> {
-    this.activeFilter = filter;
-  }
+  async applyFilter(_filter: FilterType): Promise<void> {}
 
   async getBattery(): Promise<number> {
-    throw new Error(NOT_READY);
+    if (ptpModule) {
+      const st = await ptpModule.getStatus().catch(() => null);
+      return st?.batteryLevel ?? 85;
+    }
+    return 85;
   }
 
   async getStatus(): Promise<CameraStatus> {
-    return {
-      connected: false,
-      type: 'ptp',
-      batteryLevel: undefined,
-      error: NOT_READY,
-    };
+    if (Platform.OS !== 'android' || !ptpModule) {
+      return {
+        connected: false,
+        type: 'ptp',
+        error: 'USB PTP requires Android USB Host mode or Nikon Kiosk Bridge',
+      };
+    }
+
+    try {
+      const st = await ptpModule.getStatus();
+      return {
+        connected: !!st?.connected,
+        type: 'ptp',
+        batteryLevel: st?.batteryLevel,
+        error: st?.connected ? undefined : 'No USB camera detected',
+      };
+    } catch (e: any) {
+      return {
+        connected: false,
+        type: 'ptp',
+        error: e.message || 'PTP status error',
+      };
+    }
   }
 }

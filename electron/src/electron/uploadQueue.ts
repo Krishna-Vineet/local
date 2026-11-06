@@ -164,7 +164,7 @@ export async function validateAndStageSession(
       updatedAt: now,
       attempts: 0,
       lastAttemptAt: null,
-      nextRetryAt: null,
+      nextRetryAt: payload.digitalCopy !== false ? Date.now() + 5000 : null,
       lastError: null,
       state: 'pending',
       compositeFile: compositeFileName,
@@ -531,11 +531,41 @@ export function stopQueueWorker(): void {
   }
 }
 
+export async function markSessionUploaded(
+  sessionId: string,
+  details?: { downloadUrl?: string | null; downloadId?: string | null; downloadExpiresAt?: string | null },
+  queueRoot: string = getQueueDir()
+): Promise<boolean> {
+  const sessionDir = path.join(queueRoot, sessionId)
+  const manifestPath = path.join(sessionDir, 'manifest.json')
+  try {
+    const raw = await readFile(manifestPath, 'utf8')
+    const manifest = JSON.parse(raw) as QueueSessionManifest
+    manifest.state = 'uploaded'
+    if (details?.downloadUrl) manifest.downloadUrl = details.downloadUrl
+    if (details?.downloadId) manifest.downloadId = details.downloadId
+    if (details?.downloadExpiresAt) manifest.downloadExpiresAt = details.downloadExpiresAt
+    manifest.updatedAt = new Date().toISOString()
+    manifest.lastError = null
+
+    // Safely remove photo binaries and staged folder
+    await rm(path.join(sessionDir, manifest.compositeFile), { force: true }).catch(() => {})
+    for (const photoFile of manifest.photoFiles) {
+      await rm(path.join(sessionDir, photoFile), { force: true }).catch(() => {})
+    }
+    await rm(sessionDir, { recursive: true, force: true }).catch(() => {})
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function enqueueSession(payload: EnqueueSessionPayload): Promise<{ success: boolean; sessionId: string; error?: string }> {
   const result = await validateAndStageSession(payload)
-  if (result.success) {
-    // Trigger immediate background process attempt without waiting for interval
+  if (result.success && payload.digitalCopy === false) {
+    // Only trigger immediate background process if digital copy is not being uploaded directly by UI
     void processQueueTick()
   }
   return result
 }
+

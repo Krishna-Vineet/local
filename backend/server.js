@@ -11,8 +11,8 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { authenticate } from './middleware/auth.js';
 import { authenticateDevice } from './middleware/deviceAuth.js';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
+import { uploadToCloudinary, isCloudinaryConfigured } from './utils/cloudinary.js';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dns from 'dns';
@@ -348,18 +348,9 @@ app.all('/api/cron/check-expirations', async (req, res) => {
   }
 });
 
-// Note: Photo model is imported from models/Photo.js. S3 files are deleted by bucket lifecycle policy.
+// Note: Photo model is imported from models/Photo.js. Files are managed by Cloudinary.
 
-// AWS S3 Configuration
-const s3 = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
-
-// Multer Storage (memoryStorage for direct S3 upload)
+// Multer Storage (memoryStorage for Cloudinary upload)
 const storage = multer.memoryStorage();
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const ALLOWED_EXTENSIONS = /\.(png|jpe?g|webp)$/i;
@@ -375,96 +366,61 @@ const upload = multer({
   },
 });
 
-// Logo Proxy — fetches private S3 logo using AWS SDK credentials to bypass AccessDenied.
-// Authenticated, and restricted to OUR OWN bucket: this endpoint used to
-// accept any bucket/region in the URL, which made it an unauthenticated
-// oracle for reading arbitrary S3 objects with server credentials.
+// Logo Proxy — proxies logos for internal renderers or local testing
 app.get('/api/proxy/logo', authenticate, async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: 'url query param required' });
   try {
-    // Expected format: https://<bucket>.s3.<region>.amazonaws.com/<key>
-    const urlObj = new URL(url);
-    const key = decodeURIComponent(urlObj.pathname.replace(/^\//, '')); // remove leading slash
-
-    const targetBucket = process.env.S3_BUCKET_NAME;
-    const targetRegion = process.env.AWS_REGION;
-    const hostMatch = urlObj.hostname.match(/^(.+?)\.s3\.(?:.+?\.)?amazonaws\.com/);
-    if (!hostMatch || hostMatch[1] !== targetBucket) {
-      return res.status(400).json({ error: 'Only HappyPix bucket assets can be proxied' });
+    // If it's a local upload
+    if (url.includes('/uploads/')) {
+      const localRelPath = url.split('/uploads/')[1];
+      const localPath = path.join(process.cwd(), 'uploads', localRelPath);
+      if (fs.existsSync(localPath)) {
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=86400');
+        return fs.createReadStream(localPath).pipe(res);
+      }
     }
 
-    console.log(`[Proxy] Fetching logo key: "${key}" from bucket "${targetBucket}" (${targetRegion})`);
-
-    if (!key || !key.includes('.')) {
-      console.error(`[Proxy] Invalid key: "${key}" — likely a corrupt logoUrl (folder path only)`);
-      return res.status(400).json({ error: 'Invalid S3 key — logoUrl may be corrupt (missing filename)' });
+    // If it's a remote URL (Cloudinary or other HTTP)
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        return res.status(resp.status).json({ error: 'Failed to fetch upstream logo' });
+      }
+      const contentType = resp.headers.get('content-type') || 'image/png';
+      res.set('Content-Type', contentType);
+      res.set('Cache-Control', 'public, max-age=86400');
+      if (req.query.download === 'true') {
+        res.set('Content-Disposition', 'attachment; filename="happypix-logo.png"');
+      }
+      const arrayBuffer = await resp.arrayBuffer();
+      return res.send(Buffer.from(arrayBuffer));
     }
 
-    let clientToUse = s3;
-    if (targetRegion && targetRegion !== process.env.AWS_REGION) {
-      clientToUse = new S3Client({
-        region: targetRegion,
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        },
-      });
-    }
-
-    const command = new GetObjectCommand({
-      Bucket: targetBucket,
-      Key: key,
-    });
-
-    const s3Response = await clientToUse.send(command);
-
-    const contentType = s3Response.ContentType || 'image/png';
-    res.set('Content-Type', contentType);
-    res.set('Cache-Control', 'public, max-age=86400');
-    
-    if (req.query.download === 'true') {
-      res.set('Content-Disposition', 'attachment; filename="happypix-photo.jpg"');
-    }
-
-    // Buffer the stream (more reliable than .pipe() with Express 5)
-    const chunks = [];
-    for await (const chunk of s3Response.Body) {
-      chunks.push(chunk);
-    }
-    res.send(Buffer.concat(chunks));
+    res.status(404).json({ error: 'Logo not found' });
   } catch (err) {
     console.error('❌ Logo proxy error:', err.name, err.message);
     res.status(404).json({ error: 'Logo not found or access denied' });
   }
 });
 
-// Logo Upload API (permanent — no TTL)
-// Requires: authenticated user; the S3 path is scoped to THEIR organization
-// (never a client-supplied orgId).
-// S3 path: happypix/<orgId>/logos/<timestamp>-<name>.<ext>
+// Logo Upload API (permanent — Cloudinary)
 app.post('/api/upload/logo', authenticate, upload.single('logo'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const orgId = req.user?.organizationId || req.user?._id || 'unscoped';
-    const ext = req.file.originalname.split('.').pop() || 'png';
     const folder = req.query.folder || 'logos';
-    const fileName = `happypix/${orgId}/${folder}/${Date.now()}-${folder}.${ext}`;
 
-    const parallelUploads3 = new Upload({
-      client: s3,
-      params: {
-        Bucket: process.env.S3_BUCKET_NAME,
-        Key: fileName,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype || 'image/png',
-      },
+    const result = await uploadToCloudinary({
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype || 'image/png',
+      folder: `happypix/${orgId}/${folder}`,
+      originalname: req.file.originalname || 'logo.png',
     });
 
-    await parallelUploads3.done();
-    const logoUrl = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
-    res.status(201).json({ url: logoUrl });
+    res.status(201).json({ url: result.url, publicId: result.key });
   } catch (error) {
     console.error('❌ Logo upload error:', error);
     res.status(500).json({ error: 'Failed to upload logo' });
@@ -477,22 +433,15 @@ app.post('/api/upload/profile-photo', authenticate, upload.single('photo'), asyn
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const userId = req.user._id;
-    const ext = req.file.originalname.split('.').pop() || 'png';
-    const fileName = `happypix/profiles/${userId}/${Date.now()}-profile.${ext}`;
 
-    const parallelUploads3 = new Upload({
-      client: s3,
-      params: {
-        Bucket: process.env.S3_BUCKET_NAME,
-        Key: fileName,
-        Body: req.file.buffer,
-        ContentType: req.file.mimetype || 'image/png',
-      },
+    const result = await uploadToCloudinary({
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype || 'image/png',
+      folder: `happypix/profiles/${userId}`,
+      originalname: req.file.originalname || 'profile.png',
     });
 
-    await parallelUploads3.done();
-    const photoUrl = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
-    res.status(201).json({ url: photoUrl });
+    res.status(201).json({ url: result.url, publicId: result.key });
   } catch (error) {
     console.error('❌ Profile photo upload error:', error);
     res.status(500).json({ error: 'Failed to upload profile photo' });
@@ -500,9 +449,6 @@ app.post('/api/upload/profile-photo', authenticate, upload.single('photo'), asyn
 });
 
 // Photo Upload API
-// S3 path: happypix/<orgId>/<eventId>/<sessionId>/<timestamp>-<filename>
-// Auth: a paired booth (device token) or a signed-in user (JWT).
-// This endpoint previously accepted anonymous uploads into the bucket.
 const requireUserOrDevice = (req, res, next) => {
   const hasDeviceCreds = req.headers['x-device-token']
     || (req.headers.authorization || '').startsWith('Device ')
@@ -533,38 +479,27 @@ app.post('/api/upload', requireUserOrDevice, upload.single('photo'), async (req,
       return res.status(400).json({ error: 'No photo file or base64 data provided' });
     }
 
-    // Scope the S3 path to the AUTHENTICATED identity — never trust a
-    // client-supplied orgId (any caller could write into another org).
     const orgId     = (req.organization?._id || req.user?.organizationId || 'unscoped').toString();
     const eventId   = req.body.eventId   || 'no-event';
     const sessionId = req.body.sessionId || `session-${Date.now()}`;
-    const fileName  = `happypix/${orgId}/${eventId}/${sessionId}/${Date.now()}-${originalName}`;
-    
-    // Upload to S3
-    const uploadParams = {
-      Bucket: process.env.S3_BUCKET_NAME,
-      Key: fileName,
-      Body: fileBuffer,
-      ContentType: mimeType,
-    };
 
-    const parallelUploads3 = new Upload({
-      client: s3,
-      params: uploadParams,
+    // Upload to Cloudinary (with automatic local fallback)
+    const uploadResult = await uploadToCloudinary({
+      buffer: fileBuffer,
+      mimetype: mimeType,
+      folder: `happypix/${orgId}/${eventId}/${sessionId}`,
+      originalname: originalName,
     });
 
-    await parallelUploads3.done();
+    const photoUrl = uploadResult.url;
 
-    const s3Url = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
-
-    // Save to MongoDB (compositeUrl is a declared Photo field — the org
-    // gallery leads with it; see models/Photo.js)
+    // Save to MongoDB
     const newPhoto = new Photo({
-      s3Key: fileName,
-      url: s3Url,
+      s3Key: uploadResult.key,
+      url: photoUrl,
       eventId: req.body.eventId || undefined,
       organizationId: (orgId && mongoose.Types.ObjectId.isValid(orgId)) ? orgId : null,
-      compositeUrl: req.body.isComposite === 'true' ? s3Url : null,
+      compositeUrl: req.body.isComposite === 'true' ? photoUrl : null,
       sessionId: req.body.sessionId || null,
       finalised: req.body.isComposite === 'true',
       generatedAt: new Date(),
@@ -574,15 +509,15 @@ app.post('/api/upload', requireUserOrDevice, upload.single('photo'), async (req,
 
     res.status(201).json({
       message: 'Upload successful',
-      url: s3Url,
+      url: photoUrl,
       id: newPhoto._id
     });
 
     console.log('\n-----------------------------------------');
-    console.log(`📤 [BACKEND S3 UPLOAD SUCCESS]`);
+    console.log(`📤 [BACKEND CLOUDINARY UPLOAD SUCCESS]`);
     console.log(`Type: ${req.body.isComposite === 'true' ? 'Final Template (STRIP)' : 'Raw Photo'}`);
     console.log(`Event ID: ${req.body.eventId || 'No Event ID'}`);
-    console.log(`URL: ${s3Url}`);
+    console.log(`URL: ${photoUrl}`);
     console.log('-----------------------------------------\n');
 
   } catch (error) {

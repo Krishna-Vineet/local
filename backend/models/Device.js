@@ -56,6 +56,10 @@ const deviceSchema = new mongoose.Schema(
       prints: { type: Number, default: 0 },
       shutters: { type: Number, default: 0 },
       batteryPct: { type: Number, default: 100 },
+      printerModel: { type: String, default: null },
+      printerStatus: { type: String, default: null },
+      paperRemaining: { type: Number, default: null },
+      cameraModel: { type: String, default: null },
       updatedAt: { type: Date, default: null }
     },
 

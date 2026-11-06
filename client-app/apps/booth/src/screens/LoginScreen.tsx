@@ -28,6 +28,7 @@ import {
 } from '../../../../packages/ui/src/index';
 import { AppLogo } from '../components/AppLogo';
 import { useBooth } from '../context/BoothProvider';
+import { getBoothApiUrl, setStoredApiUrl } from '@happypix/api';
 import SoundManager from '../utils/SoundManager';
 import type { RootStackParamList } from '../../App';
 
@@ -73,48 +74,51 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [telemetry, setTelemetry] = useState<Telemetry>({
     camera: { status: 'checking', value: 'Checking camera…' },
     printer: { status: 'checking', value: 'Checking printer…' },
-    network: { status: 'ok', value: 'Online' },
+    network: { status: 'checking', value: 'Checking connection…' },
   });
 
-  useEffect(() => {
-    let mounted = true;
+  const probe = React.useCallback(async () => {
+    try {
+      const type = await cameraManager.autoSelect();
+      setTelemetry((prev) => ({
+        ...prev,
+        camera: { status: 'ok', value: type ? `${type.toUpperCase()} camera` : 'Tablet camera' },
+      }));
+    } catch {
+      setTelemetry((prev) => ({ ...prev, camera: { status: 'warn', value: 'No camera found' } }));
+    }
 
-    const probe = async () => {
-      try {
-        const type = await cameraManager.autoSelect();
-        if (!mounted) return;
+    try {
+      const devices = await printerManager.discover();
+      if (devices.length) {
+        await printerManager.connect(devices[0]).catch(() => undefined);
         setTelemetry((prev) => ({
           ...prev,
-          camera: { status: 'ok', value: type ? `${type.toUpperCase()} camera` : 'Tablet camera' },
+          printer: { status: 'ok', value: devices[0].name || 'Dye-sub printer' },
         }));
-      } catch {
-        if (!mounted) return;
-        setTelemetry((prev) => ({ ...prev, camera: { status: 'warn', value: 'No camera found' } }));
+      } else {
+        setTelemetry((prev) => ({ ...prev, printer: { status: 'warn', value: 'No printer found' } }));
       }
+    } catch {
+      setTelemetry((prev) => ({ ...prev, printer: { status: 'warn', value: 'Printer unreachable' } }));
+    }
 
-      try {
-        const devices = await printerManager.discover();
-        if (!mounted) return;
-        if (devices.length) {
-          await printerManager.connect(devices[0]).catch(() => undefined);
-          setTelemetry((prev) => ({
-            ...prev,
-            printer: { status: 'ok', value: devices[0].name || 'Dye-sub printer' },
-          }));
-        } else {
-          setTelemetry((prev) => ({ ...prev, printer: { status: 'warn', value: 'No printer found' } }));
-        }
-      } catch {
-        if (!mounted) return;
-        setTelemetry((prev) => ({ ...prev, printer: { status: 'warn', value: 'Printer unreachable' } }));
+    try {
+      const apiUrl = getBoothApiUrl();
+      const res = await fetch(`${apiUrl}/api/booth/config`, { method: 'GET' }).catch(() => null);
+      if (res && (res.status === 200 || res.status === 401 || res.status === 403)) {
+        setTelemetry((prev) => ({ ...prev, network: { status: 'ok', value: 'Connected' } }));
+      } else {
+        setTelemetry((prev) => ({ ...prev, network: { status: 'warn', value: 'Server unreachable' } }));
       }
-    };
-
-    void probe();
-    return () => {
-      mounted = false;
-    };
+    } catch {
+      setTelemetry((prev) => ({ ...prev, network: { status: 'warn', value: 'Offline' } }));
+    }
   }, []);
+
+  useEffect(() => {
+    void probe();
+  }, [probe]);
 
   const onPair = async () => {
     if (!email.trim() || !password) {
@@ -133,7 +137,13 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
       SoundManager.play('success');
       navigation.replace(isLive ? 'Start' : 'Waiting');
     } catch (err: any) {
-      setError(err?.message || 'Login failed. Please check the credentials.');
+      const msg = err?.message || 'Login failed. Please check the credentials.';
+      const isNet = msg.toLowerCase().includes('network') || msg.toLowerCase().includes('failed to fetch');
+      setError(
+        isNet
+          ? `Could not reach backend (${getBoothApiUrl()}). Verify network or tap Server below.`
+          : msg
+      );
     } finally {
       setLoading(false);
     }
@@ -303,6 +313,23 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                 HappyPix Engine · {Math.round(width)}×{Math.round(height)} pts ·{' '}
                 {Platform.OS === 'ios' ? 'iPadOS' : 'Android'}
               </Text>
+              <Pressable
+                onPress={() => {
+                  const current = getBoothApiUrl();
+                  const target = current.includes('10.0.2.2') || current.includes('localhost')
+                    ? 'https://happypix-v2-backend.vercel.app'
+                    : 'http://10.0.2.2:5000';
+                  void setStoredApiUrl(target);
+                  setTelemetry((prev) => ({ ...prev, network: { status: 'checking', value: 'Checking connection…' } }));
+                  void probe();
+                }}
+                style={{ marginTop: 6 }}
+                accessibilityRole="button"
+              >
+                <Text style={{ fontFamily: fonts.body, fontSize: fontSize(10.5), color: p.muted, textAlign: 'center' }}>
+                  Server: <Text style={{ color: p.violet, textDecorationLine: 'underline' }}>{getBoothApiUrl()}</Text>
+                </Text>
+              </Pressable>
             </Card>
           </View>
         </View>

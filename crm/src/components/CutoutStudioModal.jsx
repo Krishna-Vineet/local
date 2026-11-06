@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Button, Modal } from './ui.jsx';
+import { Button } from './ui.jsx';
 import { Icon } from '../lib/icons.jsx';
 import { removeBackgroundCanvas } from '../utils/removeBackground.js';
 
@@ -7,12 +7,13 @@ import { removeBackgroundCanvas } from '../utils/removeBackground.js';
  * Precision Cutout & Crop Studio Modal.
  * Allows isolating specific characters, graphics, borders, and regions from an uploaded image.
  * Features:
- * - Interactive Box Crop
+ * - Interactive Box Crop with 8 handles & click-drag new box
+ * - Auto-Fit to screen on load & dedicated Fit Screen button
+ * - Zoom from 5% to 400% + Ctrl+Wheel zoom
  * - Precision Eraser Brush (destination-out)
  * - Restore Brush (paint original pixels back)
  * - Magic Color Eraser (click-to-erase with tolerance)
  * - Auto Smart Background Removal
- * - Zoom & Pan (50% to 300%)
  * - Full Undo / Redo history
  * - Save as New Overlay OR Update Current Overlay
  */
@@ -23,24 +24,54 @@ export default function CutoutStudioModal({
   onApplyCutout
 }) {
   const [activeTool, setActiveTool] = useState('crop'); // 'crop' | 'eraser' | 'restore' | 'magic'
-  const [brushSize, setBrushSize] = useState(24);
+  const [brushSize, setBrushSize] = useState(28);
   const [tolerance, setTolerance] = useState(38);
   const [zoom, setZoom] = useState(1);
+  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Crop rectangle state (in image pixel coordinates)
   const [cropRect, setCropRect] = useState(null); // { x, y, w, h }
-  const [isCropDragging, setIsCropDragging] = useState(false);
-  const [cropDragMode, setCropDragMode] = useState(null); // 'move' | 'nw' | 'ne' | 'se' | 'sw'
 
   const canvasRef = useRef(null);
   const originalImgRef = useRef(null);
+  const workspaceRef = useRef(null);
   const historyRef = useRef([]);
   const historyIndexRef = useRef(-1);
   const isPaintingRef = useRef(false);
   const lastPointRef = useRef(null);
+
+  // Fit image inside current workspace viewport
+  const fitToScreen = useCallback(() => {
+    if (!workspaceRef.current || !canvasRef.current) return;
+    const container = workspaceRef.current;
+    const padding = 60;
+    const cw = container.clientWidth - padding;
+    const ch = container.clientHeight - padding;
+    const canvas = canvasRef.current;
+    if (cw <= 0 || ch <= 0 || !canvas.width || !canvas.height) return;
+
+    const scale = Math.min(cw / canvas.width, ch / canvas.height, 1);
+    const rounded = Math.max(0.05, Math.min(3.0, Number(scale.toFixed(2))));
+    setZoom(rounded);
+  }, []);
+
+  // Listen for Ctrl+Wheel zooming on the workspace
+  useEffect(() => {
+    const el = workspaceRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.1 : 0.9;
+        setZoom(z => Math.max(0.05, Math.min(4.0, Number((z * factor).toFixed(2)))));
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [isOpen]);
 
   // Load image onto canvas when modal opens
   useEffect(() => {
@@ -53,32 +84,38 @@ export default function CutoutStudioModal({
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
+      const iw = img.naturalWidth || img.width;
+      const ih = img.naturalHeight || img.height;
+      canvas.width = iw;
+      canvas.height = ih;
+      setCanvasSize({ w: iw, h: ih });
+
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
 
-      // Default crop box covers 70% centered
-      const cw = canvas.width;
-      const ch = canvas.height;
+      // Default crop box covers 80% centered
       setCropRect({
-        x: Math.round(cw * 0.1),
-        y: Math.round(ch * 0.1),
-        w: Math.round(cw * 0.8),
-        h: Math.round(ch * 0.8)
+        x: Math.round(iw * 0.1),
+        y: Math.round(ih * 0.1),
+        w: Math.round(iw * 0.8),
+        h: Math.round(ih * 0.8)
       });
 
       // Initialize history
-      const initialData = ctx.getImageData(0, 0, cw, ch);
+      const initialData = ctx.getImageData(0, 0, iw, ih);
       historyRef.current = [initialData];
       historyIndexRef.current = 0;
       setCanUndo(false);
       setCanRedo(false);
-      setZoom(1);
+
+      // Auto-fit to screen after render
+      requestAnimationFrame(() => {
+        fitToScreen();
+      });
     };
     img.src = imageSrc;
-  }, [isOpen, imageSrc]);
+  }, [isOpen, imageSrc, fitToScreen]);
 
   const saveToHistory = useCallback(() => {
     const canvas = canvasRef.current;
@@ -105,6 +142,7 @@ export default function CutoutStudioModal({
     const prevData = historyRef.current[historyIndexRef.current];
     canvas.width = prevData.width;
     canvas.height = prevData.height;
+    setCanvasSize({ w: prevData.width, h: prevData.height });
     ctx.putImageData(prevData, 0, 0);
 
     setCanUndo(historyIndexRef.current > 0);
@@ -120,6 +158,7 @@ export default function CutoutStudioModal({
     const nextData = historyRef.current[historyIndexRef.current];
     canvas.width = nextData.width;
     canvas.height = nextData.height;
+    setCanvasSize({ w: nextData.width, h: nextData.height });
     ctx.putImageData(nextData, 0, 0);
 
     setCanUndo(true);
@@ -130,17 +169,23 @@ export default function CutoutStudioModal({
     if (!originalImgRef.current || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const img = originalImgRef.current;
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
+    const iw = img.naturalWidth || img.width;
+    const ih = img.naturalHeight || img.height;
+    canvas.width = iw;
+    canvas.height = ih;
+    setCanvasSize({ w: iw, h: ih });
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0);
     saveToHistory();
     setCropRect({
-      x: Math.round(canvas.width * 0.1),
-      y: Math.round(canvas.height * 0.1),
-      w: Math.round(canvas.width * 0.8),
-      h: Math.round(canvas.height * 0.8)
+      x: Math.round(iw * 0.1),
+      y: Math.round(ih * 0.1),
+      w: Math.round(iw * 0.8),
+      h: Math.round(ih * 0.8)
+    });
+    requestAnimationFrame(() => {
+      fitToScreen();
     });
   };
 
@@ -159,6 +204,7 @@ export default function CutoutStudioModal({
     const croppedData = ctx.getImageData(rx, ry, rw, rh);
     canvas.width = rw;
     canvas.height = rh;
+    setCanvasSize({ w: rw, h: rh });
     ctx.putImageData(croppedData, 0, 0);
 
     setCropRect({
@@ -168,6 +214,11 @@ export default function CutoutStudioModal({
       h: Math.round(rh * 0.9)
     });
     saveToHistory();
+
+    // Re-fit view to the cropped bounds
+    requestAnimationFrame(() => {
+      fitToScreen();
+    });
   };
 
   // --- Tool: Auto Smart Background Removal ---
@@ -181,6 +232,9 @@ export default function CutoutStudioModal({
       img.onload = () => {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        setCanvasSize({ w: canvas.width, h: canvas.height });
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0);
         saveToHistory();
@@ -282,13 +336,105 @@ export default function CutoutStudioModal({
     };
   };
 
-  // --- Painting / Erasing handlers ---
+  // Handles resizing crop rectangle from any handle
+  const startResize = (handle, e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!cropRect || !canvasRef.current) return;
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const startX = cropRect.x;
+    const startY = cropRect.y;
+    const startW = cropRect.w;
+    const startH = cropRect.h;
+    const imgW = canvasRef.current.width;
+    const imgH = canvasRef.current.height;
+
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startClientX) / zoom;
+      const dy = (ev.clientY - startClientY) / zoom;
+
+      let newX = startX;
+      let newY = startY;
+      let newW = startW;
+      let newH = startH;
+
+      if (handle.includes('e')) {
+        newW = Math.max(20, Math.min(imgW - startX, Math.round(startW + dx)));
+      }
+      if (handle.includes('s')) {
+        newH = Math.max(20, Math.min(imgH - startY, Math.round(startH + dy)));
+      }
+      if (handle.includes('w')) {
+        const candidateW = Math.round(startW - dx);
+        const candidateX = Math.round(startX + dx);
+        if (candidateW >= 20 && candidateX >= 0) {
+          newX = candidateX;
+          newW = candidateW;
+        }
+      }
+      if (handle.includes('n')) {
+        const candidateH = Math.round(startH - dy);
+        const candidateY = Math.round(startY + dy);
+        if (candidateH >= 20 && candidateY >= 0) {
+          newY = candidateY;
+          newH = candidateH;
+        }
+      }
+
+      setCropRect({ x: newX, y: newY, w: newW, h: newH });
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  // Painting / Erasing / Drawing crop handlers
   const startPaint = (e) => {
     const { x, y } = getCanvasCoords(e);
+
+    if (activeTool === 'crop') {
+      // Start drawing a brand new crop box by dragging on the image
+      const startX = Math.max(0, Math.min(canvasRef.current.width, x));
+      const startY = Math.max(0, Math.min(canvasRef.current.height, y));
+      setCropRect({ x: startX, y: startY, w: 1, h: 1 });
+
+      const onDrawMove = (ev) => {
+        const curr = getCanvasCoords(ev);
+        const curX = Math.max(0, Math.min(canvasRef.current.width, curr.x));
+        const curY = Math.max(0, Math.min(canvasRef.current.height, curr.y));
+        const left = Math.min(startX, curX);
+        const top = Math.min(startY, curY);
+        const width = Math.abs(curX - startX);
+        const height = Math.abs(curY - startY);
+        setCropRect({
+          x: left,
+          y: top,
+          w: Math.max(10, width),
+          h: Math.max(10, height)
+        });
+      };
+
+      const onDrawUp = () => {
+        document.removeEventListener('mousemove', onDrawMove);
+        document.removeEventListener('mouseup', onDrawUp);
+      };
+
+      document.addEventListener('mousemove', onDrawMove);
+      document.addEventListener('mouseup', onDrawUp);
+      return;
+    }
+
     if (activeTool === 'magic') {
       handleMagicWandClick(x, y);
       return;
     }
+
     if (activeTool === 'eraser' || activeTool === 'restore') {
       isPaintingRef.current = true;
       lastPointRef.current = { x, y };
@@ -354,6 +500,18 @@ export default function CutoutStudioModal({
   };
 
   if (!isOpen) return null;
+
+  // Handles configuration for crop box
+  const cropHandles = [
+    { id: 'nw', cursor: 'nwse-resize', style: { top: -6, left: -6 } },
+    { id: 'ne', cursor: 'nesw-resize', style: { top: -6, right: -6 } },
+    { id: 'sw', cursor: 'nesw-resize', style: { bottom: -6, left: -6 } },
+    { id: 'se', cursor: 'nwse-resize', style: { bottom: -6, right: -6 } },
+    { id: 'n', cursor: 'ns-resize', style: { top: -5, left: 'calc(50% - 5px)', width: 10, height: 10 } },
+    { id: 's', cursor: 'ns-resize', style: { bottom: -5, left: 'calc(50% - 5px)', width: 10, height: 10 } },
+    { id: 'w', cursor: 'ew-resize', style: { top: 'calc(50% - 5px)', left: -5, width: 10, height: 10 } },
+    { id: 'e', cursor: 'ew-resize', style: { top: 'calc(50% - 5px)', right: -5, width: 10, height: 10 } }
+  ];
 
   return (
     <div style={{
@@ -460,7 +618,7 @@ export default function CutoutStudioModal({
               style={{
                 background: '#00c896', color: '#fff', border: 'none',
                 padding: '6px 14px', borderRadius: 6, fontWeight: 700, fontSize: 12, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6
+                display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 8px rgba(0,200,150,0.3)'
               }}
             >
               ✂️ Apply Crop to Box
@@ -471,7 +629,7 @@ export default function CutoutStudioModal({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 11, color: '#aaa' }}>Brush Size:</span>
               <input
-                type="range" min="3" max="80" value={brushSize}
+                type="range" min="4" max="160" value={brushSize}
                 onChange={e => setBrushSize(Number(e.target.value))}
                 style={{ width: 90 }}
               />
@@ -492,28 +650,46 @@ export default function CutoutStudioModal({
           )}
 
           {/* Zoom controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#25252c', padding: 3, borderRadius: 6 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4, background: '#25252c',
+            padding: '3px 6px', borderRadius: 6, border: '1px solid #444'
+          }}>
             <button
               type="button"
-              onClick={() => setZoom(z => Math.max(0.4, Number((z - 0.2).toFixed(1))))}
+              title="Zoom Out (Down to 5%)"
+              onClick={() => setZoom(z => Math.max(0.05, Number((z <= 0.2 ? z - 0.05 : z - 0.1).toFixed(2))))}
               style={{ background: 'none', border: 'none', color: '#fff', padding: '2px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
             >
               -
             </button>
-            <span style={{ fontSize: 11, fontWeight: 600, minWidth: 42, textAlign: 'center' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, minWidth: 46, textAlign: 'center' }}>
               {Math.round(zoom * 100)}%
             </span>
             <button
               type="button"
-              onClick={() => setZoom(z => Math.min(3, Number((z + 0.2).toFixed(1))))}
+              title="Zoom In (Up to 400%)"
+              onClick={() => setZoom(z => Math.min(4, Number((z + 0.1).toFixed(2))))}
               style={{ background: 'none', border: 'none', color: '#fff', padding: '2px 8px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
             >
               +
             </button>
             <button
               type="button"
+              title="Fit to Screen"
+              onClick={fitToScreen}
+              style={{
+                background: 'rgba(234,9,127,0.2)', border: '1px solid var(--hp-pink, #EA097F)',
+                color: '#fff', padding: '3px 8px', cursor: 'pointer', fontSize: 11, borderRadius: 4, fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 4
+              }}
+            >
+              📐 Fit Screen
+            </button>
+            <button
+              type="button"
+              title="Actual Size (100%)"
               onClick={() => setZoom(1)}
-              style={{ background: 'none', border: 'none', color: '#888', padding: '2px 6px', cursor: 'pointer', fontSize: 11 }}
+              style={{ background: 'none', border: 'none', color: '#aaa', padding: '3px 6px', cursor: 'pointer', fontSize: 11 }}
             >
               100%
             </button>
@@ -558,19 +734,24 @@ export default function CutoutStudioModal({
       </div>
 
       {/* Main Canvas Workspace */}
-      <div style={{
-        flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 30, position: 'relative',
-        background: '#121216',
-        backgroundImage: 'radial-gradient(circle, #252530 10%, transparent 11%)',
-        backgroundSize: '24px 24px'
-      }}>
+      <div
+        ref={workspaceRef}
+        style={{
+          flex: 1, overflow: 'auto', display: 'flex',
+          padding: 30, position: 'relative',
+          background: '#121216',
+          backgroundImage: 'radial-gradient(circle, #252530 10%, transparent 11%)',
+          backgroundSize: '24px 24px',
+          boxSizing: 'border-box'
+        }}
+      >
         {/* Transparent Checkerboard wrapper */}
         <div style={{
           position: 'relative',
-          transform: `scale(${zoom})`,
-          transformOrigin: 'center center',
-          transition: 'transform 0.1s ease-out',
+          margin: 'auto',
+          flexShrink: 0,
+          width: canvasSize.w ? Math.round(canvasSize.w * zoom) : 'auto',
+          height: canvasSize.h ? Math.round(canvasSize.h * zoom) : 'auto',
           boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
           background: 'repeating-conic-gradient(#333 0% 25%, #222 0% 50%) 50% / 16px 16px',
           border: '1px solid #444'
@@ -582,6 +763,8 @@ export default function CutoutStudioModal({
             onMouseUp={stopPaint}
             onMouseLeave={stopPaint}
             style={{
+              width: '100%',
+              height: '100%',
               display: 'block',
               cursor: activeTool === 'crop'
                 ? 'crosshair'
@@ -606,13 +789,12 @@ export default function CutoutStudioModal({
                 border: '2px dashed #00ffd5',
                 boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.55)',
                 pointerEvents: 'auto',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                cursor: 'move'
               }}
               onMouseDown={(e) => {
                 if (e.target.dataset.resizer) return;
                 e.preventDefault();
-                setIsCropDragging(true);
-                setCropDragMode('move');
                 const startClientX = e.clientX;
                 const startClientY = e.clientY;
                 const startX = cropRect.x;
@@ -628,7 +810,6 @@ export default function CutoutStudioModal({
                   }));
                 };
                 const onUp = () => {
-                  setIsCropDragging(false);
                   document.removeEventListener('mousemove', onMove);
                   document.removeEventListener('mouseup', onUp);
                 };
@@ -636,38 +817,48 @@ export default function CutoutStudioModal({
                 document.addEventListener('mouseup', onUp);
               }}
             >
-              {/* Corner resize handle: SE */}
+              {/* Dimensions Badge */}
               <div
-                data-resizer="true"
                 style={{
-                  position: 'absolute', bottom: -6, right: -6, width: 14, height: 14,
-                  background: '#00ffd5', borderRadius: '50%', cursor: 'nwse-resize'
+                  position: 'absolute',
+                  top: -24,
+                  left: 0,
+                  background: 'rgba(0, 0, 0, 0.85)',
+                  color: '#00ffd5',
+                  border: '1px solid rgba(0, 255, 213, 0.5)',
+                  borderRadius: 4,
+                  padding: '2px 6px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: 0.5,
+                  pointerEvents: 'none',
+                  userSelect: 'none',
+                  whiteSpace: 'nowrap'
                 }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  const startClientX = e.clientX;
-                  const startClientY = e.clientY;
-                  const startW = cropRect.w;
-                  const startH = cropRect.h;
+              >
+                {cropRect.w} × {cropRect.h} px
+              </div>
 
-                  const onMove = (ev) => {
-                    const dw = (ev.clientX - startClientX) / zoom;
-                    const dh = (ev.clientY - startClientY) / zoom;
-                    setCropRect(r => ({
-                      ...r,
-                      w: Math.max(20, Math.min(canvasRef.current.width - r.x, Math.round(startW + dw))),
-                      h: Math.max(20, Math.min(canvasRef.current.height - r.y, Math.round(startH + dh)))
-                    }));
-                  };
-                  const onUp = () => {
-                    document.removeEventListener('mousemove', onMove);
-                    document.removeEventListener('mouseup', onUp);
-                  };
-                  document.addEventListener('mousemove', onMove);
-                  document.addEventListener('mouseup', onUp);
-                }}
-              />
+              {/* 8 Resizing Handles */}
+              {cropHandles.map(h => (
+                <div
+                  key={h.id}
+                  data-resizer="true"
+                  onMouseDown={(e) => startResize(h.id, e)}
+                  style={{
+                    position: 'absolute',
+                    width: h.style.width || 13,
+                    height: h.style.height || 13,
+                    background: '#00ffd5',
+                    border: '2px solid #000',
+                    borderRadius: 3,
+                    cursor: h.cursor,
+                    boxShadow: '0 0 6px rgba(0, 255, 213, 0.9)',
+                    zIndex: 10,
+                    ...h.style
+                  }}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -694,7 +885,7 @@ export default function CutoutStudioModal({
             {isProcessing ? 'Processing…' : '✨ Auto-Remove Solid BG'}
           </button>
           <span style={{ fontSize: 11, color: '#888' }}>
-            Tip: Use Box Crop to grab only a character or logo, or Eraser to clean unwanted parts.
+            Tip: Drag box to move, drag handles to resize, or click &amp; drag anywhere to draw a new crop box. Use Ctrl+Scroll to zoom.
           </span>
         </div>
 

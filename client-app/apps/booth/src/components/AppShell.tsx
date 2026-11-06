@@ -114,7 +114,6 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   const surface = night ? p.night : p.background;
   const ink = night ? p.nightText : p.ink;
-  const urgent = secondsLeft !== undefined && secondsLeft < 10;
 
   return (
     <View

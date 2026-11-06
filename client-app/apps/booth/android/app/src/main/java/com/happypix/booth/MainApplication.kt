@@ -12,6 +12,7 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 import com.happypix.booth.kiosk.KioskPackage
+import com.happypix.booth.ptp.PtpUsbPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -22,6 +23,7 @@ class MainApplication : Application(), ReactApplication {
               // Happypix native modules
               add(KioskPackage())
               add(SimpleSoundPackage())
+              add(PtpUsbPackage())
             }
 
         override fun getJSMainModuleName(): String = "index"

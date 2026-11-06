@@ -814,15 +814,62 @@ function toISO(value) {
 export function mergeHardware(device, patch = {}) {
   const previousTelemetry = device.telemetry || {};
   const previousConnections = device.connections || {};
+
+  // Extract from either flat fields or nested hardware object ({ printer, camera, kioskScreen })
+  const prints = pickNumber(
+    patch.printsTotal ?? patch.printer?.printsTotal ?? patch.telemetry?.prints,
+    previousTelemetry.prints,
+    0,
+    10_000_000
+  );
+  const shutters = pickNumber(
+    patch.shutterCount ?? patch.camera?.shutterCount ?? patch.telemetry?.shutters,
+    previousTelemetry.shutters,
+    0,
+    10_000_000
+  );
+  const batteryPct = pickNumber(
+    patch.batteryPct ?? patch.camera?.batteryPct ?? patch.telemetry?.batteryPct,
+    previousTelemetry.batteryPct,
+    0,
+    100
+  );
+
+  const printerModel = patch.printerModel ?? patch.printer?.model ?? previousTelemetry.printerModel ?? null;
+  const printerStatus = patch.printerStatus ?? patch.printer?.status ?? previousTelemetry.printerStatus ?? null;
+  const rawPaper = patch.paperRemaining ?? patch.printer?.paperRemaining;
+  const paperRemaining = (rawPaper !== undefined && rawPaper !== null && !Number.isNaN(Number(rawPaper)))
+    ? Number(rawPaper)
+    : (previousTelemetry.paperRemaining ?? null);
+  const cameraModel = patch.cameraModel ?? patch.camera?.model ?? previousTelemetry.cameraModel ?? null;
+
   const telemetry = {
-    prints: pickNumber(patch.printsTotal, previousTelemetry.prints, 0, 10_000_000),
-    shutters: pickNumber(patch.shutterCount, previousTelemetry.shutters, 0, 10_000_000),
-    batteryPct: pickNumber(patch.batteryPct, previousTelemetry.batteryPct, 0, 100),
+    prints,
+    shutters,
+    batteryPct,
+    printerModel: printerModel ? String(printerModel).slice(0, 80) : null,
+    printerStatus: printerStatus ? String(printerStatus).slice(0, 40) : null,
+    paperRemaining,
+    cameraModel: cameraModel ? String(cameraModel).slice(0, 80) : null,
     updatedAt: new Date(),
   };
-  const camera = pickBool(patch.cameraConnected, previousConnections.camera, false);
-  const printer = pickBool(patch.printerConnected, previousConnections.printer, false);
-  const kioskScreen = pickBool(patch.kioskScreenConnected, previousConnections.kioskScreen, false);
+
+  const camera = pickBool(
+    patch.cameraConnected ?? patch.camera?.connected ?? patch.connections?.camera,
+    previousConnections.camera,
+    false
+  );
+  const printer = pickBool(
+    patch.printerConnected ?? patch.printer?.connected ?? patch.connections?.printer,
+    previousConnections.printer,
+    false
+  );
+  const kioskScreen = pickBool(
+    patch.kioskScreenConnected ?? patch.kioskScreen?.connected ?? patch.connections?.kioskScreen,
+    previousConnections.kioskScreen,
+    false
+  );
+
   return {
     telemetry,
     connections: { camera, printer, kioskScreen, updatedAt: new Date() },

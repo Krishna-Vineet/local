@@ -304,7 +304,7 @@ export interface PrintOutcome {
 
 // ── Hardware Abstraction Types ─────────────────────────────────────
 
-export type CameraType = 'phone' | 'sony' | 'canon' | 'ptp';
+export type CameraType = 'phone' | 'sony' | 'canon' | 'ptp' | 'nikon-bridge';
 
 export interface CameraStatus {
   connected: boolean;

@@ -22,7 +22,6 @@ import mongoose from 'mongoose';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
 import Razorpay from 'razorpay';
 import { Cashfree, CFEnvironment } from 'cashfree-pg';
 import { decryptSecret } from '../utils/crypto.js';
@@ -37,7 +36,13 @@ import Template from '../models/Template.js';
 import OrgAiTemplate from '../models/OrgAiTemplate.js';
 import Payment from '../models/Payment.js';
 import Photo from '../models/Photo.js';
-import { s3, uploadToS3, s3KeyFromUrl, getPresignedUploadUrl } from '../utils/s3.js';
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+  s3KeyFromUrl,
+  getCloudinaryUploadSignature,
+  isCloudinaryConfigured,
+} from '../utils/cloudinary.js';
 import SupportTicket from '../models/SupportTicket.js';
 import Coupon from '../models/Coupon.js';
 
@@ -81,23 +86,18 @@ router.get('/asset-proxy', async (req, res) => {
       return fs.createReadStream(localPath).pipe(res);
     }
 
-    if (process.env.S3_BUCKET_NAME) {
+    if (cleanKey.startsWith('http://') || cleanKey.startsWith('https://')) {
       try {
-        const command = new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET_NAME,
-          Key: cleanKey,
-        });
-        const s3Response = await s3.send(command);
-        const contentType = s3Response.ContentType || (cleanKey.endsWith('.png') ? 'image/png' : 'image/jpeg');
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'public, max-age=31536000');
-        const chunks = [];
-        for await (const chunk of s3Response.Body) {
-          chunks.push(chunk);
+        const resp = await fetch(cleanKey);
+        if (resp.ok) {
+          const contentType = resp.headers.get('content-type') || (cleanKey.endsWith('.png') ? 'image/png' : 'image/jpeg');
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'public, max-age=31536000');
+          const arrayBuf = await resp.arrayBuffer();
+          return res.send(Buffer.from(arrayBuf));
         }
-        return res.send(Buffer.concat(chunks));
-      } catch (s3Err) {
-        console.warn('⚠️ Booth S3 asset proxy fetch failed:', s3Err.message);
+      } catch (remoteErr) {
+        console.warn('⚠️ Booth remote asset proxy fetch failed:', remoteErr.message);
       }
     }
 
@@ -904,7 +904,7 @@ router.post('/checkout/free-complete', authenticateDevice, asyncRoute(async (req
 }));
 
 // ================================================================
-// DIRECT S3 PRE-SIGNED UPLOADS (High-Speed Session Storage)
+// DIRECT STORAGE UPLOADS (High-Speed Session Storage via Cloudinary)
 // ================================================================
 
 router.post('/sessions/upload-urls', authenticateDevice, asyncRoute(async (req, res) => {
@@ -912,15 +912,10 @@ router.post('/sessions/upload-urls', authenticateDevice, asyncRoute(async (req, 
   const sessionId = String(req.body.sessionId || '').trim();
   if (!sessionId) throw badRequest('sessionId is required.', 'BAD_SESSION');
 
-  const s3Ready = Boolean(
-    process.env.S3_BUCKET_NAME &&
-    process.env.AWS_REGION &&
-    process.env.AWS_ACCESS_KEY_ID &&
-    !process.env.AWS_ACCESS_KEY_ID.includes('EXAMPLE')
-  );
+  const storageReady = isCloudinaryConfigured();
 
-  if (!s3Ready) {
-    return res.json({ s3Configured: false, urls: [] });
+  if (!storageReady) {
+    return res.json({ s3Configured: false, storageConfigured: false, urls: [] });
   }
 
   let eventId = req.body.eventId || device.assignedEventId || null;
@@ -943,28 +938,27 @@ router.post('/sessions/upload-urls', authenticateDevice, asyncRoute(async (req, 
     const contentType = file.contentType || 'image/jpeg';
     const ext = contentType.includes('png') ? 'png' : 'jpg';
     const randomSuffix = crypto.randomBytes(4).toString('hex');
-    const key = `photos/${organization._id}/${eventId || 'no-event'}/${sessionId}-${type}${type === 'frame' ? `-${index}` : ''}-${Date.now()}-${randomSuffix}.${ext}`;
+    const folder = `happypix/photos/${organization._id}/${eventId || 'no-event'}`;
+    const key = `${folder}/${sessionId}-${type}${type === 'frame' ? `-${index}` : ''}-${Date.now()}-${randomSuffix}.${ext}`;
 
-    const presigned = await getPresignedUploadUrl({
-      key,
-      contentType,
-      expiresInSec: 900,
-    });
+    const sig = await getCloudinaryUploadSignature({ folder });
 
-    if (presigned) {
+    if (sig) {
       urls.push({
         type,
         index,
-        key: presigned.key,
-        uploadUrl: presigned.uploadUrl,
-        publicUrl: presigned.publicUrl,
+        key,
+        uploadUrl: sig.uploadUrl,
+        publicUrl: `https://res.cloudinary.com/${sig.cloudName}/image/upload/${key}`,
         contentType,
+        cloudinaryParams: sig,
       });
     }
   }
 
   res.json({
     s3Configured: true,
+    storageConfigured: true,
     urls,
   });
 }));
@@ -1063,91 +1057,63 @@ router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res
 
   // ─── 1. Concurrency Mutex ───────────────────────────────────────────────────
   // If another concurrent request is actively persisting this exact session, wait for it
-  if (inFlightSessionLocks.has(lockKey)) {
+  while (inFlightSessionLocks.has(lockKey)) {
     await inFlightSessionLocks.get(lockKey);
-    const existingPhotos = await Photo.find({ organizationId: organization._id, sessionId }).sort({ createdAt: 1 });
-    const existingDownload = await GuestDownload.findOne({ organizationId: organization._id, sessionId });
-
-    // Validate payload against what the other concurrent request saved
-    const canonicalFingerprint = existingPhotos.find((p) => p.payloadFingerprint)?.payloadFingerprint || existingDownload?.payloadFingerprint;
-    if (canonicalFingerprint && payloadFingerprint !== canonicalFingerprint) {
-      throw conflict(
-        `Session '${sessionId}' was already completed with different photo content. Conflicting re-submissions are rejected.`,
-        'SESSION_PAYLOAD_CONFLICT'
-      );
-    }
-
-    const downloadUrl = existingDownload
-      ? downloadUrlFor(existingDownload.downloadId)
-      : (digitalCopy !== false ? downloadUrlFor(sessionId) : null);
-
-    return res.json({
-      shareUrl: downloadUrl,
-      downloadUrl,
-      downloadId: existingDownload ? existingDownload.downloadId : null,
-      downloadExpiresAt: existingDownload ? existingDownload.expiresAt : null,
-      galleryEnabled: settings.galleryEnabled,
-      requireGuestConsent: settings.requireGuestConsent,
-      guestConsent: existingPhotos[0]?.guestConsent ?? consent,
-      galleryPhotoIds: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).map((p) => String(p._id)),
-      photosStored: existingPhotos.length,
-      photosVisibleInGallery: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).length,
-      photosSkipped: 0,
-      idempotent: true,
-      concurrentReconciled: true,
-    });
   }
 
-  // ─── 2. Idempotency Check ───────────────────────────────────────────────────
-  // If session is already recorded, validate payload compatibility and return canonical record
-  const existingPhotos = await Photo.find({ organizationId: organization._id, sessionId }).sort({ createdAt: 1 });
-  if (existingPhotos.length > 0) {
-    const existingDownload = await GuestDownload.findOne({ organizationId: organization._id, sessionId });
-    const canonicalFingerprint = existingPhotos.find((p) => p.payloadFingerprint)?.payloadFingerprint || existingDownload?.payloadFingerprint;
-
-    if (canonicalFingerprint) {
-      if (payloadFingerprint !== canonicalFingerprint) {
-        throw conflict(
-          `Session '${sessionId}' was already completed with different photo content. Conflicting re-submissions are rejected.`,
-          'SESSION_PAYLOAD_CONFLICT'
-        );
-      }
-    } else {
-      // Historical session without stored fingerprint: handle safely without falsely claiming byte-level verification
-      if (submitted.length > 0 && Math.abs(submitted.length - existingPhotos.length) > 1) {
-        throw conflict(
-          `Session '${sessionId}' was already completed with different photo count. Conflicting re-submissions are rejected.`,
-          'SESSION_PAYLOAD_CONFLICT'
-        );
-      }
-    }
-
-    const downloadUrl = existingDownload
-      ? downloadUrlFor(existingDownload.downloadId)
-      : (digitalCopy !== false ? downloadUrlFor(sessionId) : null);
-
-    return res.json({
-      shareUrl: downloadUrl,
-      downloadUrl,
-      downloadId: existingDownload ? existingDownload.downloadId : null,
-      downloadExpiresAt: existingDownload ? existingDownload.expiresAt : null,
-      galleryEnabled: settings.galleryEnabled,
-      requireGuestConsent: settings.requireGuestConsent,
-      guestConsent: existingPhotos[0]?.guestConsent ?? consent,
-      galleryPhotoIds: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).map((p) => String(p._id)),
-      photosStored: existingPhotos.length,
-      photosVisibleInGallery: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).length,
-      photosSkipped: 0,
-      idempotent: true,
-    });
-  }
-
-  // ─── 3. Atomic Execution Under Mutex ─────────────────────────────────────────
+  // Acquire lock synchronously BEFORE yielding to event loop or running any subsequent logic
   let resolveLock;
   const lockPromise = new Promise((resolve) => { resolveLock = resolve; });
   inFlightSessionLocks.set(lockKey, lockPromise);
 
   try {
+    // ─── 2. Idempotency Check ───────────────────────────────────────────────────
+    // If session is already recorded (either previously or by the concurrent request we just waited for),
+    // validate payload compatibility and return canonical record.
+    const existingPhotos = await Photo.find({ organizationId: organization._id, sessionId }).sort({ createdAt: 1 });
+    if (existingPhotos.length > 0) {
+      const existingDownload = await GuestDownload.findOne({ organizationId: organization._id, sessionId });
+      const canonicalFingerprint = existingPhotos.find((p) => p.payloadFingerprint)?.payloadFingerprint || existingDownload?.payloadFingerprint;
+
+      if (canonicalFingerprint) {
+        if (payloadFingerprint !== canonicalFingerprint) {
+          throw conflict(
+            `Session '${sessionId}' was already completed with different photo content. Conflicting re-submissions are rejected.`,
+            'SESSION_PAYLOAD_CONFLICT'
+          );
+        }
+      } else {
+        // Historical session without stored fingerprint: handle safely without falsely claiming byte-level verification
+        if (submitted.length > 0 && Math.abs(submitted.length - existingPhotos.length) > 1) {
+          throw conflict(
+            `Session '${sessionId}' was already completed with different photo count. Conflicting re-submissions are rejected.`,
+            'SESSION_PAYLOAD_CONFLICT'
+          );
+        }
+      }
+
+      const downloadUrl = existingDownload
+        ? downloadUrlFor(existingDownload.downloadId)
+        : (digitalCopy !== false ? downloadUrlFor(sessionId) : null);
+
+      return res.json({
+        shareUrl: downloadUrl,
+        downloadUrl,
+        downloadId: existingDownload ? existingDownload.downloadId : null,
+        downloadExpiresAt: existingDownload ? existingDownload.expiresAt : null,
+        galleryEnabled: settings.galleryEnabled,
+        requireGuestConsent: settings.requireGuestConsent,
+        guestConsent: existingPhotos[0]?.guestConsent ?? consent,
+        galleryPhotoIds: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).map((p) => String(p._id)),
+        photosStored: existingPhotos.length,
+        photosVisibleInGallery: existingPhotos.filter((p) => photoVisibleInGallery(p, settings)).length,
+        photosSkipped: 0,
+        idempotent: true,
+        concurrentReconciled: true,
+      });
+    }
+
+    // ─── 3. Atomic Execution Under Mutex ─────────────────────────────────────────
     // Atomic telemetry increment without read-modify-write race
     await Device.updateOne(
       { _id: device._id },
@@ -1380,14 +1346,14 @@ router.post('/sessions/complete', authenticateDevice, asyncRoute(async (req, res
 
 /**
  * Session photos arrive as data URLs or remote URLs from the booth.
- * With AWS S3 configured they are uploaded and the stored S3 URL + key is kept
+ * With Cloudinary configured they are uploaded and the stored Cloudinary URL + key is kept
  * (this is what the CRM gallery and digital share use).
  */
 const INLINE_PHOTO_MAX_CHARS = 25 * 1024 * 1024;
 async function persistSessionPhoto(value, { organizationId, eventId, sessionId, index = 0, isComposite = false }) {
   if (!value || typeof value !== 'string') return null;
 
-  const s3Ready = Boolean(process.env.S3_BUCKET_NAME && process.env.AWS_REGION);
+  const storageReady = isCloudinaryConfigured();
 
   // 1. Data URLs (e.g. from camera capture or canvas composite)
   if (value.startsWith('data:')) {
@@ -1399,14 +1365,15 @@ async function persistSessionPhoto(value, { organizationId, eventId, sessionId, 
     const mimetype = mimeMatch ? mimeMatch[1] : 'image/jpeg';
     const ext = mimetype.includes('png') ? 'png' : 'jpg';
 
-    if (s3Ready) {
+    if (storageReady) {
       try {
         const buffer = Buffer.from(base64Data, 'base64');
-        const uploadResult = await uploadToS3({
+        const uploadResult = await uploadToCloudinary({
           buffer,
           mimetype,
-          folder: `photos/${organizationId}/${eventId || 'no-event'}`,
+          folder: `happypix/photos/${organizationId}/${eventId || 'no-event'}`,
           originalname: isComposite ? `${sessionId}-composite.${ext}` : `${sessionId}-photo-${index}.${ext}`,
+          publicId: isComposite ? `${sessionId}-composite` : `${sessionId}-photo-${index}`,
         });
         const isLocalhostFallback =
           typeof uploadResult.url === 'string' &&
@@ -1415,17 +1382,16 @@ async function persistSessionPhoto(value, { organizationId, eventId, sessionId, 
           return { url: uploadResult.url, key: uploadResult.key };
         }
       } catch (err) {
-        console.error('⚠️ S3 upload failed for session photo data URL:', err.message);
+        console.error('⚠️ Cloudinary upload failed for session photo data URL:', err.message);
       }
     }
     return value.length <= INLINE_PHOTO_MAX_CHARS ? { url: value, key: '' } : null;
   }
 
-  // 2. Direct S3 key string (e.g. photos/org/event/...)
-  if (value.startsWith('photos/')) {
-    const bucket = process.env.S3_BUCKET_NAME;
-    const region = process.env.AWS_REGION || 'us-east-1';
-    const url = bucket ? `https://${bucket}.s3.${region}.amazonaws.com/${value}` : value;
+  // 2. Direct Cloudinary key string (e.g. happypix/photos/org/event/...)
+  if (value.startsWith('photos/') || value.startsWith('happypix/')) {
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const url = cloudName ? `https://res.cloudinary.com/${cloudName}/image/upload/${value}` : value;
     return { url, key: value };
   }
 
@@ -1457,10 +1423,10 @@ async function persistSessionPhoto(value, { organizationId, eventId, sessionId, 
       return null;
     }
 
-    if (process.env.S3_BUCKET_NAME && value.includes(process.env.S3_BUCKET_NAME)) {
+    if (value.includes('res.cloudinary.com')) {
       return { url: value, key: s3KeyFromUrl(value) || '' };
     }
-    if (s3Ready) {
+    if (storageReady) {
       try {
         const resp = await fetch(value, { signal: AbortSignal.timeout(10000) });
         if (resp.ok) {
@@ -1468,16 +1434,16 @@ async function persistSessionPhoto(value, { organizationId, eventId, sessionId, 
           const buffer = Buffer.from(arrayBuffer);
           const mimetype = resp.headers.get('content-type') || 'image/jpeg';
           const ext = mimetype.includes('png') ? 'png' : 'jpg';
-          const uploadResult = await uploadToS3({
+          const uploadResult = await uploadToCloudinary({
             buffer,
             mimetype,
-            folder: `photos/${organizationId}/${eventId || 'no-event'}`,
+            folder: `happypix/photos/${organizationId}/${eventId || 'no-event'}`,
             originalname: `${sessionId}-${Date.now()}.${ext}`,
           });
           return { url: uploadResult.url, key: uploadResult.key };
         }
       } catch (err) {
-        console.warn('Could not re-upload external image to S3, using source URL:', err.message);
+        console.warn('Could not re-upload external image to Cloudinary, using source URL:', err.message);
       }
     }
     return { url: value, key: '' };

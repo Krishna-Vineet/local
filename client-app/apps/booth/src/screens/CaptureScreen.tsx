@@ -63,7 +63,7 @@ const CanonLiveView: React.FC<{ isFocused: boolean; onReady: () => void }> = ({ 
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000000' }}>
         <ActivityIndicator size="large" color="#ee4c96" />
-        <Text style={{ color: '#fa7cb6', marginTop: 12, fontSize: 16 }}>Connecting to Canon DSLR Liveview...</Text>
+        <Text style={{ color: '#fa7cb6', marginTop: 12, fontSize: 16 }}>Connecting to DSLR Liveview...</Text>
       </View>
     );
   }
@@ -124,7 +124,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const activeCameraType = cameraManager.getActiveType();
 
   const captureFrame = async (index: number): Promise<CapturedPhoto> => {
-    if (activeCameraType === 'canon') {
+    if (activeCameraType === 'canon' || activeCameraType === 'nikon-bridge' || activeCameraType === 'ptp') {
       try {
         const canonPhoto = await cameraManager.capture();
         return {
@@ -288,7 +288,7 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
             </View>
 
             <View style={styles.videoWrap}>
-              {activeCameraType === 'canon' ? (
+              {(activeCameraType === 'canon' || activeCameraType === 'nikon-bridge') ? (
                 <CanonLiveView isFocused={isFocused} onReady={() => setCameraReady(true)} />
               ) : hasPermission && device && isFocused ? (
                 <Camera

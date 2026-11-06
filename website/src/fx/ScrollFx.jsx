@@ -53,14 +53,14 @@ export function ParallaxMedia({ src, alt = '', strength = 20, loading = 'lazy' }
 }
 
 // Element that grows from a slightly smaller size into place as it scrolls up.
-export function ScrollScale({ children, from = 0.94, className = '' }) {
+export function ScrollScale({ children, from = 0.94, className = '', style }) {
   const ref = useRef(null)
   const reduce = useReducedMotion()
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start 0.95', 'start 0.35'] })
   const scale = useTransform(scrollYProgress, [0, 1], [from, 1])
   const y = useTransform(scrollYProgress, [0, 1], [40, 0])
   return (
-    <motion.div ref={ref} className={className} style={{ scale: reduce ? 1 : scale, y: reduce ? 0 : y }}>
+    <motion.div ref={ref} className={className} style={{ position: 'relative', ...style, scale: reduce ? 1 : scale, y: reduce ? 0 : y }}>
       {children}
     </motion.div>
   )
@@ -80,7 +80,7 @@ export function ScrollTilt({ children, from = -4, to = 0, className = '', style 
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'center center'] })
   const rotate = useTransform(scrollYProgress, [0, 1], [from, to])
   return (
-    <motion.div ref={ref} className={className} style={{ ...style, rotate: reduce ? to : rotate }}>
+    <motion.div ref={ref} className={className} style={{ position: 'relative', ...style, rotate: reduce ? to : rotate }}>
       {children}
     </motion.div>
   )
@@ -94,7 +94,7 @@ export function ScrollFade({ children, className = '', style }) {
   const y = useTransform(scrollYProgress, [0, 1], [0, 90])
   const opacity = useTransform(scrollYProgress, [0, 0.8], [1, 0.15])
   return (
-    <motion.div ref={ref} className={className} style={{ ...style, y: reduce ? 0 : y, opacity: reduce ? 1 : opacity }}>
+    <motion.div ref={ref} className={className} style={{ position: 'relative', ...style, y: reduce ? 0 : y, opacity: reduce ? 1 : opacity }}>
       {children}
     </motion.div>
   )

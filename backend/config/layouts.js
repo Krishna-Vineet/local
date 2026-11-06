@@ -32,7 +32,22 @@ export const LAYOUT_FAMILIES = [
   { id: '812-68',  name: 'Quad Strip Reel',       sheets: ['8x12'], slots: [2, 3, 4], base: 60, printSize: '8 × 12' },
 ];
 
+export const FAMILY_ALIASES = {
+  '64': '46',     // 6x4 landscape -> 4x6 Postcard
+  '86': '68',     // 8x6 landscape -> 6x8 Gala Display
+  '75': '57',     // 7x5 landscape -> 5x7 Portrait Keep-Safe
+  '108': '810',   // 10x8 landscape -> 8x10 Grand Guestbook
+  '128': '812',   // 12x8 landscape -> 8x12 Poster Showcase
+  '66': '46',     // square default
+  '11': '46',     // 1:1 default
+};
+
 const FAMILY_BY_ID = Object.fromEntries(LAYOUT_FAMILIES.map((f) => [f.id, f]));
+for (const [alias, targetId] of Object.entries(FAMILY_ALIASES)) {
+  if (FAMILY_BY_ID[targetId]) {
+    FAMILY_BY_ID[alias] = FAMILY_BY_ID[targetId];
+  }
+}
 
 export const priceKey = (familyId, slots) => `${familyId}:${slots}`;
 
@@ -169,7 +184,12 @@ export function validateLayoutPrices(raw, base = {}) {
     if (!Number.isFinite(price) || price < 0 || price > 100000) {
       throw Object.assign(new Error(`Price for "${key}" must be between 0 and 100000.`), { status: 400, code: 'BAD_LAYOUT_PRICES' });
     }
-    prices[key] = Math.round(price);
+    const rounded = Math.round(price);
+    prices[key] = rounded;
+    const canonicalKey = `${family.id}:${slots}`;
+    if (canonicalKey !== key && prices[canonicalKey] === undefined) {
+      prices[canonicalKey] = rounded;
+    }
   }
   return prices;
 }

@@ -162,7 +162,7 @@ interface PartnerBoothSnapshot {
 }
 
 export function resolveAssetUrl(rawUrl?: string | null, assetId?: string | null, baseUrl?: string | null): string | null {
-  const origin = (baseUrl || activeApiUrl || 'http://localhost:5000')
+  const origin = (baseUrl || getBoothApiUrl())
     .replace(/\/+$/, '')
     .replace(/\/api(\/booth)?$/, '');
   const u = typeof rawUrl === 'string' ? rawUrl.trim() : '';
@@ -515,13 +515,37 @@ export function configureBoothApi(baseUrl: string | null) {
   activeApiUrl = baseUrl ? baseUrl.replace(/\/+$/, '') : null;
 }
 
-export function getBoothApi(): BoothApi {
+export function getBoothApiUrl(): string {
   const isDev =
     typeof (globalThis as any).__DEV__ !== 'undefined'
       ? Boolean((globalThis as any).__DEV__)
       : typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production';
-  const url = activeApiUrl || (isDev ? 'http://localhost:5000' : 'https://happypix-v2-backend.vercel.app');
-  return new HttpBoothApi(url);
+
+  let isAndroid = false;
+  try {
+    const RN = require('react-native');
+    isAndroid = RN?.Platform?.OS === 'android';
+  } catch {
+    isAndroid = false;
+  }
+
+  let url = activeApiUrl;
+  if (!url) {
+    if (isDev) {
+      url = isAndroid ? 'http://10.0.2.2:5000' : 'http://localhost:5000';
+    } else {
+      url = 'https://happypix-v2-backend.vercel.app';
+    }
+  } else if (isAndroid) {
+    url = url.replace(/http:\/\/localhost:5000/g, 'http://10.0.2.2:5000')
+             .replace(/http:\/\/127\.0\.0\.1:5000/g, 'http://10.0.2.2:5000');
+  }
+
+  return url.replace(/\/+$/, '');
+}
+
+export function getBoothApi(): BoothApi {
+  return new HttpBoothApi(getBoothApiUrl());
 }
 
 export const boothApi: BoothApi = {
@@ -560,6 +584,30 @@ export function setStorageAdapter(adapter: StorageAdapter) {
 const INSTALLATION_KEY = 'happypix_booth_installation_v2';
 const SNAPSHOT_KEY = 'happypix_booth_snapshot_v2';
 const DEVICE_PERSISTENT_UUID_KEY = 'happypix_booth_device_persistent_uuid_v2';
+const CUSTOM_API_URL_KEY = 'happypix_booth_custom_api_url_v2';
+
+export async function getStoredApiUrl(): Promise<string | null> {
+  try {
+    const raw = await currentStorage.getItem(CUSTOM_API_URL_KEY);
+    return raw && raw.trim() ? raw.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setStoredApiUrl(url: string | null): Promise<void> {
+  try {
+    if (url && url.trim()) {
+      await currentStorage.setItem(CUSTOM_API_URL_KEY, url.trim());
+      configureBoothApi(url.trim());
+    } else {
+      await currentStorage.removeItem(CUSTOM_API_URL_KEY);
+      configureBoothApi(null);
+    }
+  } catch (err) {
+    console.warn('[Storage] Failed to set stored API URL:', err);
+  }
+}
 
 let memoryUuidCache: string | null = null;
 
@@ -648,7 +696,7 @@ export async function saveCachedSnapshot(snapshot: BoothSnapshot): Promise<void>
 export async function getCachedSnapshot(): Promise<BoothSnapshot | null> {
   try {
     const raw = await currentStorage.getItem(SNAPSHOT_KEY);
-    return raw ? normalizeSnapshot(JSON.parse(raw), activeApiUrl) : null;
+    return raw ? normalizeSnapshot(JSON.parse(raw), getBoothApiUrl()) : null;
   } catch {
     return null;
   }

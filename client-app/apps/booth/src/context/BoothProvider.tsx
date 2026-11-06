@@ -7,6 +7,8 @@ import React, { createContext, useContext, useEffect, useRef, useState, useCallb
 import { Dimensions, Platform } from 'react-native';
 import {
   boothApi,
+  configureBoothApi,
+  getStoredApiUrl,
   normalizeSnapshot,
   getInstallation,
   saveInstallation,
@@ -270,18 +272,28 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let active = true;
     async function boot() {
       try {
-        const cached = await getCachedSnapshot();
-        if (cached && active) {
-          const normalizedCached = normalizeSnapshot(cached as any);
-          setSnapshot(normalizedCached);
-          snapshotRef.current = normalizedCached;
+        const storedUrl = await getStoredApiUrl().catch(() => null);
+        if (storedUrl) {
+          configureBoothApi(storedUrl);
         }
 
         const saved = await getInstallation();
         if (!active) return;
         if (!saved) {
+          // If not paired, clear any stale cached snapshot immediately
+          await clearCachedSnapshot().catch(() => {});
+          setSnapshot(null);
+          snapshotRef.current = null;
           setBootReady(true);
           return;
+        }
+
+        // Load cached snapshot only when confirmed paired
+        const cached = await getCachedSnapshot();
+        if (cached && active) {
+          const normalizedCached = normalizeSnapshot(cached as any);
+          setSnapshot(normalizedCached);
+          snapshotRef.current = normalizedCached;
         }
 
         installationRef.current = saved;
@@ -507,6 +519,7 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const logout = async () => {
     // Logout forgets the session (token, snapshot). It never removes the device identity.
     await clearInstallation();
+    await clearCachedSnapshot().catch(() => {});
     installationRef.current = null;
     setInstallation(null);
     setSnapshot(null);

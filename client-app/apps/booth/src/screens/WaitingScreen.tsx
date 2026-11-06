@@ -38,7 +38,7 @@ export const WaitingScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useAppTheme();
   const p = theme.palette;
   const insets = useSafeAreaInsets();
-  const { snapshot, refreshEvent, logout } = useBooth();
+  const { snapshot, refreshEvent, logout, online } = useBooth();
   const [refreshing, setRefreshing] = useState(false);
   const [line, setLine] = useState(0);
 
@@ -82,10 +82,15 @@ export const WaitingScreen: React.FC<Props> = ({ navigation }) => {
 
   const orbit = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
+  const isOnline = Boolean(online);
   const hardware = [
     { label: 'Camera system', value: 'Ready', tone: p.green },
     { label: 'Photo printer', value: 'Online', tone: p.green },
-    { label: 'Cloud network', value: refreshing ? 'Checking…' : 'Connected', tone: refreshing ? p.amber : p.green },
+    {
+      label: 'Cloud network',
+      value: refreshing ? 'Checking…' : isOnline ? 'Connected' : 'Offline',
+      tone: refreshing ? p.amber : isOnline ? p.green : p.red,
+    },
   ];
 
   return (
@@ -110,11 +115,15 @@ export const WaitingScreen: React.FC<Props> = ({ navigation }) => {
       </Animated.View>
 
       <Text style={styles.eyebrow}>ENTERPRISE PHOTO KIOSK</Text>
-      <Text style={styles.title}>Booth Standing By</Text>
+      <Text style={styles.title}>
+        {!snapshot?.event ? 'Booth Standing By' : snapshot.event.status === 'paused' ? 'Event Paused' : 'Booth Standing By'}
+      </Text>
       <Text style={styles.body}>
         {snapshot?.event?.name
           ? `“${snapshot.event.name}” is not live yet. ${WAITING_LINES[line]}`
-          : `Hardware calibrated. Connecting securely to the HappyPix Cloud Network… ${WAITING_LINES[line]}`}
+          : isOnline
+          ? `No event is assigned to this booth. Assign an event from the CRM dashboard to begin.`
+          : `Connecting securely to the HappyPix Cloud Network… ${WAITING_LINES[line]}`}
       </Text>
 
       <View style={styles.hardware}>

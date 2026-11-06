@@ -13,7 +13,7 @@
 | **Are SDKs complete for production?** | **Yes — OS-native SDKs are fully implemented on both platforms.** Electron no longer uses a Windows-only path. Every telemetry field now has a real implementation on both Windows (PowerShell + CyStat64.dll + WMI) and macOS (CUPS `lpstat`/`lpoptions`). No synthetic/fake telemetry is reported. |
 | **Can we print on Windows?** | ✅ `System.Drawing.PrintDocument` with `DefaultPageSettings.Landscape`, `PrinterResolution.Kind`, zero-margin, HighQualityBicubic interpolation, looped for `copies`, base64-EncodedCommand PS script, counter `printsTotal` on success. |
 | **Can we print on Mac?** | ✅ `lp -d <printer> -n <copies> -o orientation-requested=3|4 -o print-quality=3|4|5 -o fit-to-page` via CUPS. Works for DNP, Citizen, Canon Selphy exposed as CUPS queues. |
-| **Can we capture?** | ✅ `navigator.mediaDevices.getUserMedia` (any UVC/webcam) with synthetic fallback + `bridge.reportCamera` IPC → `hardwareSnapshot().camera` (batteryPct, model, shutterCount, orientation, quality, live). CCAPI path retained as `canon-sdk-pending` for future DSLR tether. |
+| **Can we capture?** | ✅ **Nikon Remote SDK (v2.1.0, USB PTP)** fully integrated as primary DSLR/mirrorless camera provider (Live View, Shutter, Image Transfer, Settings, Auto-Reconnect) + Canon CCAPI (Wi-Fi) secondary + `navigator.mediaDevices.getUserMedia` (UVC/webcam) tertiary + synthetic fallback. |
 | **Telemetry working?** | ✅ Full: `paperRemaining`, `ribbonPercent`, `initialMediaCount`, `lifetimePrints`, `queueDepth`, `orientation`, `quality`, `paperSize`, `shutterCount`, `printsTotal`, `batteryPct`, `live`, `isDefault`, `status` on both OSes. |
 | **Is hardware configured?** | **Configured and reporting.** `hardwareSnapshot()` → heartbeat (20 s) includes `capturedAt`, `platform`, `release`, `arch`, `totalMemMb`, `camera`, `printer`, `kioskScreen`. `printServer` `:9123` bridges tablets → same queue. |
 
@@ -30,7 +30,13 @@
 | `dnpTelemetry.ts` | `CyStat64.dll` → `resources/dnp/dnpStatus.ps1` / CUPS | Primary: `dnpStatus.ps1` → JSON `{connected,status,paperRemaining,ribbonPercent,initialMediaCount,lifetimePrints}` (10 s cache). Fallback: `queryWindowsSpoolerTelemetry` via `Get-CimInstance Win32_Printer` + `Get-PrintJob` (PrinterStatus, workOffline, jobs) → never reports fake success | `getCupsTelemetry`: resolves default via `lpstat -d` → `lpstat -p` status (idle/printing/enabled), `lpstat -o` queueDepth, `lpoptions -p` orientation/quality, `lpstat -l` paperRemaining parse; cache not needed (fast) | ✅ Dual-path |
 | `printServer.ts` | Node `http` CORS `*` on `0.0.0.0:9123` | `GET /api/status` → `{printers,dnp,defaultPrinter}` from `hardwareSnapshot`; `POST /api/print` 50 MB validates `bitmapDataUrl`, calls `printJob()` | same | ✅ |
 | `store.ts` | `app.getPath('userData')/booth-state.json` + `device-identity.json` | persists `printsTotal`, `shutterCount`, `installation` (deviceUuid/token survives logout, cleared only on `DEVICE_DELETED` 410) | same | ✅ |
-| `preload.cts` | `contextBridge` | exposes `booth:*` (`getInstallation`, `saveInstallation`, `system-snapshot`, `print`, `camera-report`, `record-capture`) | same | ✅ |
+| `preload.cts` | `contextBridge` | exposes `booth:*` and `booth:nikon:*` (`getStatus`, `listDevices`, `connect`, `disconnect`, `startLiveView`, `stopLiveView`, `capture`, `readSettings`, `setISO`, `onLiveViewFrame`) | same | ✅ |
+| `cameraManager.ts` | Camera lifecycle orchestrator | Auto-discovers Nikon SDK USB, Canon CCAPI Wi-Fi fallback, manages live view stream & auto-reconnect on USB unplug | N/A (Windows primary) | ✅ |
+| `nikonAdapter.ts` | Nikon Remote SDK v2.x wrapper | Spawns `NikonBridge.ps1`, manages JSON IPC over stdin/stdout, device watch polling (3 s), battery telemetry | N/A (Windows SDK) | ✅ |
+| `liveViewService.ts` | Push-based Live View | Streams 24 FPS JPEG frames from Nikon SDK to Electron renderer over `nikon:liveview-frame` IPC | N/A | ✅ |
+| `captureService.ts` | Shutter trigger | Coordinates SDK shutter release with concurrency guard | N/A | ✅ |
+| `transferService.ts` | Photo transfer | Extracts captured JPEG from SDK save directory, converts to base64 dataUrl with temp cleanup | N/A | ✅ |
+| `settingsService.ts` | Camera settings | Reads/writes ISO, Exposure Mode, Shutter Speed, Aperture with human-readable label mapping | N/A | ✅ |
 
 **Native dependencies:** No native Node addon required. Windows uses inbox PowerShell + System.Drawing; macOS uses CUPS (`lp`, `lpstat`, `lpoptions`). DNP `CyStat64.dll` is optional — WMI/CUPS provide honest fallback.
 

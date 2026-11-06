@@ -2,7 +2,13 @@
   "appId": "com.vertech-innovations.happypix",
   "productName": "HappyPix Booth",
   "files": ["dist-electron", "dist-react"],
-  "extraResources": ["dist-electron/preload.cjs"],
+  "extraResources": [
+    "dist-electron/preload.cjs",
+    {
+      "from": "resources",
+      "to": "resources"
+    }
+  ],
   "icon": "./desktopIcon.png",
   "asar": true,
   "directories": {

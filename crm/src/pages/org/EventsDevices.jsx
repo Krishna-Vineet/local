@@ -481,13 +481,24 @@ const PERIPHERALS = [
 ]
 
 function TelemetryCell({ device }) {
-  const t = device.telemetry
-  const num = (n) => Number(n || 0).toLocaleString('en-IN')
+  const t = device.telemetry;
+  const c = device.connections;
+  const num = (n) => Number(n || 0).toLocaleString('en-IN');
+
+  const paper = t?.paperRemaining;
+  const paperTone = paper != null
+    ? (paper < 15 ? 'danger' : paper < 50 ? 'warn' : 'ok')
+    : null;
+
+  const pStatus = t?.printerStatus;
+  const hasPrinterError = pStatus && pStatus !== 'idle' && pStatus !== 'printing' && pStatus !== 'ready';
+
   return (
-    <div className="tel">
+    <div className="tel" style={{ minWidth: 210 }}>
+      {/* 3 Peripheral connection health icons */}
       <div className="hw-health" aria-label="Peripheral connection health">
         {PERIPHERALS.map((item) => {
-          const connected = device.connections?.[item.key] === true
+          const connected = c?.[item.key] === true;
           return (
             <span key={item.key} className="hw-health-item">
               <span
@@ -496,37 +507,95 @@ function TelemetryCell({ device }) {
                 aria-label={`${item.label} ${connected ? 'connected' : 'not connected'}`}
               >
                 <Icon name={item.icon} size={15} />
-                <span className="hw-connection-mark"><Icon name={connected ? 'check' : 'x'} size={8} strokeWidth={3} /></span>
+                <span className="hw-connection-mark">
+                  <Icon name={connected ? 'check' : 'x'} size={8} strokeWidth={3} />
+                </span>
               </span>
               <span>{item.short}</span>
             </span>
-          )
+          );
         })}
       </div>
-      {t ? (
-        <>
-          {device.hardware?.includes('printer') ? (
-            <span className="tel-row" title="Prints this printer has made (pushed by the booth app)">
-              <Icon name="printer" size={13} />
-              <b>{num(t.prints)}</b>&nbsp;prints
+
+      {/* Printer telemetry card */}
+      <div style={{
+        marginTop: 2, padding: '5px 8px', background: 'var(--surface-2, rgba(255,255,255,0.03))',
+        borderRadius: 7, border: '1px solid var(--line-soft, #333)'
+      }}>
+        <div className="tel-row" style={{ justifyContent: 'space-between', gap: 6 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: 'var(--ink)' }}>
+            <Icon name="printer" size={13} style={{ color: c?.printer ? 'var(--hp-green-ink)' : 'var(--danger)', flex: 'none' }} />
+            <span className="ellipsis" style={{ maxWidth: 115 }} title={t?.printerModel || (c?.printer ? 'Photo Printer' : 'Printer Disconnected')}>
+              {t?.printerModel || (c?.printer ? 'Photo Printer' : 'Disconnected')}
             </span>
-          ) : null}
-          {device.hardware?.includes('camera') ? (
-            <span className="tel-row" title="Camera shutter count (pushed by the booth app)">
-              <Icon name="aperture" size={13} />
-              <b>{num(t.shutters)}</b>&nbsp;clicks
-            </span>
-          ) : null}
-          {t.batteryPct != null ? <BatteryPill pct={t.batteryPct} /> : null}
-          <span className="tel-stale" title={`Last pushed ${new Date(device.connections?.updatedAt || t.updatedAt).toLocaleString()}`}>
-            via booth · {relativeTime(device.connections?.updatedAt || t.updatedAt)}
           </span>
-        </>
-      ) : (
-        <span className="tel-stale">No counters reported yet</span>
-      )}
+          <span style={{ fontSize: 11, fontWeight: 650, color: 'var(--ink)', flex: 'none' }}>
+            <b>{num(t?.prints)}</b> prints
+          </span>
+        </div>
+
+        {/* Paper roll status / warnings */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 3, fontSize: 10.5 }}>
+          {paper != null ? (
+            <span
+              style={{
+                color: paperTone === 'danger' ? 'var(--danger)' : paperTone === 'warn' ? 'var(--warn)' : 'var(--hp-green-ink)',
+                fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: 3
+              }}
+              title="Dye-sub paper sheets remaining on roll"
+            >
+              📄 {paper} left {paper < 15 ? '⚠️ LOW' : ''}
+            </span>
+          ) : (
+            <span style={{ color: 'var(--faint)' }}>📄 Paper roll: —</span>
+          )}
+
+          {hasPrinterError ? (
+            <span style={{ color: 'var(--danger)', fontWeight: 700, textTransform: 'uppercase', fontSize: 9.5 }}>
+              ⚠️ {pStatus.replace('_', ' ')}
+            </span>
+          ) : (
+            <span style={{ color: c?.printer ? 'var(--hp-green-ink)' : 'var(--faint)', fontSize: 10 }}>
+              {c?.printer ? '● Ready' : '○ Offline'}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Camera telemetry card */}
+      <div style={{
+        marginTop: 2, padding: '5px 8px', background: 'var(--surface-2, rgba(255,255,255,0.03))',
+        borderRadius: 7, border: '1px solid var(--line-soft, #333)'
+      }}>
+        <div className="tel-row" style={{ justifyContent: 'space-between', gap: 6 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: 'var(--ink)' }}>
+            <Icon name="camera" size={13} style={{ color: c?.camera ? 'var(--hp-green-ink)' : 'var(--danger)', flex: 'none' }} />
+            <span className="ellipsis" style={{ maxWidth: 115 }} title={t?.cameraModel || (c?.camera ? 'Booth Camera' : 'Camera Disconnected')}>
+              {t?.cameraModel || (c?.camera ? 'Booth Camera' : 'Disconnected')}
+            </span>
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 650, color: 'var(--ink)', flex: 'none' }}>
+            <b>{num(t?.shutters)}</b> clicks
+          </span>
+        </div>
+
+        {/* Battery gauge */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 3 }}>
+          <span style={{ fontSize: 10.5, color: 'var(--faint)' }}>Battery</span>
+          {t?.batteryPct != null ? (
+            <BatteryPill pct={t.batteryPct} />
+          ) : (
+            <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>⚡ AC Power</span>
+          )}
+        </div>
+      </div>
+
+      {/* Synced timestamp */}
+      <span className="tel-stale" style={{ fontSize: 10, marginTop: 2 }} title={`Last reported: ${t?.updatedAt ? new Date(t.updatedAt).toLocaleString() : 'Never'}`}>
+        via booth · {t?.updatedAt ? relativeTime(t.updatedAt) : 'no reports'}
+      </span>
     </div>
-  )
+  );
 }
 
 function BatteryPill({ pct }) {

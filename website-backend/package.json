@@ -11,9 +11,8 @@
   },
   "description": "Public backend for the HappyPix display website (happypix.vercel.app). Separate service, SAME MongoDB as backend/ — plans, organizations, users, subscriptions and guest downloads are shared collections.",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1030.0",
-    "@aws-sdk/s3-request-presigner": "^3.1030.0",
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

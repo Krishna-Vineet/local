@@ -3,7 +3,7 @@
 > **Status:** engineering policy. Sections marked ⚖️ require review by qualified counsel before being
 > relied upon externally. This document is **not** legal advice and is not a substitute for the
 > published Privacy Policy and Terms of Service.
-> **Last verified:** 2026-10-23, branch `arena/097e52ae-local`.
+> **Last verified:** 2026-10-23, branch `main`.
 
 ---
 

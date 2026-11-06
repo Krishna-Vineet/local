@@ -1,6 +1,7 @@
 import http from 'node:http'
 import { printJob, probePrinters, type PrintRequest } from './hardware.js'
 import { getDnpTelemetry } from './dnpTelemetry.js'
+import { cameraManager } from './camera/cameraManager.js'
 
 let server: http.Server | null = null
 
@@ -116,6 +117,70 @@ export function startPrintServer(options: PrintServerOptions = {}): http.Server 
           res.end(JSON.stringify({ success: false, error: err.message || 'Invalid print request body' }))
         }
       })
+      return
+    }
+
+    // 3. Camera Status
+    if (url === '/api/camera/status' && req.method === 'GET') {
+      try {
+        const state = cameraManager.getState()
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ success: true, ...state }))
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ success: false, error: err.message || 'Error checking camera' }))
+      }
+      return
+    }
+
+    // 4. Camera Live View Start / Stop / Frame
+    if (url.startsWith('/api/camera/liveview')) {
+      if (req.method === 'POST') {
+        if (url === '/api/camera/liveview/stop') {
+          await cameraManager.stopLiveView()
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: true, live: false }))
+          return
+        }
+        const lvResult = await cameraManager.startLiveView()
+        res.writeHead(lvResult.ok ? 200 : 500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ success: lvResult.ok, error: lvResult.error }))
+        return
+      }
+
+      // GET live view frame
+      const frame = await cameraManager.getLiveViewFrame()
+      if (!frame) {
+        res.writeHead(204, { 'Content-Type': 'application/json' })
+        res.end()
+        return
+      }
+      const b64Data = frame.includes(',') ? frame.split(',')[1] : frame
+      const imgBuf = Buffer.from(b64Data, 'base64')
+      res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': imgBuf.length,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      })
+      res.end(imgBuf)
+      return
+    }
+
+    // 5. Camera Capture
+    if (url === '/api/camera/capture' && req.method === 'POST') {
+      try {
+        const result = await cameraManager.capture()
+        if (result.dataUrl) {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: true, dataUrl: result.dataUrl, path: result.path }))
+        } else {
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: false, error: result.error || 'Capture failed' }))
+        }
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ success: false, error: err.message || 'Error capturing photo' }))
+      }
       return
     }
 

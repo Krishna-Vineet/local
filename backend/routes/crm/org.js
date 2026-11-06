@@ -43,8 +43,8 @@ import Payment from '../../models/Payment.js';
 import TemplateLayout from '../../models/TemplateLayout.js';
 import OrgAiTemplate from '../../models/OrgAiTemplate.js';
 import TemplateGenerationService from '../../services/ai/TemplateGenerationService.js';
-import { s3, uploadToS3, s3KeyFromUrl } from '../../utils/s3.js';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { uploadToCloudinary, s3KeyFromUrl } from '../../utils/cloudinary.js';
+const uploadToS3 = uploadToCloudinary;
 
 import Template from '../../models/Template.js';
 import Withdrawal from '../../models/Withdrawal.js';
@@ -106,27 +106,19 @@ router.get('/asset-proxy', async (req, res) => {
       return fs.createReadStream(localPath).pipe(res);
     }
 
-    // 3. Try S3 if bucket is configured
-    if (process.env.S3_BUCKET_NAME) {
+    // 3. Try remote URL fetch (Cloudinary or http/https)
+    if (cleanKey.startsWith('http://') || cleanKey.startsWith('https://')) {
       try {
-        const command = new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET_NAME,
-          Key: cleanKey,
-        });
-
-        const s3Response = await s3.send(command);
-        const contentType = s3Response.ContentType || (cleanKey.endsWith('.png') ? 'image/png' : 'image/jpeg');
-
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'public, max-age=31536000');
-
-        const chunks = [];
-        for await (const chunk of s3Response.Body) {
-          chunks.push(chunk);
+        const resp = await fetch(cleanKey);
+        if (resp.ok) {
+          const contentType = resp.headers.get('content-type') || (cleanKey.endsWith('.png') ? 'image/png' : 'image/jpeg');
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'public, max-age=31536000');
+          const arrayBuf = await resp.arrayBuffer();
+          return res.send(Buffer.from(arrayBuf));
         }
-        return res.send(Buffer.concat(chunks));
-      } catch (s3Err) {
-        console.warn('⚠️ S3 asset proxy fetch failed:', s3Err.message);
+      } catch (remoteErr) {
+        console.warn('⚠️ Remote asset proxy fetch failed:', remoteErr.message);
       }
     }
 
@@ -237,6 +229,10 @@ function deviceView(device, events = []) {
           prints: device.telemetry.prints || 0,
           shutters: device.telemetry.shutters || 0,
           batteryPct: device.telemetry.batteryPct ?? null,
+          printerModel: device.telemetry.printerModel || null,
+          printerStatus: device.telemetry.printerStatus || null,
+          paperRemaining: device.telemetry.paperRemaining ?? null,
+          cameraModel: device.telemetry.cameraModel || null,
           updatedAt: device.telemetry.updatedAt ? new Date(device.telemetry.updatedAt).toISOString() : null,
         }
       : null,
@@ -1627,24 +1623,18 @@ router.get('/gallery/photo/:id/view', requirePerm(PERMS.ORG_GALLERY_VIEW), async
     }
   }
 
-  // Case 2: S3 object stream
-  const key = s3KeyFromUrl(targetUrl) || (kind !== 'composite' ? photo.s3Key : null) || photo.s3Key;
-  if (key && process.env.S3_BUCKET_NAME) {
+  // Case 2: Remote stream (Cloudinary or external HTTP)
+  if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) {
     try {
-      const command = new GetObjectCommand({
-        Bucket: process.env.S3_BUCKET_NAME,
-        Key: key,
-      });
-      const s3Response = await s3.send(command);
-      res.setHeader('Content-Type', s3Response.ContentType || 'image/jpeg');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      const chunks = [];
-      for await (const chunk of s3Response.Body) {
-        chunks.push(chunk);
+      const resp = await fetch(targetUrl);
+      if (resp.ok) {
+        res.setHeader('Content-Type', resp.headers.get('content-type') || 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        const arrayBuf = await resp.arrayBuffer();
+        return res.send(Buffer.from(arrayBuf));
       }
-      return res.send(Buffer.concat(chunks));
     } catch (err) {
-      console.warn('⚠️ Direct S3 stream failed for photo:', err.message);
+      console.warn('⚠️ Direct stream failed for photo:', err.message);
     }
   }
 

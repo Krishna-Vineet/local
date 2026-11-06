@@ -17,6 +17,16 @@ export const FOOTER_RATIO = 0.15
 
 // families: id, name, print code(s), cutout inches [w,h] (portrait),
 // sheet(s) it is cut from, image-slot iterations, suggested base price.
+export const FAMILY_ALIASES = {
+  '64': '46',     // 6x4 landscape -> 4x6 Postcard
+  '86': '68',     // 8x6 landscape -> 6x8 Gala Display
+  '75': '57',     // 7x5 landscape -> 5x7 Portrait Keep-Safe
+  '108': '810',   // 10x8 landscape -> 8x10 Grand Guestbook
+  '128': '812',   // 12x8 landscape -> 8x12 Poster Showcase
+  '66': '46',     // square default
+  '11': '46',     // 1:1 default
+}
+
 export const LAYOUT_FAMILIES = [
   { id: '46-23',   name: 'Pocket Polaroid',       code: '46-23',            cutout: [2, 3],   sheets: ['4x6'],            slots: [1],       base: 20, blurb: 'Tiny keepable polaroid — giveaways and ice-breakers.' },
   { id: '46-26',   name: 'Classic Duo Strip',     code: '46-26',            cutout: [2, 6],   sheets: ['4x6'],            slots: [3, 4],    base: 30, blurb: 'The classic photo strip, two-up per 4x6 sheet.' },
@@ -79,7 +89,8 @@ export function resolveLayout(template) {
     const h = template.layout?.height || 1800;
     const parts = String(layoutId).split('-');
     const rawFamily = (parts[0]?.toUpperCase().startsWith('P') && parts[1]) ? parts[1] : parts[0];
-    const matchedFamily = LAYOUT_FAMILIES.find((f) => f.id === rawFamily || f.id === parts[0] || f.id === parts[1])?.id || rawFamily || '46';
+    const normalizedRaw = FAMILY_ALIASES[rawFamily] || rawFamily;
+    const matchedFamily = LAYOUT_FAMILIES.find((f) => f.id === normalizedRaw || f.id === parts[0] || f.id === parts[1])?.id || normalizedRaw || '46';
     let slotCount = template.slots?.length || template.layout?.slotCount;
     if (!slotCount && parts[2]?.toUpperCase().startsWith('T')) {
       slotCount = parseInt(parts[2].replace(/[^0-9]/g, ''), 10) || 1;
@@ -133,7 +144,8 @@ export const TEMPLATE_CATEGORIES = ['Classic', 'Weddings', 'Parties', 'Corporate
 const SLOT_ADD = { 1: 0, 2: 5, 3: 10, 4: 10, 5: 20, 6: 30, 8: 60, 9: 40 }
 
 export function suggestedPrice(familyId, slots) {
-  const f = LAYOUT_FAMILIES.find((x) => x.id === familyId)
+  const normId = FAMILY_ALIASES[familyId] || familyId;
+  const f = LAYOUT_FAMILIES.find((x) => x.id === normId)
   if (!f) return 0
   return (f.base || 0) + (SLOT_ADD[slots] || 0)
 }

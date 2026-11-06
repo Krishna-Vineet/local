@@ -163,7 +163,13 @@ function App() {
           knownRevision: current?.revision ?? null,
           clientDateTime: new Date().toISOString(),
           hardware,
-        })
+          printsTotal: hardware.printer?.printsTotal,
+          shutterCount: hardware.camera?.shutterCount,
+          batteryPct: hardware.camera?.batteryPct,
+          printerConnected: hardware.printer?.connected,
+          cameraConnected: hardware.camera?.connected,
+          kioskScreenConnected: hardware.kioskScreen?.connected,
+        } as any)
         setOnline(true)
         if (response.changed && response.snapshot) applySnapshot(response.snapshot)
       } catch (reason) {
@@ -336,71 +342,89 @@ function App() {
 
     if (compositeUrl) {
       setLastCompositeUrl(compositeUrl)
-      try {
-        // Guard against hanging printer IPC with timeout
-        const printPromise = bridge.print({
-          copies: session.prints,
-          layoutId: session.template.layout.id,
-          templateName: session.template.name,
-          bitmapDataUrl: compositeUrl,
-        })
-        const timeout = new Promise<{ success: boolean; error: string }>((resolve) =>
-          window.setTimeout(() => resolve({ success: false, error: 'The printer did not respond in time. Your digital copy is still available.' }), 15000)
-        )
-        const raced: any = await Promise.race([printPromise, timeout])
-        printResult = raced
-        if (!printResult.success && !printError) printError = printResult.error || 'The printer did not accept this job. Your digital copy is still available via QR.'
-      } catch (reason) {
-        printError = reason instanceof Error ? reason.message : 'The printer did not accept this job. Your digital copy is still available via QR.'
-        printResult = { success: false, error: printError }
-      }
-    } else if (!printError) {
-      printError = 'The final print could not be prepared. Please ask the operator for help — your session is saved.'
     }
 
     let shareUrl: string | null = null
     let enqueueSucceeded = false
     let enqueueError: string | null = null
+    const template = session.template
+    if (!template) return
 
-    // 1. Durably stage session to main-process disk queue BEFORE clearing memory or showing success
-    if (compositeUrl) {
-      try {
-        const enqueueRes = await (window as any).booth?.enqueueSession?.({
-          sessionId: session.id,
-          eventId: snapshot?.event?.id,
-          digitalCopy: session.digitalCopy,
-          guestConsent: session.customization.guestConsent ?? true,
-          composite: compositeUrl,
-          photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
-        })
-        if (enqueueRes && enqueueRes.success) {
-          enqueueSucceeded = true
-        } else {
-          enqueueError = enqueueRes?.error || 'Failed to save photos to queue storage'
-          console.warn('[finishAndPrint] Enqueue rejected:', enqueueError)
-        }
-      } catch (enqueueErr) {
-        enqueueError = enqueueErr instanceof Error ? enqueueErr.message : 'Durable disk enqueue failed'
-        console.warn('[finishAndPrint] Durable disk enqueue warning:', enqueueErr)
+    // 1. Dispatch printer job in parallel with safe 5-second timeout
+    const printTask = (async () => {
+      if (!compositeUrl) {
+        if (!printError) printError = 'The final print could not be prepared.'
+        return
       }
-    }
-
-    // 2. Attempt direct online completion if digital copy is requested
-    if (session.digitalCopy) {
       try {
-        const completed = await boothApi.completeSession(installation, {
-          sessionId: session.id,
-          digitalCopy: session.digitalCopy,
-          guestConsent: session.customization.guestConsent ?? true,
-          compositeUrl,
-          photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
-          eventId: snapshot?.event?.id,
+        const printPromise = bridge.print({
+          copies: session.prints,
+          layoutId: template.layout.id,
+          templateName: template.name,
+          bitmapDataUrl: compositeUrl,
         })
-        shareUrl = (completed as any).shareUrl ?? (completed as any).downloadUrl ?? null
+        const timeout = new Promise<{ success: boolean; error: string }>((resolve) =>
+          window.setTimeout(() => resolve({ success: false, error: 'The printer did not respond in time. Your digital copy is available via QR.' }), 5000)
+        )
+        const raced: any = await Promise.race([printPromise, timeout])
+        printResult = raced
+        if (!printResult.success && !printError) printError = printResult.error || 'The printer did not accept this job. Your digital copy is available via QR.'
       } catch (reason) {
-        console.warn('[completeSession] Online session upload failed/delayed; queued safely on disk:', reason)
+        printError = reason instanceof Error ? reason.message : 'The printer did not accept this job. Your digital copy is available via QR.'
+        printResult = { success: false, error: printError }
       }
-    }
+    })()
+
+    // 2. Concurrently stage to disk and upload digital copy online
+    const storageTask = (async () => {
+      if (compositeUrl) {
+        try {
+          const enqueueRes = await (window as any).booth?.enqueueSession?.({
+            sessionId: session.id,
+            eventId: snapshot?.event?.id,
+            digitalCopy: session.digitalCopy,
+            guestConsent: session.customization.guestConsent ?? true,
+            composite: compositeUrl,
+            photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
+          })
+          if (enqueueRes && enqueueRes.success) {
+            enqueueSucceeded = true
+          } else {
+            enqueueError = enqueueRes?.error || 'Failed to save photos to queue storage'
+            console.warn('[finishAndPrint] Enqueue rejected:', enqueueError)
+          }
+        } catch (enqueueErr) {
+          enqueueError = enqueueErr instanceof Error ? enqueueErr.message : 'Durable disk enqueue failed'
+          console.warn('[finishAndPrint] Durable disk enqueue warning:', enqueueErr)
+        }
+      }
+
+      if (session.digitalCopy) {
+        try {
+          const completed = await boothApi.completeSession(installation, {
+            sessionId: session.id,
+            digitalCopy: session.digitalCopy,
+            guestConsent: session.customization.guestConsent ?? true,
+            compositeUrl,
+            photos: session.selectedPhotos.map((photo: any) => photo.dataUrl).filter(Boolean),
+            eventId: snapshot?.event?.id,
+          })
+          shareUrl = (completed as any).shareUrl ?? (completed as any).downloadUrl ?? null
+          if (shareUrl) {
+            void (window as any).booth?.markSessionUploaded?.(session.id, {
+              downloadUrl: shareUrl,
+              downloadId: (completed as any).downloadId,
+              downloadExpiresAt: (completed as any).downloadExpiresAt,
+            })
+          }
+        } catch (reason) {
+          console.warn('[completeSession] Online session upload failed/delayed; queued safely on disk:', reason)
+          void (window as any).booth?.triggerQueueProcess?.()
+        }
+      }
+    })()
+
+    await Promise.all([printTask, storageTask])
 
     // The guest's QR must never be empty: when the upload is delayed, point it at
     // the deterministic download page for this session. The disk queue uploads in
@@ -468,10 +492,16 @@ function App() {
         const url = (completed as any).shareUrl ?? (completed as any).downloadUrl ?? null
         if (url) {
           saved = true
+          void (window as any).booth?.markSessionUploaded?.(session.id, {
+            downloadUrl: url,
+            downloadId: (completed as any).downloadId,
+            downloadExpiresAt: (completed as any).downloadExpiresAt,
+          })
           setOutcome((prev) => prev ? { ...prev, enqueueFailed: false, isSavedDurable: true, shareUrl: url, enqueueError: null } : null)
         }
       } catch (err) {
         console.warn('[retrySaveSession] Online complete retry failed:', err)
+        void (window as any).booth?.triggerQueueProcess?.()
       }
     }
 

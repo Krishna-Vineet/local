@@ -41,6 +41,7 @@ import downloadRoutes     from './routes/downloadRoutes.js';
 import crmAuthRoutes      from './routes/crm/auth.js';
 import crmPlatformRoutes  from './routes/crm/platform.js';
 import crmOrgRoutes       from './routes/crm/org.js';
+import documentationRoutes from './routes/documentationRoutes.js';
 import { ensurePlanCatalog } from './routes/crm/platform.js';
 
 // Services
@@ -83,6 +84,8 @@ const staticAllowedOrigins = [
   'https://happypix.vercel.app',
   'https://happypixcrm.vercel.app',
   'https://happypix-v2-backend.vercel.app',
+  'https://docs.happypix.in',
+  'https://happypixdocs.vercel.app',
 ];
 
 const envAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
@@ -271,6 +274,7 @@ app.use(async (req, res, next) => {
 
 // CRM v2 Namespaces
 app.use('/api/auth',          crmAuthRoutes); // Replaces legacy authRoutes
+app.use('/api/docs',          documentationRoutes); // Platform-member-only docs payload
 app.use('/api/platform',      crmPlatformRoutes);
 app.use('/api/org',           crmOrgRoutes);
 

@@ -29,6 +29,7 @@ import {
 } from '../../../../packages/ui/src/index';
 import { AppShell } from '../components/AppShell';
 import { useBooth } from '../context/BoothProvider';
+import { recordConfirmedShutterRelease } from '../storage/deviceStorage';
 import SoundManager from '../utils/SoundManager';
 import type { RootStackParamList } from '../../App';
 
@@ -79,7 +80,7 @@ const CanonLiveView: React.FC<{ isFocused: boolean; onReady: () => void }> = ({ 
 
 export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useAppTheme();
-  const { session, updateSession, setIdleTimerEnabled, secondsLeft, resetIdleTimer } = useBooth();
+  const { installation, session, updateSession, setIdleTimerEnabled, secondsLeft, resetIdleTimer } = useBooth();
   const template = session.template;
 
   const { width, height } = useWindowDimensions();
@@ -123,17 +124,22 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
 
   const activeCameraType = cameraManager.getActiveType();
 
-  const captureFrame = async (index: number): Promise<CapturedPhoto> => {
+  const captureFrame = async (index: number): Promise<{ photo: CapturedPhoto; confirmedShutter: boolean }> => {
     if (activeCameraType === 'canon' || activeCameraType === 'nikon-bridge' || activeCameraType === 'ptp') {
       try {
         const canonPhoto = await cameraManager.capture();
         return {
-          id: `photo-${Date.now()}-${index}`,
-          uri: canonPhoto.uri,
-          dataUrl: canonPhoto.dataUrl || canonPhoto.uri,
-          width: canonPhoto.width,
-          height: canonPhoto.height,
-          capturedAt: new Date().toISOString(),
+          photo: {
+            id: `photo-${Date.now()}-${index}`,
+            uri: canonPhoto.uri,
+            dataUrl: canonPhoto.dataUrl || canonPhoto.uri,
+            width: canonPhoto.width,
+            height: canonPhoto.height,
+            capturedAt: new Date().toISOString(),
+          },
+          // A photo returned by the selected external camera provider confirms
+          // the release; tablet-camera fallback frames are not counted here.
+          confirmedShutter: true,
         };
       } catch (err: any) {
         console.warn('Canon capture error, checking tablet camera fallback:', err);
@@ -146,12 +152,15 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
       });
       const uri = file.path.startsWith('file://') ? file.path : `file://${file.path}`;
       return {
-        id: `photo-${Date.now()}-${index}`,
-        uri,
-        dataUrl: uri,
-        width: file.width,
-        height: file.height,
-        capturedAt: new Date().toISOString(),
+        photo: {
+          id: `photo-${Date.now()}-${index}`,
+          uri,
+          dataUrl: uri,
+          width: file.width,
+          height: file.height,
+          capturedAt: new Date().toISOString(),
+        },
+        confirmedShutter: false,
       };
     }
     throw new Error('Camera hardware is unavailable or not ready.');
@@ -178,7 +187,8 @@ export const CaptureScreen: React.FC<Props> = ({ navigation }) => {
         SoundManager.play('shutter');
         SoundManager.haptic(30);
 
-        const photo = await captureFrame(shot);
+        const { photo, confirmedShutter } = await captureFrame(shot);
+        if (confirmedShutter) await recordConfirmedShutterRelease(installation?.deviceUuid);
         captured.push(photo);
         setPhotos([...captured]);
 

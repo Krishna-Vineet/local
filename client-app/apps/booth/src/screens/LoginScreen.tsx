@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -69,6 +70,8 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [locationLabel, setLocationLabel] = useState('Main reception');
   const [showPassword, setShowPassword] = useState(false);
+  const [cameraBridgeHost, setCameraBridgeHost] = useState('');
+  const [bridgeSettingsOpen, setBridgeSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(bootError);
   const [telemetry, setTelemetry] = useState<Telemetry>({
@@ -117,7 +120,16 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-    void probe();
+    let mounted = true;
+    void AsyncStorage.getItem('happypix.nikonBridgeHost').then((savedHost) => {
+      if (!mounted) return;
+      if (savedHost) {
+        setCameraBridgeHost(savedHost);
+        cameraManager.setNikonBridgeConfig(savedHost);
+      }
+      void probe();
+    }).catch(() => { void probe(); });
+    return () => { mounted = false; };
   }, [probe]);
 
   const onPair = async () => {
@@ -146,6 +158,19 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveCameraBridge = async () => {
+    const host = cameraBridgeHost.trim();
+    cameraManager.setNikonBridgeConfig(host);
+    try {
+      if (host) await AsyncStorage.setItem('happypix.nikonBridgeHost', host);
+      else await AsyncStorage.removeItem('happypix.nikonBridgeHost');
+      setTelemetry((prev) => ({ ...prev, camera: { status: 'checking', value: 'Checking camera…' } }));
+      await probe();
+    } catch (err: any) {
+      setError(err?.message || 'Could not save the Windows camera host.');
     }
   };
 
@@ -313,6 +338,44 @@ export const LoginScreen: React.FC<Props> = ({ navigation }) => {
                 HappyPix Engine · {Math.round(width)}×{Math.round(height)} pts ·{' '}
                 {Platform.OS === 'ios' ? 'iPadOS' : 'Android'}
               </Text>
+              <Pressable
+                onPress={() => setBridgeSettingsOpen((open) => !open)}
+                style={{ marginTop: 8, paddingVertical: 3 }}
+                accessibilityRole="button"
+                accessibilityLabel="Configure Windows camera host"
+              >
+                <Text style={{ fontFamily: fonts.body, fontSize: fontSize(10.5), color: p.muted, textAlign: 'center' }}>
+                  Windows USB camera host · <Text style={{ color: p.violet, textDecorationLine: 'underline' }}>{cameraBridgeHost || 'configure'}</Text>
+                </Text>
+              </Pressable>
+              {bridgeSettingsOpen ? (
+                <View style={{ marginTop: 6 }}>
+                  <Text style={{ fontFamily: fonts.body, fontSize: fontSize(10), color: p.muted, textAlign: 'center', marginBottom: 5 }}>
+                    Enter the Windows booth IP or local hostname. Keep devices on the same LAN.
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <TextInput
+                      value={cameraBridgeHost}
+                      onChangeText={setCameraBridgeHost}
+                      placeholder="192.168.1.25 or booth-pc.local"
+                      placeholderTextColor={p.faint}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="url"
+                      style={[styles.input, { flex: 1, height: 38, borderColor: p.line, backgroundColor: p.surfaceSoft, color: p.ink }]}
+                      accessibilityLabel="Windows camera host"
+                      onSubmitEditing={() => void saveCameraBridge()}
+                    />
+                    <Pressable
+                      onPress={() => void saveCameraBridge()}
+                      style={{ minHeight: 38, paddingHorizontal: 12, borderRadius: 9, backgroundColor: p.violet, alignItems: 'center', justifyContent: 'center' }}
+                      accessibilityRole="button"
+                    >
+                      <Text style={{ color: '#fff', fontFamily: fonts.body, fontSize: fontSize(10.5), fontWeight: '700' }}>Save</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
               <Pressable
                 onPress={() => {
                   const current = getBoothApiUrl();

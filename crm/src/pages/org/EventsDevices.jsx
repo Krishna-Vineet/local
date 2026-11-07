@@ -51,6 +51,7 @@ export default function EventsDevices() {
   const [editor, setEditor] = useState(null) // 'new' | event
   const [deleting, setDeleting] = useState(null)
   const [removingDevice, setRemovingDevice] = useState(null)
+  const [resettingCounters, setResettingCounters] = useState(null)
   const [editingDevice, setEditingDevice] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -147,6 +148,22 @@ export default function EventsDevices() {
       await api.org.removeDevice(removingDevice.id)
       toast(`Removed ${removingDevice.deviceName}`)
       setRemovingDevice(null)
+      load()
+    } catch (e) {
+      toast(e.message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirmResetCounters = async () => {
+    if (readOnly) { toast(orgNotice?.message || 'This organization is suspended — changes are disabled until HappyPix restores it.', 'error'); return }
+    if (!resettingCounters) return
+    setBusy(true)
+    try {
+      await api.org.resetDeviceCounters(resettingCounters.id)
+      toast(`Camera clicks and print total reset for ${resettingCounters.deviceName}`)
+      setResettingCounters(null)
       load()
     } catch (e) {
       toast(e.message, 'error')
@@ -333,7 +350,7 @@ export default function EventsDevices() {
                           <div className="cell-sub">{d.location || '—'} · reg. {dateShort(d.registeredAt)}</div>
                         </td>
                         <td><code className="t11" style={{ background: 'var(--surface-2)', padding: '3px 7px', borderRadius: 5 }}>{uuidShort(d.deviceUuid)}</code></td>
-                        <td><TelemetryCell device={d} /></td>
+                        <td><TelemetryCell device={d} onReset={() => setResettingCounters(d)} resetDisabled={readOnly} /></td>
                         <td><Chip tone={d.online ? 'active' : 'neutral'} dot>{d.online ? 'Online' : 'Offline'}</Chip></td>
                         <td><OperatorCell device={d} /></td>
                         <td className="t13 muted">{d.lastSeenAt ? relativeTime(d.lastSeenAt) : 'never'}</td>
@@ -459,6 +476,17 @@ export default function EventsDevices() {
         confirmLabel="Remove device"
       />
 
+      <ConfirmDialog
+        open={!!resettingCounters}
+        onClose={() => setResettingCounters(null)}
+        onConfirm={confirmResetCounters}
+        danger
+        loading={busy}
+        title={`Reset totals for ${resettingCounters?.deviceName}?`}
+        message="This resets both camera clicks and the printer total shown in CRM for this booth. The booth keeps its local lifetime counters; new reports will count from zero, and connection or battery telemetry is unchanged."
+        confirmLabel="Reset both totals"
+      />
+
       {editingDevice ? (
         <DeviceEditModal
           device={editingDevice}
@@ -480,7 +508,7 @@ const PERIPHERALS = [
   { key: 'kioskScreen', label: 'External kiosk screen', short: 'Screen', icon: 'monitor' },
 ]
 
-function TelemetryCell({ device }) {
+function TelemetryCell({ device, onReset, resetDisabled }) {
   const t = device.telemetry;
   const c = device.connections;
   const num = (n) => Number(n || 0).toLocaleString('en-IN');
@@ -587,6 +615,11 @@ function TelemetryCell({ device }) {
           ) : (
             <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600 }}>⚡ AC Power</span>
           )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 3 }}>
+          <Button size="sm" variant="ghost" icon="refresh" disabled={resetDisabled} onClick={onReset} title="Reset camera clicks and print total" style={{ minHeight: 25, padding: '2px 6px', fontSize: 10 }}>
+            Reset both totals
+          </Button>
         </div>
       </div>
 

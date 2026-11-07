@@ -39,7 +39,7 @@ import { buildPrintSpec, STICKER_EM_FRACTION } from '../../../../packages/ui/src
 import { cameraManager } from '../../../../packages/camera-core/src/index';
 import { printerManager, renderEngine, SkiaRenderAdapter } from '../../../../packages/printer-core/src/index';
 import type { PrintTemplate } from '../../../../packages/types/src/index';
-import { photosAsDataUrls } from '../storage/deviceStorage';
+import { getBoothHardwareCounters, photosAsDataUrls, recordSuccessfulPrint } from '../storage/deviceStorage';
 import { enqueueOfflineSession, processOfflineSyncQueue } from '../services/offlineSyncService';
 
 // ─── Final-print rendering ─────────────────────────────────────
@@ -338,6 +338,9 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const dim = Dimensions.get('window');
         const camStatus = await cameraManager.getStatus().catch(() => ({ connected: false, error: 'Unavailable' }));
         const printerStatus = await printerManager.getStatus().catch(() => ({ connected: false, error: 'Unavailable' }));
+        const counters = await getBoothHardwareCounters(installation.deviceUuid);
+        const activeCameraType = cameraManager.getActiveType();
+        const activePrinter = printerManager.getActiveDevice();
 
         const response = await boothApi.heartbeat(installation, {
           deviceUuid: installation.deviceUuid,
@@ -351,18 +354,18 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             camera: {
               connected: camStatus.connected,
               working: camStatus.connected,
-              provider: 'native-vision',
+              provider: activeCameraType || 'phone',
               model: null,
-              shutterCount: 0,
+              shutterCount: counters.shutterCount,
               batteryPct: (camStatus as any).batteryLevel ?? null,
               error: camStatus.error ?? null,
             },
             printer: {
               connected: printerStatus.connected,
               working: printerStatus.connected,
-              provider: 'native-printer',
-              model: 'Thermal/DNP',
-              printsTotal: 0,
+              provider: activePrinter?.type || 'native-printer',
+              model: activePrinter?.model || activePrinter?.name || 'Printer not identified',
+              printsTotal: counters.printsTotal,
               queueDepth: 0,
               error: printerStatus.error ?? null,
             },
@@ -791,6 +794,7 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           'Could not reach the printer (timed out)'
         );
         printSuccess = result.success;
+        if (result.success) await recordSuccessfulPrint(currentSession.prints, inst.deviceUuid);
         if (result.jobId) jobId = result.jobId;
         if (result.error) printError = formatFriendlyPrintError(result.error);
       } catch (e: any) {
@@ -861,6 +865,7 @@ export const BoothProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         templateName: currentSession.template.name,
         paperSize: boothTemplateToPrintTemplate(currentSession.template).paperSize,
       });
+      if (result.success) await recordSuccessfulPrint(currentSession.prints, installationRef.current?.deviceUuid);
       setOutcome((prev) => prev && {
         ...prev,
         success: result.success,

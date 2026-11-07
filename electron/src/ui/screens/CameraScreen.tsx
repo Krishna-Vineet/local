@@ -50,7 +50,7 @@ export function CameraScreen({ template, onComplete }: {
   onComplete: (photos: CapturedPhoto[]) => void
 }) {
   const videoRef        = useRef<HTMLVideoElement>(null)
-  const canvasRef       = useRef<HTMLCanvasElement>(null)
+  const nikonImageRef   = useRef<HTMLImageElement>(null)
   const streamRef       = useRef<MediaStream | null>(null)
   const photosRef       = useRef<CapturedPhoto[]>([])
   const lvUnsubRef      = useRef<(() => void) | null>(null)
@@ -84,33 +84,25 @@ export function CameraScreen({ template, onComplete }: {
             battery: st.batteryPct,
           }
           setCameraInfo(info)
-          setHasLiveStream(true)  // Nikon LV frames arrive via IPC
+          setHasLiveStream(false)
           setCameraReady(true)
           setError(null)
-          await bridge.reportCamera({ connected: true, working: true, batteryPct: st.batteryPct, model: st.model, error: null })
+          await bridge.reportCamera({ connected: true, working: true, provider: 'nikon-sdk', livePreview: false, batteryPct: st.batteryPct, model: st.model, error: null })
 
-          // Start live view
-          await window.booth.nikon.startLiveView().catch(() => {})
-
-          // Helper to paint Nikon LV JPEG onto overlay canvas
-          const drawNikonFrame = (frameDataUrl: string) => {
-            nikonLvImgRef.current = frameDataUrl
-            const canvas = canvasRef.current
-            if (!canvas) return
-            const img = new Image()
-            img.onload = () => {
-              canvas.width  = img.naturalWidth
-              canvas.height = img.naturalHeight
-              const ctx = canvas.getContext('2d')
-              if (ctx) ctx.drawImage(img, 0, 0)
-            }
-            img.src = frameDataUrl
-          }
-
-          // Subscribe to LV frames and paint them onto canvas
+          // Subscribe before status can be considered ready: an SDK connection
+          // alone is not proof that Live View is returning frames.
+          let previewReported = false
           lvUnsubRef.current = window.booth.nikon.onLiveViewFrame(({ frameDataUrl }) => {
-            drawNikonFrame(frameDataUrl)
+            nikonLvImgRef.current = frameDataUrl
+            if (nikonImageRef.current) nikonImageRef.current.src = frameDataUrl
+            setHasLiveStream(true)
+            if (!previewReported) {
+              previewReported = true
+              void bridge.reportCamera({ connected: true, working: true, provider: 'nikon-sdk', livePreview: true, batteryPct: st.batteryPct, model: st.model, error: null })
+            }
           })
+          const liveView = await window.booth.nikon.startLiveView().catch((reason) => ({ ok: false, error: reason instanceof Error ? reason.message : String(reason) }))
+          if (!liveView?.ok) setError(liveView?.error || 'Nikon connected, but Live View could not start.')
           return
         }
 
@@ -124,25 +116,23 @@ export function CameraScreen({ template, onComplete }: {
             battery: newSt?.batteryPct ?? null,
           }
           setCameraInfo(info)
-          setHasLiveStream(true)
+          setHasLiveStream(false)
           setCameraReady(true)
           setError(null)
-          await bridge.reportCamera({ connected: true, working: true, batteryPct: info.battery, model: info.label, error: null })
+          await bridge.reportCamera({ connected: true, working: true, provider: 'nikon-sdk', livePreview: false, batteryPct: info.battery, model: info.label, error: null })
 
-          await window.booth.nikon.startLiveView().catch(() => {})
+          let previewReported = false
           lvUnsubRef.current = window.booth.nikon.onLiveViewFrame(({ frameDataUrl }) => {
             nikonLvImgRef.current = frameDataUrl
-            const canvas = canvasRef.current
-            if (!canvas) return
-            const img = new Image()
-            img.onload = () => {
-              canvas.width  = img.naturalWidth
-              canvas.height = img.naturalHeight
-              const ctx = canvas.getContext('2d')
-              if (ctx) ctx.drawImage(img, 0, 0)
+            if (nikonImageRef.current) nikonImageRef.current.src = frameDataUrl
+            setHasLiveStream(true)
+            if (!previewReported) {
+              previewReported = true
+              void bridge.reportCamera({ connected: true, working: true, provider: 'nikon-sdk', livePreview: true, batteryPct: info.battery, model: info.label, error: null })
             }
-            img.src = frameDataUrl
           })
+          const liveView = await window.booth.nikon.startLiveView().catch((reason) => ({ ok: false, error: reason instanceof Error ? reason.message : String(reason) }))
+          if (!liveView?.ok) setError(liveView?.error || 'Nikon connected, but Live View could not start.')
           return
         }
       }
@@ -184,19 +174,19 @@ export function CameraScreen({ template, onComplete }: {
         setHasLiveStream(true)
         setCameraReady(true)
         setError(null)
-        await bridge.reportCamera({ connected: true, working: true, batteryPct: info.battery, model: label, error: null })
+        await bridge.reportCamera({ connected: true, working: true, provider: isCcapi ? 'canon-ccapi-wifi' : 'webcam', livePreview: true, batteryPct: info.battery, model: label, error: null })
       } catch (reason) {
         if (ccapi?.connected && active) {
           // CCAPI is connected even without webcam
           setCameraReady(true)
           setError(null)
-          await bridge.reportCamera({ connected: true, working: true, batteryPct: ccapi.batteryPct, model: ccapi.model, error: null })
+          await bridge.reportCamera({ connected: true, working: true, provider: 'canon-ccapi-wifi', livePreview: false, batteryPct: ccapi.batteryPct, model: ccapi.model, error: null })
         } else {
           const message = reason instanceof Error ? reason.message : 'Camera could not be opened.'
           setError(`${message} Simulator captures remain available.`)
           setCameraInfo({ mode: 'simulator', label: 'Simulator (no camera)', battery: null })
           setCameraReady(true)
-          await bridge.reportCamera({ connected: false, working: false, batteryPct: null, model: null, error: message })
+          await bridge.reportCamera({ connected: false, working: false, provider: 'simulator', livePreview: false, batteryPct: null, model: null, error: message })
         }
       }
     }
@@ -213,47 +203,60 @@ export function CameraScreen({ template, onComplete }: {
       if (window.booth?.nikon) {
         void window.booth.nikon.stopLiveView().catch(() => {})
       }
-      void bridge.reportCamera({ connected: false, working: false, batteryPct: null, model: null, error: 'Camera preview closed' })
+      void bridge.reportCamera({ connected: false, working: false, provider: 'none', livePreview: false, batteryPct: null, model: null, error: 'Camera preview closed' })
     }
   }, [])
 
   // ── Capture logic ────────────────────────────────────────────────────────
 
-  const captureFrame = useCallback(async (index: number): Promise<CapturedPhoto> => {
+  const captureFrame = useCallback(async (index: number): Promise<{ photo: CapturedPhoto; countClick: boolean }> => {
     const id = `photo-${Date.now()}-${index}`
+    let countClick = false
 
     // ── Nikon SDK capture ──────────────────────────────────────────────────
     if (cameraInfo.mode === 'nikon' && window.booth?.nikon) {
       try {
         const result = await window.booth.nikon.capture()
         if (result.success && result.dataUrl) {
-          return { id, dataUrl: result.dataUrl, capturedAt: new Date().toISOString() }
+          setError(null)
+          // A full-resolution image returned by the camera bridge confirms the
+          // physical release. SDK acknowledgements and preview fallbacks do not.
+          return { photo: { id, dataUrl: result.dataUrl, capturedAt: new Date().toISOString() }, countClick: true }
         }
-      } catch { /* fall through to canvas / synthetic */ }
+        setError('Nikon shutter did not return a full-resolution photo; preview fallback used.')
+      } catch {
+        setError('Nikon capture failed; preview fallback used.')
+      }
     }
 
-    // ── Canon CCAPI trigger + canvas frame ────────────────────────────────
+    // ── Canon CCAPI shutter ────────────────────────────────────────────────
     if (cameraInfo.mode === 'canon-ccapi') {
-      void bridge.canonCapture().catch(() => {})
+      // CCAPI acknowledgement confirms command receipt, not a completed
+      // physical exposure, so it does not increment the shutter counter.
+      await bridge.canonCapture().catch(() => ({ success: false, error: 'Capture failed' }))
     }
 
-    // ── Webcam canvas capture ─────────────────────────────────────────────
+    // ── Webcam canvas capture ──────────────────────────────────────────────
     const video = videoRef.current
     let dataUrl = ''
-
-    // Try Nikon LV last frame (if camera is in Nikon mode but SDK capture failed)
     if (cameraInfo.mode === 'nikon' && nikonLvImgRef.current) {
+      // This is a live-view frame, not a verified shutter capture.
       dataUrl = nikonLvImgRef.current
+      countClick = false
     } else if (video && video.videoWidth > 0 && video.videoHeight > 0) {
       const canvas = document.createElement('canvas')
       canvas.width  = video.videoWidth
       canvas.height = video.videoHeight
       canvas.getContext('2d')?.drawImage(video, 0, 0)
       dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+      // Webcam frames are not physical shutter releases.
     }
 
-    if (!dataUrl) dataUrl = syntheticPhoto(index)
-    return { id, dataUrl, capturedAt: new Date().toISOString() }
+    if (!dataUrl) {
+      dataUrl = syntheticPhoto(index)
+      countClick = false
+    }
+    return { photo: { id, dataUrl, capturedAt: new Date().toISOString() }, countClick }
   }, [cameraInfo.mode])
 
   const startCapture = async () => {
@@ -271,10 +274,10 @@ export function CameraScreen({ template, onComplete }: {
       setCountdown(0)
       sound.shutter()
 
-      const photo = await captureFrame(shot)
+      const { photo, countClick } = await captureFrame(shot)
       photosRef.current = [...photosRef.current, photo]
       setPhotos([...photosRef.current])
-      void bridge.recordCapture()
+      if (countClick) void bridge.recordCapture()
       await wait(450)
       setCountdown(null)
     }
@@ -301,7 +304,7 @@ export function CameraScreen({ template, onComplete }: {
           <span className={`hardware-dot ${error ? 'warning' : ''}`}/>
           <span>
             <b>{cameraInfo.label}</b>
-            <small>{error ? 'Fallback simulator active' : providerBadge}</small>
+            <small>{error || providerBadge}</small>
           </span>
         </div>
         <div className="capture-progress">
@@ -335,26 +338,20 @@ export function CameraScreen({ template, onComplete }: {
           <div className="video-wrap">
             {/* Webcam stream */}
             <video ref={videoRef} muted playsInline/>
-            {/* Nikon Live View overlay canvas — sits on top of <video> */}
+            {/* Nikon Live View image fills the viewfinder without letterboxing. */}
             {cameraInfo.mode === 'nikon' && (
-              <canvas
-                ref={canvasRef}
-                style={{
-                  position: 'absolute', inset: 0, width: '100%', height: '100%',
-                  objectFit: 'cover', display: hasLiveStream ? 'block' : 'none',
-                }}
-              />
+              <img ref={nikonImageRef} className="nikon-liveview" alt="Nikon live view" style={{ display: hasLiveStream ? 'block' : 'none' }} />
             )}
 
             {!hasLiveStream && (
               <div className="camera-fallback">
                 <Icon name="camera" size={52}/>
                 <span>
-                  {cameraInfo.mode === 'nikon'
-                    ? 'Nikon SDK connected — starting live view…'
-                    : 'Native camera adapter pending'}
+                  {error || (cameraInfo.mode === 'nikon'
+                    ? 'Nikon connected — waiting for live view…'
+                    : 'Native camera adapter pending')}
                 </span>
-                <small>Using capture simulator for this build</small>
+                {!error && <small>Using capture simulator for this build</small>}
               </div>
             )}
 

@@ -46,7 +46,12 @@ export class CameraManager {
    * Set custom Nikon Kiosk Bridge host from settings
    */
   setNikonBridgeConfig(host: string, port = 9123): void {
-    const cleanHost = host.trim().replace(/^http:\/\//, '').replace(/\/.*$/, '').split(':')[0];
+    const cleanHost = host.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').split(':')[0];
+    if (!cleanHost) {
+      this.customNikonConfig = null;
+      this.allProviders.set('nikon-bridge', new NikonBridgeProvider({ host: '10.0.2.2', port: 9123 }));
+      return;
+    }
     this.customNikonConfig = { host: cleanHost, port };
     this.allProviders.set('nikon-bridge', new NikonBridgeProvider(this.customNikonConfig));
   }

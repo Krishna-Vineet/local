@@ -166,7 +166,51 @@ export function startPrintServer(options: PrintServerOptions = {}): http.Server 
       return
     }
 
-    // 5. Camera Capture
+    // 5. Camera settings (used by Mac Electron clients routed to this host).
+    if (url.startsWith('/api/camera/capability')) {
+      try {
+        if (req.method === 'GET') {
+          const requestUrl = new URL(url, 'http://localhost')
+          const capId = Number(requestUrl.searchParams.get('capId'))
+          if (!Number.isInteger(capId)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: false, error: 'A numeric capId is required.' }))
+            return
+          }
+          const value = await cameraManager.getCapability(capId)
+          if (value === null) {
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: false, error: 'Camera capability is unavailable.' }))
+            return
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: true, capId, value, dataType: 0 }))
+          return
+        }
+        if (req.method === 'POST') {
+          const chunks: Buffer[] = []
+          for await (const chunk of req) chunks.push(Buffer.from(chunk))
+          const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+          const capId = Number(payload.capId)
+          const value = Number(payload.value)
+          if (!Number.isInteger(capId) || !Number.isFinite(value)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: false, error: 'Numeric capId and value are required.' }))
+            return
+          }
+          const ok = await cameraManager.setCapability(capId, value)
+          res.writeHead(ok ? 200 : 503, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: ok, error: ok ? undefined : 'Camera rejected the setting.' }))
+          return
+        }
+      } catch (err: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ success: false, error: err.message || 'Camera setting request failed.' }))
+        return
+      }
+    }
+
+    // 6. Camera Capture
     if (url === '/api/camera/capture' && req.method === 'POST') {
       try {
         const result = await cameraManager.capture()

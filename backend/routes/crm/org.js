@@ -226,8 +226,9 @@ function deviceView(device, events = []) {
     lastSeenAt: device.lastSeenAt ? new Date(device.lastSeenAt).toISOString() : null,
     telemetry: device.telemetry
       ? {
-          prints: device.telemetry.prints || 0,
-          shutters: device.telemetry.shutters || 0,
+          prints: Math.max(0, Number(device.telemetry.prints || 0) - Number(device.telemetry.printBaseline || 0)),
+          shutters: Math.max(0, Number(device.telemetry.shutters || 0) - Number(device.telemetry.shutterBaseline || 0)),
+          counterResetAt: device.telemetry.counterResetAt ? new Date(device.telemetry.counterResetAt).toISOString() : null,
           batteryPct: device.telemetry.batteryPct ?? null,
           printerModel: device.telemetry.printerModel || null,
           printerStatus: device.telemetry.printerStatus || null,
@@ -765,6 +766,25 @@ router.put('/devices/:id', requirePerm(PERMS.EVENTS_DEVICES_MANAGE), requireWrit
   if (changes.length) await orgAudit(req, 'device.updated', 'device', `${device.deviceName}: ${changes.join(', ')}`);
   const events = await eventsFor(organizationId);
   res.json({ device: deviceView(device, events) });
+}));
+
+router.post('/devices/:id/reset-counters', requirePerm(PERMS.EVENTS_DEVICES_MANAGE), requireWritableOrg, asyncRoute(async (req, res) => {
+  const organizationId = orgId(req);
+  const device = await Device.findOne({ _id: req.params.id, organizationId });
+  if (!device) throw notFound('Device not found.', 'DEVICE_NOT_FOUND');
+
+  // Keep the booth's local lifetime counters intact. Heartbeats continue to
+  // send those absolute values, while CRM views subtract these server-side
+  // baselines so a later heartbeat cannot undo the reset.
+  device.telemetry = {
+    ...(device.telemetry?.toObject?.() || device.telemetry || {}),
+    printBaseline: Math.max(0, Number(device.telemetry?.prints) || 0),
+    shutterBaseline: Math.max(0, Number(device.telemetry?.shutters) || 0),
+    counterResetAt: new Date(),
+  };
+  await device.save();
+  await orgAudit(req, 'device.counters_reset', 'device', `Camera clicks and print total reset for “${device.deviceName}”`, 'warn');
+  res.json({ ok: true, device: deviceView(device, await eventsFor(organizationId)) });
 }));
 
 router.post('/devices/:id/assign', requirePerm(PERMS.EVENTS_DEVICES_MANAGE), requireWritableOrg, asyncRoute(async (req, res) => {

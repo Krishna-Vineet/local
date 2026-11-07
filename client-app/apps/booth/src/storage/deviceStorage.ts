@@ -33,6 +33,49 @@ export const deviceStorage: StorageAdapter = {
 
 setStorageAdapter(deviceStorage);
 
+const HARDWARE_COUNTERS_KEY = 'happypix.hardwareCounters.v1';
+const hardwareCountersKey = (deviceUuid?: string) => `${HARDWARE_COUNTERS_KEY}.${deviceUuid || 'unpaired'}`;
+
+export interface BoothHardwareCounters {
+  shutterCount: number;
+  printsTotal: number;
+}
+
+/** Persistent lifetime counters sent to CRM on each booth heartbeat. */
+export async function getBoothHardwareCounters(deviceUuid?: string): Promise<BoothHardwareCounters> {
+  try {
+    const raw = await AsyncStorage.getItem(hardwareCountersKey(deviceUuid));
+    if (!raw) return { shutterCount: 0, printsTotal: 0 };
+    const parsed = JSON.parse(raw) as Partial<BoothHardwareCounters>;
+    return {
+      shutterCount: Math.max(0, Number(parsed.shutterCount) || 0),
+      printsTotal: Math.max(0, Number(parsed.printsTotal) || 0),
+    };
+  } catch (err) {
+    console.warn('[DeviceStorage] Could not read hardware counters:', err);
+    return { shutterCount: 0, printsTotal: 0 };
+  }
+}
+
+async function incrementHardwareCounter(key: keyof BoothHardwareCounters, amount: number, deviceUuid?: string): Promise<BoothHardwareCounters> {
+  const current = await getBoothHardwareCounters(deviceUuid);
+  const next = { ...current, [key]: current[key] + Math.max(0, Math.floor(Number(amount) || 0)) };
+  try {
+    await AsyncStorage.setItem(hardwareCountersKey(deviceUuid), JSON.stringify(next));
+  } catch (err) {
+    console.warn('[DeviceStorage] Could not persist hardware counter:', err);
+  }
+  return next;
+}
+
+export function recordConfirmedShutterRelease(deviceUuid?: string): Promise<BoothHardwareCounters> {
+  return incrementHardwareCounter('shutterCount', 1, deviceUuid);
+}
+
+export function recordSuccessfulPrint(copies: number, deviceUuid?: string): Promise<BoothHardwareCounters> {
+  return incrementHardwareCounter('printsTotal', copies, deviceUuid);
+}
+
 /**
  * Captured photos are photo URIs (or data URLs).
  * Returns array of photo strings safe for session payload (Base64 data URLs or HTTP URLs).

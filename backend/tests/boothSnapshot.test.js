@@ -112,7 +112,7 @@ test('revision is stable for identical content and changes with configuration (#
 
 test('heartbeat merges partial hardware payloads (#76–#78)', () => {
   const device = {
-    telemetry: { prints: 10, shutters: 20, batteryPct: 88 },
+    telemetry: { prints: 10, shutters: 20, printBaseline: 7, shutterBaseline: 12, counterResetAt: '2026-11-01T00:00:00.000Z', batteryPct: 88 },
     connections: { camera: true, printer: true, kioskScreen: true },
   };
   // Only the printer connection changed — nothing else is overwritten.
@@ -120,6 +120,9 @@ test('heartbeat merges partial hardware payloads (#76–#78)', () => {
   assert.equal(merged.connections.printer, false);
   assert.equal(merged.connections.camera, true);
   assert.equal(merged.telemetry.prints, 10);
+  assert.equal(merged.telemetry.printBaseline, 7);
+  assert.equal(merged.telemetry.shutterBaseline, 12);
+  assert.equal(merged.telemetry.counterResetAt, '2026-11-01T00:00:00.000Z');
   assert.equal(merged.telemetry.batteryPct, 88);
   assert.equal(merged.changed.connections, true);
   assert.equal(merged.changed.telemetry, false);

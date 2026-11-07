@@ -81,6 +81,8 @@ export const bridge = {
   async reportCamera(value: {
     connected: boolean
     working: boolean
+    provider?: 'nikon-sdk' | 'canon-ccapi-wifi' | 'webcam' | 'simulator' | 'none'
+    livePreview?: boolean
     batteryPct: number | null
     model: string | null
     error: string | null

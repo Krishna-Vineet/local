@@ -14,13 +14,14 @@ const execAsync = promisify(exec)
 export interface CameraReport {
   connected: boolean
   working: boolean
+  provider?: 'nikon-sdk' | 'canon-ccapi-wifi' | 'webcam' | 'simulator' | 'none' | null
+  livePreview?: boolean
   batteryPct: number | null
   model: string | null
   error: string | null
   // Extended telemetry (available after bridge.reportCamera from renderer)
   batteryLevel?: number | null
   shutterCount?: number
-  livePreview?: boolean
   orientation?: 'portrait' | 'landscape' | null
   quality?: string | null
 }
@@ -28,6 +29,8 @@ export interface CameraReport {
 let cameraReport: CameraReport = {
   connected: false,
   working: false,
+  provider: null,
+  livePreview: false,
   batteryPct: null,
   model: null,
   error: 'Waiting for camera discovery',
@@ -208,22 +211,33 @@ export async function hardwareSnapshot() {
     totalMemMb: Math.round(os.totalmem() / (1024 * 1024)),
     camera: (() => {
       const cmState = cameraManager.getState()
-      const cameraModel = cameraReport.model || cmState.model
-      const cameraConnected = cameraReport.connected || cmState.connected
-      const cameraWorking = cameraReport.working || cmState.working
-      const cameraBattery = cameraReport.batteryPct ?? (cameraReport as any).batteryLevel ?? cmState.batteryPct ?? null
-      const cameraLive = !!cameraReport.working || cmState.liveView
-      const cameraError = cameraReport.error && cameraReport.error !== 'Waiting for camera discovery'
-        ? cameraReport.error
-        : (cmState.error || cameraReport.error)
-
-      const cameraProvider = cameraModel?.includes('Nikon') || cmState.provider === 'nikon-sdk'
-        ? 'nikon-sdk'
-        : cameraModel?.includes('CCAPI') || cmState.provider === 'canon-ccapi'
-          ? 'canon-ccapi-wifi'
-          : cameraModel
-            ? 'media-device'
-            : 'canon-sdk-pending'
+      // Renderer and main process can describe different camera paths (for
+      // example, a webcam stream while the Nikon SDK is disconnected). Pick one
+      // authoritative provider instead of OR-ing states and reviving stale
+      // online flags from the other path.
+      const reportProvider = cameraReport.provider
+      const mainNikonIsActive = cmState.provider === 'nikon-sdk' && cmState.connected
+      const useRendererReport = !!reportProvider && reportProvider !== 'none' && reportProvider !== 'nikon-sdk'
+      const cameraProvider = useRendererReport
+        ? reportProvider!
+        : mainNikonIsActive || cmState.provider === 'nikon-sdk'
+          ? 'nikon-sdk'
+          : reportProvider && reportProvider !== 'none'
+            ? reportProvider
+            : cameraReport.model
+              ? 'media-device'
+              : 'none'
+      const useMainNikon = cameraProvider === 'nikon-sdk'
+      const cameraModel = useMainNikon ? (cmState.model || cameraReport.model) : cameraReport.model
+      const cameraConnected = useMainNikon ? cmState.connected : useRendererReport ? cameraReport.connected : false
+      const cameraWorking = useMainNikon ? cmState.working : useRendererReport ? cameraReport.working : false
+      const cameraBattery = useMainNikon
+        ? cmState.batteryPct ?? cameraReport.batteryPct ?? null
+        : useRendererReport ? cameraReport.batteryPct ?? null : null
+      const cameraLive = useMainNikon ? cmState.liveView : useRendererReport ? !!cameraReport.livePreview : false
+      const cameraError = useMainNikon
+        ? (cmState.error || cameraReport.error)
+        : useRendererReport ? cameraReport.error : cmState.error || cameraReport.error
 
       return {
         ...cameraReport,
@@ -231,9 +245,9 @@ export async function hardwareSnapshot() {
         working: cameraWorking,
         model: cameraModel,
         provider: cameraProvider,
-        shutterCount: (cameraReport as any).shutterCount ?? counters.shutterCount,
-        orientation: (cameraReport as any).orientation ?? null,
-        quality: (cameraReport as any).quality ?? 'high',
+        shutterCount: counters.shutterCount,
+        orientation: cameraReport.orientation ?? null,
+        quality: cameraReport.quality ?? 'high',
         live: cameraLive,
         batteryPct: cameraBattery,
         error: cameraError,

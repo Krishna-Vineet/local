@@ -67,6 +67,7 @@ export const api = {
     updateDevice: (id, body) => request('PUT', `org/devices/${id}`, body),
     assignDevice: (id, eventId) => request('POST', `org/devices/${id}/assign`, { eventId }),
     unassignDevice: (id) => request('POST', `org/devices/${id}/unassign`, {}),
+    resetDeviceCounters: (id) => request('POST', `org/devices/${id}/reset-counters`, {}),
     removeDevice: (id) => request('DELETE', `org/devices/${id}`),
     tickets: (q = '') => request('GET', `org/tickets${q}`),
     ticket: (id) => request('GET', `org/tickets/${id}`),

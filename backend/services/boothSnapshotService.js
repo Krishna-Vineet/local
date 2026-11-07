@@ -810,6 +810,21 @@ function toISO(value) {
 
 /** Heartbeat helpers (issues #76–#81). */
 
+function comparableTelemetry(telemetry = {}) {
+  return {
+    prints: Number(telemetry.prints) || 0,
+    shutters: Number(telemetry.shutters) || 0,
+    printBaseline: Number(telemetry.printBaseline) || 0,
+    shutterBaseline: Number(telemetry.shutterBaseline) || 0,
+    counterResetAt: toISO(telemetry.counterResetAt),
+    batteryPct: Number(telemetry.batteryPct) || 0,
+    printerModel: telemetry.printerModel || null,
+    printerStatus: telemetry.printerStatus || null,
+    paperRemaining: telemetry.paperRemaining == null ? null : Number(telemetry.paperRemaining),
+    cameraModel: telemetry.cameraModel || null,
+  };
+}
+
 // The booth sends only *changed* hardware fields; the server merges them.
 export function mergeHardware(device, patch = {}) {
   const previousTelemetry = device.telemetry || {};
@@ -846,6 +861,11 @@ export function mergeHardware(device, patch = {}) {
   const telemetry = {
     prints,
     shutters,
+    // These CRM-owned offsets must survive every booth heartbeat. The booth
+    // continues to report absolute counters; CRM displays totals since reset.
+    printBaseline: Math.max(0, Number(previousTelemetry.printBaseline) || 0),
+    shutterBaseline: Math.max(0, Number(previousTelemetry.shutterBaseline) || 0),
+    counterResetAt: previousTelemetry.counterResetAt || null,
     batteryPct,
     printerModel: printerModel ? String(printerModel).slice(0, 80) : null,
     printerStatus: printerStatus ? String(printerStatus).slice(0, 40) : null,
@@ -874,7 +894,7 @@ export function mergeHardware(device, patch = {}) {
     telemetry,
     connections: { camera, printer, kioskScreen, updatedAt: new Date() },
     changed: {
-      telemetry: JSON.stringify({ ...telemetry, updatedAt: undefined }) !== JSON.stringify({ ...previousTelemetry, updatedAt: undefined }),
+      telemetry: JSON.stringify(comparableTelemetry(telemetry)) !== JSON.stringify(comparableTelemetry(previousTelemetry)),
       connections: camera !== previousConnections.camera
         || printer !== previousConnections.printer
         || kioskScreen !== previousConnections.kioskScreen,

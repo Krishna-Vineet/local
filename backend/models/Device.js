@@ -55,6 +55,11 @@ const deviceSchema = new mongoose.Schema(
     telemetry: {
       prints: { type: Number, default: 0 },
       shutters: { type: Number, default: 0 },
+      // Persistent booth counters remain lifetime totals. CRM baselines make its
+      // reset operation durable across later heartbeats from the booth.
+      printBaseline: { type: Number, default: 0 },
+      shutterBaseline: { type: Number, default: 0 },
+      counterResetAt: { type: Date, default: null },
       batteryPct: { type: Number, default: 100 },
       printerModel: { type: String, default: null },
       printerStatus: { type: String, default: null },
